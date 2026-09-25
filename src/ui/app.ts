@@ -370,9 +370,12 @@ export class GameApp {
     audio.setCue(this.musicCue());
     document.title = this.tryTitle() ?? (this.isWidowTry() || this.isWidowCardTry() ? 'Widow' : null) ?? (this.isHuntCardsTry() ? 'Hunt cards' : null) ?? (this.isWoodsmanTry() ? 'Woodsman' : null) ?? (this.isFilthTry() ? 'Filth' : null) ?? (this.isScrapTry() ? 'Scrap' : null) ?? (this.isMarketTry() ? 'Market' : null) ?? this.L('title');
     const hunt = this.screen === 'battle' && this.isHuntBattle();
-    document.documentElement.classList.toggle('is-menu', this.screen === 'menu');
-    document.documentElement.classList.toggle('is-battle', this.screen === 'battle');
+    const huntResult = this.screen === 'run' && this.run?.eventId === 'monster-hunt' && this.run.eventStep === 'hunt-result';
+    document.documentElement.classList.toggle('is-menu', this.screen === 'menu' || this.screen === 'mode' || this.screen === 'settings' || this.screen === 'leaderboard');
+    document.documentElement.classList.toggle('is-battle', (this.screen === 'battle' && !hunt) || huntResult);
     document.documentElement.classList.toggle('is-hunt', hunt);
+    document.documentElement.classList.toggle('is-square', this.screen === 'run' && !huntResult);
+    document.documentElement.classList.toggle('is-codex', this.screen === 'codex');
     switch (this.screen) {
       case 'menu':
         this.root.innerHTML = this.menuHtml();
