@@ -4,8 +4,10 @@ export const DESIGN_H = 1080;
 
 export function applyViewportScale(): void {
   const vv = window.visualViewport;
+  const rawH = vv?.height ?? window.innerHeight;
   const w = vv?.width ?? window.innerWidth;
-  const h = vv?.height ?? window.innerHeight;
+  const topGap = 18;
+  const h = Math.max(1, rawH - topGap);
   const tallPhone = h > w && w < 700;
   // A tall phone cannot show a 1920-wide board without shrinking it to a postage stamp.
   // Lay that screen out as a column, then scale the column to the phone width.
@@ -16,7 +18,7 @@ export function applyViewportScale(): void {
   root.style.setProperty('--design-w', String(w / scale));
   root.style.setProperty('--design-h', String(h / scale));
   root.style.setProperty('--vv-x', `${vv?.offsetLeft ?? 0}px`);
-  root.style.setProperty('--vv-y', `${vv?.offsetTop ?? 0}px`);
+  root.style.setProperty('--vv-y', `${(vv?.offsetTop ?? 0) + topGap}px`);
 }
 
 export function bindViewportScale(): void {

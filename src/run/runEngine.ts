@@ -294,6 +294,7 @@ function persistBattleTeam(
   const exhausted = new Map<string, { recipientId: string | null; atk: number; hp: number }>();
   const deathGrown = new Set<string>();
   const deadPlayer = new Set<string>();
+  const poisonUndo = new Map<string, { slot: number; restore: string | null }[]>();
   const stickerBag = [...run.stickerBag];
   let deathsThisRun = run.deathsThisRun ?? 0;
   let stickersGained = run.stickersGained ?? 0;
@@ -388,12 +389,20 @@ function persistBattleTeam(
       team = team.map((u) => {
         if (u.instanceId !== id) return u;
         const stickerIds = [...u.stickerIds];
+        const undo = poisonUndo.get(id) ?? [];
         if (ev.added) {
-          if (stickerIds.length < 3 && stickerIds.filter((s) => s === 'poison').length < 3) stickerIds.push('poison');
+          if (stickerIds.length < 3 && stickerIds.filter((s) => s === 'poison').length < 3) {
+            stickerIds.push('poison');
+            undo.push({ slot: stickerIds.length - 1, restore: null });
+          }
         } else if (ev.removed) {
           const i = stickerIds.indexOf(ev.removed);
-          if (i >= 0) stickerIds[i] = 'poison';
+          if (i >= 0) {
+            stickerIds[i] = 'poison';
+            undo.push({ slot: i, restore: ev.removed });
+          }
         }
+        poisonUndo.set(id, undo);
         return { ...u, stickerIds };
       });
     }
@@ -457,6 +466,16 @@ function persistBattleTeam(
     for (const id of fallen) melted.add(id);
   }
   team = compactSlots(team.filter((u) => !melted.has(u.instanceId)));
+  team = team.map((u) => {
+    const undo = poisonUndo.get(u.instanceId);
+    if (!undo?.length) return u;
+    const stickerIds = [...u.stickerIds];
+    for (const step of [...undo].reverse()) {
+      if (step.restore) stickerIds[step.slot] = step.restore;
+      else stickerIds.splice(step.slot, 1);
+    }
+    return { ...u, stickerIds };
+  });
   team = team.map((u) =>
     getUnit(u.defId).passives?.forgetStickersAfterScrap && u.stickerIds.length ? { ...u, stickerIds: [] } : u,
   );
@@ -1279,19 +1298,19 @@ export function claimBookUnit(run: RunState, slot: number): RunState {
 }
 
 /** Glue the book's sticker onto a team unit. Only that page clears; the card stays until the event closes. */
-export function claimBookSticker(run: RunState, instanceId: string): RunState {
+export function claimBookSticker(run: RunState, instanceId: string, replaceIndex?: number): RunState {
   if (run.phase !== 'event' || run.eventId !== 'book-of-lost-tales' || run.eventStep !== 'book-kind') return run;
   if (run.eventOffers.includes('book-picked')) return run;
   const ready = ensureBookOffers(run);
   const sid = bookSpread(ready).stickerId;
   if (!sid || !STICKER_BY_ID.has(sid)) return run;
   const unit = ready.team.find((u) => u.instanceId === instanceId);
-  if (!unit || !canAcceptSticker(unit)) return run;
+  if (!unit || (!canAcceptSticker(unit) && replaceIndex == null)) return run;
   const plateRng = rngFor(ready, 0xb13);
   const fromId = unit.defId;
   const team = spreadIfMythic(
     shareStickerOnApply(
-      cloneTeam(ready.team).map((u) => (u.instanceId === instanceId ? applySticker(u, sid, undefined, plateRng) : u)),
+      cloneTeam(ready.team).map((u) => (u.instanceId === instanceId ? applySticker(u, sid, replaceIndex, plateRng) : u)),
       instanceId,
       sid,
       fromId,

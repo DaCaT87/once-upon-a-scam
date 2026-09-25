@@ -19,8 +19,8 @@ export type MusicCue = 'menu' | 'fight' | 'hunt';
 
 const MUSIC_SRC: Record<MusicCue, string> = {
   menu: './audio/fairytale-waltz.mp3',
-  fight: './audio/the-descent.mp3',
-  hunt: './audio/darkest-child.mp3',
+  fight: './audio/clash-defiant.mp3',
+  hunt: './audio/the-descent.mp3',
 };
 
 export class AudioEngine {
@@ -46,15 +46,14 @@ export class AudioEngine {
     if (this.musicEl) this.musicEl.volume = music;
   }
 
-  /** Menu, scrap, or monster hunt. Starts only after the first tap. */
+  /** Menu, scrap, or monster hunt. The first touch on the title screen starts it. */
   setCue(cue: MusicCue): void {
-    if (this.cue === cue && this.loaded === cue) return;
+    if (this.cue === cue && this.loaded === cue && this.playing) return;
     this.cue = cue;
     if (this.playing) this.playCue();
   }
 
   startMusic(): void {
-    if (this.playing) return;
     this.playing = true;
     this.playCue();
   }
@@ -73,7 +72,9 @@ export class AudioEngine {
       el.src = MUSIC_SRC[this.cue];
       this.loaded = this.cue;
     }
-    void el.play().catch(() => {});
+    void el.play().catch(() => {
+      this.playing = false;
+    });
   }
 
   play(name: SfxName, bus: 'sfx' | 'ui' = 'sfx'): void {
@@ -93,8 +94,8 @@ export class AudioEngine {
         this.slide(t, 420, 180, 0.14, 0.07 * g);
         break;
       case 'punch':
-        this.tone(t, 90, 0.12, 'sine', 0.28 * g);
-        this.noise(t, 0.06, 400, 0.2 * g, 'lowpass');
+        this.tone(t, 140, 0.045, 'sine', 0.22 * g);
+        this.noise(t, 0.03, 220, 0.12 * g, 'lowpass');
         break;
       case 'boing':
         this.slide(t, 180, 420, 0.16, 0.16 * g);
@@ -112,11 +113,12 @@ export class AudioEngine {
         this.tone(t, 60, 0.2, 'sawtooth', 0.08 * g);
         break;
       case 'trumpet':
-        this.mutedTrumpet(t, 0.18 * g);
+        this.tone(t, 392, 0.12, 'triangle', 0.06 * g);
+        this.tone(t + 0.08, 523, 0.16, 'sine', 0.05 * g);
         break;
       case 'death':
-        this.slide(t, 240, 70, 0.28, 0.16 * g);
-        this.noise(t, 0.2, 600, 0.14 * g, 'lowpass');
+        this.tone(t, 70, 0.16, 'sine', 0.2 * g);
+        this.noise(t, 0.05, 180, 0.08 * g, 'lowpass');
         break;
       case 'hover':
         this.tone(t, 520, 0.04, 'triangle', 0.04 * g);
@@ -184,22 +186,6 @@ export class AudioEngine {
     src.connect(f).connect(g).connect(this.dest());
     src.start(t);
     src.stop(t + dur);
-  }
-
-  private mutedTrumpet(t: number, vol: number): void {
-    const o = this.ctx!.createOscillator();
-    const f = this.ctx!.createBiquadFilter();
-    const g = this.ctx!.createGain();
-    o.type = 'sawtooth';
-    o.frequency.setValueAtTime(392, t);
-    o.frequency.exponentialRampToValueAtTime(494, t + 0.12);
-    f.type = 'bandpass';
-    f.frequency.value = 700;
-    g.gain.setValueAtTime(vol, t);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
-    o.connect(f).connect(g).connect(this.dest());
-    o.start(t);
-    o.stop(t + 0.24);
   }
 
   private fanfare(t: number, g: number): void {

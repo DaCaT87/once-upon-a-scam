@@ -86,7 +86,7 @@ export class GameApp {
   private recruitReplace: { defId: string } | null = null;
   private bagPick: string | null = null;
   /** Card waiting for which of 3 stickers to peel when applying a new one. */
-  private replacePick: { instanceId: string; from: 'assign' | 'bag' | 'shop'; stickerId?: string } | null = null;
+  private replacePick: { instanceId: string; from: 'assign' | 'bag' | 'shop' | 'book'; stickerId?: string } | null = null;
   private applyFx: { instanceId: string; stickerId: string } | null = null;
   private shopBusy = false;
   private shopHoldTimer = 0;
@@ -167,7 +167,7 @@ export class GameApp {
   }
 
   private bindGlobal(): void {
-    window.addEventListener('pointerdown', () => audio.unlock(), { once: true });
+    window.addEventListener('pointerdown', () => audio.unlock());
     audio.setVolumes(this.settings.music, this.settings.sfx, this.settings.ui);
     this.root.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
@@ -477,6 +477,9 @@ export class GameApp {
           </h1>
         </div>
         <div class="col menu-actions">
+          <label class="menu-alias">${this.L('playerName')}
+            <input class="name-field" id="alias" maxlength="24" value="${this.player.name.replace(/"/g, '')}" />
+          </label>
           <button class="btn btn-play" data-act="new-run">${this.L('newRun')}</button>
           ${this.run && this.run.phase !== 'final' ? `<button class="btn ghost" data-act="continue">${this.L('continue')}</button>` : ''}
           <button class="btn ghost" data-act="codex">${this.L('codex')}</button>
@@ -1001,11 +1004,12 @@ export class GameApp {
         )
       : '';
     const replacing = Boolean(this.recruitReplace);
+    const stickerReplace = this.replacePick?.from === 'book' ? this.replacePick : null;
     return `
       <section class="screen screen-recruit screen-book${replacing ? ' is-replacing' : ''}">
         <div class="hud recruit-hud">
           <span class="recruit-title">${ev ? this.L(ev.nameKey) : this.L('alleyEvent')}</span>
-          <p class="hint sticker-shop-hint">${replacing ? this.L('recruitReplaceHint') : this.L('bookPick')}</p>
+          <p class="hint sticker-shop-hint">${stickerReplace ? this.L('replaceHint') : replacing ? this.L('recruitReplaceHint') : this.L('bookPick')}</p>
           <span class="recruit-round">${this.recruitRoundHtml(run.round, victoryPointsOf(run))}</span>
         </div>
         <div class="book-open">
@@ -1016,11 +1020,15 @@ export class GameApp {
         <div class="recruit-shop-team grid5 team-table">${renderTeamLane(loc, run.team, {
           showEmpty: true,
           ...stats,
-          cardOpts: () => ({ extraClass: replacing ? 'is-replace-pick' : '' }),
+          cardOpts: (u) => ({
+            extraClass: replacing || stickerReplace?.instanceId === u.instanceId ? 'is-replace-pick' : '',
+          }),
         })}</div>
         <div class="row recruit-actions">
           ${
-            replacing
+            stickerReplace
+              ? `<button class="btn ghost" data-act="cancel-book-sticker">${this.L('cancel')}</button>`
+              : replacing
               ? `<button class="btn ghost" data-act="cancel-replace-recruit">${this.L('cancel')}</button>`
               : `<button class="btn ghost" data-act="skip-event">${this.L('skipRecruit')}</button>`
           }
@@ -1824,6 +1832,25 @@ export class GameApp {
     if (!run || run.eventId !== 'book-of-lost-tales' || run.eventStep !== 'book-kind') return;
     const teamRoot = this.recruitTeamRoot();
     if (!teamRoot) return;
+    if (this.replacePick?.from === 'book') {
+      teamRoot.querySelectorAll<HTMLElement>('.unit-card[data-instance]').forEach((el) => {
+        el.addEventListener('click', (e) => {
+          if (!this.run || this.replacePick?.from !== 'book' || this.replacePick.instanceId !== el.dataset.instance) return;
+          const slotEl = (e.target as HTMLElement).closest<HTMLElement>('.sticker-slot.filled');
+          if (!slotEl) return;
+          const idx = Number(slotEl.dataset.stickerSlot);
+          if (!Number.isInteger(idx) || idx < 0 || idx >= MAX_STICKERS) return;
+          e.preventDefault();
+          e.stopPropagation();
+          const next = claimBookSticker(this.run, el.dataset.instance!, idx);
+          if (next === this.run) return;
+          this.replacePick = null;
+          this.run = next;
+          audio.play('sticker', 'ui');
+          this.holdBookClose();
+        });
+      });
+    }
     if (this.recruitReplace) {
       teamRoot.querySelectorAll<HTMLElement>('.unit-card[data-instance]').forEach((el) => {
         el.addEventListener('click', () => {
@@ -1923,6 +1950,13 @@ export class GameApp {
             const instanceId = unitEl.dataset.instance;
             if (!instanceId) {
               card.classList.remove('is-peeled');
+              return;
+            }
+            const host = this.run.team.find((u) => u.instanceId === instanceId);
+            if (host && host.stickerIds.length >= MAX_STICKERS) {
+              this.replacePick = { instanceId, from: 'book', stickerId: card.dataset.sticker };
+              audio.play('paper', 'ui');
+              this.render();
               return;
             }
             const next = claimBookSticker(this.run, instanceId);
@@ -3211,6 +3245,11 @@ export class GameApp {
       this.maybeLoopEvents();
       return;
     }
+    if (act === 'cancel-book-sticker') {
+      this.replacePick = null;
+      this.render();
+      return;
+    }
     if (act === 'cancel-replace-recruit') {
       this.recruitReplace = null;
       if (this.run?.phase === 'recruit' || this.run?.phase === 'draft') this.patchRecruitShopDom();
@@ -3307,9 +3346,12 @@ export class GameApp {
   }
 
   private async startNewRun(): Promise<void> {
+    const alias = this.root.querySelector<HTMLInputElement>('#alias')?.value.trim() || this.player.name;
+    this.player = { ...this.player, name: alias };
+    savePlayer(this.player.id, alias);
     this.run = null;
     if (!this.tryEvent() && !this.isMarketTry() && !this.isWidowTry() && !this.isWidowCardTry() && !this.isHuntCardsTry() && !this.isWoodsmanTry() && !this.isFilthTry() && !this.isScrapTry()) await this.services.runs.clear();
-    this.run = createRun('ai', this.player.id, this.player.name);
+    this.run = createRun('ai', this.player.id, alias);
     this.cuts = [];
     this.noteDraft();
     await this.maybeFullscreen();

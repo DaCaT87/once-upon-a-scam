@@ -208,8 +208,8 @@ function stepEvent(run: RunState): RunState {
     if (run.eventOffers.includes('book-picked')) return settleBookChoice(run);
     const ready = ensureBookOffers(run);
     if (ready.team.length < MAX_TEAM) return claimBookUnit(ready, firstFreeSlot(ready.team));
-    const host = ready.team.find((u) => canAcceptSticker(u));
-    if (host) return claimBookSticker(ready, host.instanceId);
+    const host = ready.team.find((u) => canAcceptSticker(u)) ?? ready.team[0];
+    if (host) return claimBookSticker(ready, host.instanceId, host.stickerIds.length >= 3 ? 0 : undefined);
     const weak = weakest(ready.team);
     if (weak) return replaceBookUnit(ready, weak.slot);
     return skipEmptyEvent(ready);

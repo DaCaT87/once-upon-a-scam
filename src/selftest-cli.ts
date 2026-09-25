@@ -21,6 +21,7 @@ import {
   eventUnitReward,
   finishRecruit,
   ensureBookOffers,
+  claimBookSticker,
   pickEventKind,
   placeDraft,
   placeEventUnit,
@@ -3702,8 +3703,41 @@ if (!assertDeterministic(a, b, 12345)) throw new Error('determinism failed');
     throw new Error(`filth apply count=${poisoned.length} now=${hit && hit.type === 'PoisonApplied' ? hit.stickers.join(',') : ''}`);
   }
   const after = boy ? computedStats(boy) : null;
-  if (!boy || boy.stickerIds.join(',') !== 'fur-armor,rusty-knife,poison' || after?.hp !== 8 || after?.atk !== 3) {
+  if (!boy || boy.stickerIds.join(',') !== 'fur-armor,rusty-knife' || after?.hp !== 8 || after?.atk !== 3) {
     throw new Error(`filth persist stk=${boy?.stickerIds.join(',')} hp=${after?.hp} atk=${after?.atk}`);
+  }
+  let full = createRun('ai', 'tester', 'FilthFull', 0x73);
+  full = {
+    ...full,
+    team: [
+      applySticker(
+        applySticker(applySticker(instanceFromDef('farm-boy', 1, 'fullRun'), 'fur-armor'), 'rusty-knife'),
+        'trash',
+      ),
+    ],
+  };
+  full = resolveFight(
+    full,
+    makeSnapshot({
+      playerId: 'e',
+      playerName: 'e',
+      runId: 'r',
+      round: 1,
+      team: [applySticker(instanceFromDef('paper-dove', 1, 'flFullFoe'), 'filth')],
+    }),
+  );
+  const restored = full.team.find((u) => u.instanceId === 'fullRun');
+  const swapEv = (full.lastBattle?.events ?? []).find((e) => e.type === 'PoisonApplied' && e.unitId === 'player:fullRun');
+  if (
+    !restored ||
+    restored.stickerIds.includes('poison') ||
+    !swapEv ||
+    swapEv.type !== 'PoisonApplied' ||
+    swapEv.added ||
+    !swapEv.removed ||
+    restored.stickerIds.join(',') !== 'fur-armor,rusty-knife,trash'
+  ) {
+    throw new Error(`poison should give the sticker back stk=${restored?.stickerIds.join(',')}`);
   }
   const hunt = resolveHuntFight({
     ...createRun('ai', 'tester', 'FilthHunt', 0x72),
@@ -4349,6 +4383,23 @@ if (ev.lastBonusBattle?.winner === 'player') {
   if (!stickerId || getSticker(stickerId).rarity !== 'silver') throw new Error(`book spread sticker ${stickerId}`);
   const taken = pickEventKind(spread, 'sticker');
   if (!taken.pendingStickerIds.includes(stickerId)) throw new Error(`book took ${taken.pendingStickerIds.join(',')}`);
+  const fullBook = ensureBookOffers({
+    ...spread,
+    team: [
+      applySticker(
+        applySticker(applySticker(instanceFromDef('farm-boy', 1, 'bkFull'), 'fur-armor'), 'rusty-knife'),
+        'trash',
+      ),
+    ],
+  });
+  const bookSticker = fullBook.eventOffers.find((o) => o.startsWith('book-sticker:'))?.slice('book-sticker:'.length);
+  if (!bookSticker) throw new Error('book sticker missing');
+  if (claimBookSticker(fullBook, 'bkFull') !== fullBook) throw new Error('a full book target should wait for a choice');
+  const swapped = claimBookSticker(fullBook, 'bkFull', 1);
+  const host = swapped.team.find((u) => u.instanceId === 'bkFull');
+  if (!host || host.stickerIds[1] !== bookSticker || host.stickerIds[0] !== 'fur-armor' || host.stickerIds[2] !== 'trash') {
+    throw new Error(`book replace stk=${host?.stickerIds.join(',')}`);
+  }
 }
 
 {

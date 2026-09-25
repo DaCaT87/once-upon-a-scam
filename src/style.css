@@ -48,13 +48,10 @@ html.is-fullscreen body {
 
 #stage-fill {
   position: fixed;
-  left: var(--vv-x, 0px);
-  top: var(--vv-y, 0px);
-  width: calc(var(--design-w) * var(--ui-scale) * 1px);
-  height: calc(var(--design-h) * var(--ui-scale) * 1px);
+  inset: 0;
   z-index: 0;
   pointer-events: none;
-  background: #100c0a center / cover no-repeat;
+  background: #100c0a center top / cover no-repeat;
 }
 html.is-menu #stage-fill {
   background-image: url('/art/ui/bg-home.jpg?v=home7');
@@ -3081,6 +3078,20 @@ h2.sign, .panel h2 {
   pointer-events: none;
 }
 .menu-actions { margin-top: auto; }
+.menu-alias {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: var(--cream);
+  font-family: "Limelight", serif;
+  font-size: 28px;
+  text-shadow: 2px 3px 0 #1a1410;
+}
+.menu-alias .name-field {
+  width: 360px;
+  text-align: center;
+}
 .btn-play {
   min-width: 220px;
   font-size: 22px;
@@ -3248,8 +3259,8 @@ h2.sign, .panel h2 {
   filter: drop-shadow(0 10px 0 rgba(12, 8, 6, 0.45));
 }
 .vs-banner-wrap.is-pinup {
-  width: min(520px, 82vw);
-  max-height: min(82vh, 760px);
+  width: auto;
+  max-height: none;
   animation: none;
   filter: drop-shadow(0 14px 0 rgba(12, 8, 6, 0.42));
   transform-origin: 50% 100%;
@@ -3278,8 +3289,8 @@ h2.sign, .panel h2 {
 .pinup-stage .pinup-cel {
   grid-area: 1 / 1;
   width: auto;
-  height: min(82vh, 760px);
-  max-width: 100%;
+  height: 96cqh;
+  max-width: 94cqw;
   object-fit: contain;
   object-position: center bottom;
   opacity: 0;
