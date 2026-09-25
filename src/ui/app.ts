@@ -1,4 +1,4 @@
-import { audio } from '../audio/engine';
+import { audio, type MusicCue } from '../audio/engine';
 import { firstFreeSlot, getUnit, stickerArtFile } from '../core/catalog';
 import { EVENT_BY_ID, eventHidesRarity, huntStickerFor, lossRewardRarity } from '../data/events';
 import { rarityRank, shopMaxRarity } from '../data/rarity';
@@ -367,8 +367,12 @@ export class GameApp {
     this.stopMenu = null;
     if (this.screen !== 'battle') cancelAnimationFrame(this.raf);
     audio.setVolumes(this.settings.music, this.settings.sfx, this.settings.ui);
+    audio.setCue(this.musicCue());
     document.title = this.tryTitle() ?? (this.isWidowTry() || this.isWidowCardTry() ? 'Widow' : null) ?? (this.isHuntCardsTry() ? 'Hunt cards' : null) ?? (this.isWoodsmanTry() ? 'Woodsman' : null) ?? (this.isFilthTry() ? 'Filth' : null) ?? (this.isScrapTry() ? 'Scrap' : null) ?? (this.isMarketTry() ? 'Market' : null) ?? this.L('title');
+    const hunt = this.screen === 'battle' && this.isHuntBattle();
     document.documentElement.classList.toggle('is-menu', this.screen === 'menu');
+    document.documentElement.classList.toggle('is-battle', this.screen === 'battle');
+    document.documentElement.classList.toggle('is-hunt', hunt);
     switch (this.screen) {
       case 'menu':
         this.root.innerHTML = this.menuHtml();
@@ -1154,6 +1158,12 @@ export class GameApp {
 
   private isHuntBattle(): boolean {
     return this.run?.lastBattle?.snapshots.b.playerId === 'monster-hunt';
+  }
+
+  private musicCue(): MusicCue {
+    if (this.screen === 'battle' && this.isHuntBattle()) return 'hunt';
+    if (this.screen === 'battle') return 'fight';
+    return 'menu';
   }
 
   private huntBossName(): string | null {

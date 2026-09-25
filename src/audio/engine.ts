@@ -15,15 +15,23 @@ export type SfxName =
   | 'lose'
   | 'whoosh';
 
+export type MusicCue = 'menu' | 'fight' | 'hunt';
+
+const MUSIC_SRC: Record<MusicCue, string> = {
+  menu: './audio/scheming-weasel.mp3',
+  fight: './audio/fluffing-a-duck.mp3',
+  hunt: './audio/dragon-and-toast.mp3',
+};
+
 export class AudioEngine {
   ctx: AudioContext | null = null;
   music = 0.55;
   sfx = 0.75;
   ui = 0.7;
-  private musicGain: GainNode | null = null;
   private playing = false;
-  private timer: number | null = null;
-  private step = 0;
+  private cue: MusicCue = 'menu';
+  private loaded: MusicCue | null = null;
+  private musicEl: HTMLAudioElement | null = null;
 
   unlock(): void {
     if (!this.ctx) this.ctx = new AudioContext();
@@ -35,36 +43,37 @@ export class AudioEngine {
     this.music = music;
     this.sfx = sfx;
     this.ui = ui;
-    if (this.musicGain) this.musicGain.gain.value = music * 0.22;
+    if (this.musicEl) this.musicEl.volume = music;
+  }
+
+  /** Menu, scrap, or monster hunt. Starts only after the first tap. */
+  setCue(cue: MusicCue): void {
+    if (this.cue === cue && this.loaded === cue) return;
+    this.cue = cue;
+    if (this.playing) this.playCue();
   }
 
   startMusic(): void {
-    const ctx = this.ctx;
-    if (!ctx || this.playing) return;
+    if (this.playing) return;
     this.playing = true;
-    this.musicGain = ctx.createGain();
-    this.musicGain.gain.value = this.music * 0.22;
-    this.musicGain.connect(ctx.destination);
-    const bpm = 148;
-    const beat = 60 / bpm;
-    const tick = () => {
-      if (!this.ctx || !this.musicGain || !this.playing) return;
-      const t = this.ctx.currentTime + 0.04;
-      const s = this.step;
-      this.bass(t, s);
-      if (s % 2 === 0) this.comp(t, s);
-      this.brush(t, s);
-      if (s % 16 === 12) this.lick(t);
-      this.step += 1;
-      this.timer = window.setTimeout(tick, beat * 1000);
-    };
-    tick();
+    this.playCue();
   }
 
   stopMusic(): void {
     this.playing = false;
-    if (this.timer) window.clearTimeout(this.timer);
-    this.timer = null;
+    this.musicEl?.pause();
+  }
+
+  private playCue(): void {
+    const el = this.musicEl ?? new Audio();
+    this.musicEl = el;
+    el.loop = true;
+    el.volume = this.music;
+    if (this.loaded !== this.cue) {
+      el.src = MUSIC_SRC[this.cue];
+      this.loaded = this.cue;
+    }
+    void el.play().catch(() => {});
   }
 
   play(name: SfxName, bus: 'sfx' | 'ui' = 'sfx'): void {
@@ -175,71 +184,6 @@ export class AudioEngine {
     src.connect(f).connect(g).connect(this.dest());
     src.start(t);
     src.stop(t + dur);
-  }
-
-  private bass(t: number, step: number): void {
-    if (!this.musicGain) return;
-    const prog = [49, 49, 52, 52, 54, 54, 52, 49, 47, 47, 49, 49, 46, 47, 49, 49];
-    const midi = prog[step % prog.length]!;
-    const freq = 440 * Math.pow(2, (midi - 69) / 12);
-    const ctx = this.ctx!;
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    o.type = 'triangle';
-    o.frequency.setValueAtTime(freq, t);
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.9, t + 0.02);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.28);
-    o.connect(g).connect(this.musicGain);
-    o.start(t);
-    o.stop(t + 0.3);
-  }
-
-  private comp(t: number, step: number): void {
-    if (!this.musicGain) return;
-    const chords = [
-      [64, 67, 71],
-      [65, 69, 72],
-      [62, 66, 69],
-      [64, 67, 71],
-    ];
-    const ch = chords[Math.floor(step / 4) % chords.length]!;
-    const ctx = this.ctx!;
-    for (const m of ch) {
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      o.type = 'triangle';
-      o.frequency.value = 440 * Math.pow(2, (m - 69) / 12);
-      g.gain.setValueAtTime(0.18, t);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
-      o.connect(g).connect(this.musicGain);
-      o.start(t);
-      o.stop(t + 0.24);
-    }
-  }
-
-  private brush(t: number, step: number): void {
-    if (!this.musicGain) return;
-    this.noise(t, step % 2 === 0 ? 0.06 : 0.04, 1800, 0.08, 'highpass');
-  }
-
-  private lick(t: number): void {
-    if (!this.musicGain) return;
-    const notes = [76, 79, 76, 72];
-    notes.forEach((m, i) => {
-      const o = this.ctx!.createOscillator();
-      const g = this.ctx!.createGain();
-      const f = this.ctx!.createBiquadFilter();
-      f.type = 'lowpass';
-      f.frequency.value = 900;
-      o.type = 'sawtooth';
-      o.frequency.value = 440 * Math.pow(2, (m - 69) / 12);
-      g.gain.setValueAtTime(0.12, t + i * 0.09);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + i * 0.09 + 0.1);
-      o.connect(f).connect(g).connect(this.musicGain!);
-      o.start(t + i * 0.09);
-      o.stop(t + i * 0.09 + 0.12);
-    });
   }
 
   private mutedTrumpet(t: number, vol: number): void {
