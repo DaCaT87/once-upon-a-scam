@@ -48,7 +48,10 @@ html.is-fullscreen body {
 
 #stage-fill {
   position: fixed;
-  inset: 0;
+  left: var(--vv-x, 0px);
+  top: var(--vv-y, 0px);
+  width: calc(var(--design-w) * var(--ui-scale) * 1px);
+  height: calc(var(--design-h) * var(--ui-scale) * 1px);
   z-index: 0;
   pointer-events: none;
   background: #100c0a center / cover no-repeat;
@@ -80,14 +83,15 @@ html.is-codex #stage-fill {
 #app {
   position: fixed;
   z-index: 1;
-  left: 50%;
-  top: 50%;
+  left: var(--vv-x, 0px);
+  top: var(--vv-y, 0px);
   width: calc(var(--design-w) * 1px);
   height: calc(var(--design-h) * 1px);
-  transform: translate(-50%, -50%) scale(var(--ui-scale));
-  transform-origin: center center;
-  overflow-x: hidden;
-  overflow-y: auto;
+  transform: scale(var(--ui-scale));
+  transform-origin: top left;
+  overflow: hidden;
+  container-type: size;
+  container-name: stage;
 }
 
 .corner-stamps[hidden] {
@@ -1739,7 +1743,7 @@ h2.sign, .panel h2 {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: clamp(36px, 5vw, 72px);
+  gap: clamp(36px, 3cqw, 72px);
   padding: 0 4%;
   min-height: 0;
   perspective: 1400px;
@@ -1753,7 +1757,7 @@ h2.sign, .panel h2 {
   color: inherit;
   text-align: inherit;
   cursor: pointer;
-  width: min(340px, 26vw);
+  width: min(340px, 28cqw);
   flex: 0 0 auto;
   box-shadow:
     0 2px 0 rgba(20, 12, 8, 0.55),
@@ -4220,5 +4224,92 @@ h2.sign, .panel h2 {
 }
 .final-sheet tr.is-you td:nth-child(2) {
   color: var(--red);
+}
+
+/* A tall phone is a column: the board uses the whole screen, not a 16:9 band. */
+@container stage (max-aspect-ratio: 3/4) {
+  .menu-screen .btn {
+    font-size: 36px;
+    padding: 18px 48px;
+    min-width: 70%;
+  }
+  .screen-choice .recruit-hud,
+  .screen-recruit .recruit-hud,
+  .screen-sticker .recruit-hud,
+  .screen-team .recruit-hud {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    font-size: 36px;
+    height: auto;
+  }
+  .screen-choice .recruit-title,
+  .screen-recruit .recruit-title,
+  .screen-sticker .recruit-title,
+  .screen-team .recruit-title {
+    max-width: 100%;
+    text-align: center;
+  }
+  .screen-choice .recruit-round,
+  .screen-recruit .recruit-round,
+  .screen-sticker .recruit-round,
+  .screen-team .recruit-round {
+    position: static;
+    margin-top: 4px;
+    font-size: 28px;
+  }
+  .screen-choice .line-crown img,
+  .screen-recruit .line-crown img,
+  .screen-sticker .line-crown img,
+  .screen-team .line-crown img {
+    width: 56px;
+  }
+  .screen-choice .sticker-shop-hint,
+  .screen-recruit .sticker-shop-hint,
+  .screen-sticker .sticker-shop-hint,
+  .screen-team .sticker-shop-hint {
+    position: static;
+    transform: none;
+    margin-top: 6px;
+    font-size: 22px;
+    white-space: normal;
+    text-align: center;
+  }
+  .choice-table {
+    flex-direction: column;
+    justify-content: center;
+    gap: 28px;
+  }
+  .unit-card.choice-plate {
+    width: auto;
+    height: 22cqh;
+    max-width: 88cqw;
+    aspect-ratio: var(--card-ratio);
+  }
+  .battle-line {
+    align-items: stretch;
+  }
+  .battle-board {
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: stretch;
+    height: 100%;
+    --card: min(230px, calc((100cqi - var(--gap) * 3) / 4));
+  }
+  .battle-side.is-enemy {
+    order: -1;
+  }
+  .battle-side,
+  .battle-side.is-player,
+  .battle-side.is-enemy {
+    width: 100%;
+    justify-content: center;
+    justify-items: center;
+  }
+  #lineup .unit-card,
+  .team-table .unit-card {
+    width: min(var(--card-w), 18cqw);
+    flex-basis: min(var(--card-w), 18cqw);
+  }
 }
 
