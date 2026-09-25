@@ -51,16 +51,16 @@ html.is-fullscreen body {
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background: #100c0a;
+  background: #100c0a center / cover no-repeat;
 }
 html.is-menu #stage-fill {
-  background: #070b14;
+  background-image: url('/art/ui/bg-home.jpg?v=home7');
 }
 html.is-battle #stage-fill {
-  background: #14100e;
+  background-image: url('/art/ui/arena.png?v=court12');
 }
 html.is-hunt #stage-fill {
-  background: #100e0c;
+  background-image: url('/art/ui/arena-hunt.jpg?v=hunt3');
 }
 #vignette {
   pointer-events: none;
@@ -150,7 +150,7 @@ html.is-menu #grain {
 .menu-paint {
   position: absolute;
   inset: 0;
-  background: url('/art/ui/bg-home.jpg?v=home7') center center / cover no-repeat;
+  background: none;
 }
 .menu-flame {
   position: absolute;
@@ -3103,7 +3103,7 @@ h2.sign, .panel h2 {
   justify-content: space-between;
   gap: 28px;
   overflow: hidden;
-  background: #1a120e;
+  background: transparent;
   padding-top: 56px;
   padding-bottom: 28px;
 }
@@ -3212,22 +3212,18 @@ h2.sign, .panel h2 {
   height: 100%;
   overflow: hidden;
   padding: 0;
-  background: #000;
+  background: transparent;
 }
 .screen-battle.is-preamble {
-  background: #000;
+  background: transparent;
 }
 .battle-wrap.is-preamble {
-  background:
-    url('/art/ui/arena.png?v=court12') center 58% / cover no-repeat,
-    #7a9ac0;
+  background: transparent;
 }
 .battle-wrap.is-hunt,
 .battle-wrap.is-hunt.is-preamble {
   box-shadow: inset 0 0 80px 16px rgba(0, 0, 0, 0.28);
-  background:
-    url('/art/ui/arena-hunt.jpg?v=hunt3') center 58% / cover no-repeat,
-    #1a1614;
+  background: transparent;
 }
 .battle-wrap.is-preamble .battle-line,
 .battle-wrap.is-preamble .battle-slot::before,
@@ -3594,9 +3590,7 @@ h2.sign, .panel h2 {
   min-height: 0;
   border: 0;
   box-shadow: none;
-  background:
-    url('/art/ui/arena.png?v=court12') center 58% / cover no-repeat,
-    #7a9ac0;
+  background: transparent;
   position: relative;
   display: flex;
   flex-direction: column;

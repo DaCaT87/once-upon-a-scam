@@ -521,7 +521,7 @@ const en: Record<string, string> = {
   discovered: 'Seen',
   locked: 'Still in the alley',
   audioNote:
-    'Scheming Weasel, Fluffing a Duck and Dragon and Toast by Kevin MacLeod (incompetech.com). Licensed under Creative Commons BY 4.0.',
+    'Fairytale Waltz, The Descent and Darkest Child by Kevin MacLeod (incompetech.com). Licensed under Creative Commons BY 4.0.',
   skipNeedResult: 'The scrap is already decided.',
   mustAssign: 'Every chosen sticker must be pasted before the next scrap.',
   mustPickDraft: 'Choose exactly two.',
@@ -820,7 +820,7 @@ const it: Record<string, string> = {
   discovered: 'Visti',
   locked: 'Ancora in vicolo',
   audioNote:
-    'Scheming Weasel, Fluffing a Duck e Dragon and Toast di Kevin MacLeod (incompetech.com). Licenza Creative Commons BY 4.0.',
+    'Fairytale Waltz, The Descent e Darkest Child di Kevin MacLeod (incompetech.com). Licenza Creative Commons BY 4.0.',
   mustAssign: 'Ogni sticker scelto va incollato prima del prossimo scontro.',
   mustPickDraft: 'Scegline esattamente due.',
   recruited: 'Ingaggiato',

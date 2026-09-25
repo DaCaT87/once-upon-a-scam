@@ -18,9 +18,9 @@ export type SfxName =
 export type MusicCue = 'menu' | 'fight' | 'hunt';
 
 const MUSIC_SRC: Record<MusicCue, string> = {
-  menu: './audio/scheming-weasel.mp3',
-  fight: './audio/fluffing-a-duck.mp3',
-  hunt: './audio/dragon-and-toast.mp3',
+  menu: './audio/fairytale-waltz.mp3',
+  fight: './audio/the-descent.mp3',
+  hunt: './audio/darkest-child.mp3',
 };
 
 export class AudioEngine {
