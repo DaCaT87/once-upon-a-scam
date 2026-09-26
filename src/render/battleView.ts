@@ -1,6 +1,7 @@
 import { audio } from '../audio/engine';
 import { slotRange } from '../core/catalog';
 import { translate } from '../data/i18n';
+import { getUnit } from '../data/units';
 import type { BattleEvent, DeathStyle, PublicUnitView, Settings, TeamId } from '../core/types';
 import { MAX_TEAM } from '../core/types';
 import { renderBattleCard, renderCocoonBattleAbility, renderStickerRail, fitCardSlabs } from '../ui/cards';
@@ -50,6 +51,9 @@ interface Actor {
   laughLeft: number;
   /** Death plays forward, then the same clip runs backward. */
   rewindPhase: 'out' | 'back' | null;
+  /** Word shown when the death clip turns around. Rewind and Revive share the motion. */
+  rewindFloat: { text: string; kind: string } | null;
+  rewindHp: number;
 }
 
 interface AmbushFx {
@@ -278,6 +282,8 @@ export class BattleView {
       pendingFlip: false,
       laughLeft: 0,
       rewindPhase: null,
+      rewindFloat: null,
+      rewindHp: unit.maxHp,
     };
     this.actors.set(unit.uid, actor);
     if (!silent) audio.play('paper');
@@ -301,8 +307,9 @@ export class BattleView {
       if (a.clipT >= clipDuration('death')) {
         a.rewindPhase = 'back';
         a.clipT = clipDuration('death');
-        a.hp = a.maxHp;
-        this.float(a, translate(this.settings.locale, 'fx.rewind'), 'is-rewind');
+        a.hp = a.rewindHp;
+        a.dead = false;
+        if (a.rewindFloat) this.float(a, a.rewindFloat.text, a.rewindFloat.kind);
       }
       return;
     }
@@ -312,7 +319,7 @@ export class BattleView {
         a.rewindPhase = null;
         a.clip = 'idle';
         a.clipT = 0;
-        a.hp = a.maxHp;
+        a.hp = a.rewindHp;
         a.dead = false;
       }
       return;
@@ -329,6 +336,27 @@ export class BattleView {
   private finishDeath(a: Actor): void {
     a.gone = true;
     this.cardEl(a.uid)?.remove();
+  }
+
+  /** Death forward, then the same clip backward. The word is Revive or Rewind. */
+  private beginDeathRewind(tgt: Actor, hp: number, text: string, kind: string, silent: boolean): void {
+    tgt.gone = false;
+    tgt.rewindHp = hp;
+    tgt.rewindFloat = { text, kind };
+    if (silent) {
+      tgt.dead = false;
+      tgt.rewindPhase = null;
+      tgt.clip = 'idle';
+      tgt.clipT = 0;
+      tgt.hp = hp;
+      return;
+    }
+    tgt.dead = true;
+    tgt.hp = 0;
+    tgt.rewindPhase = 'out';
+    tgt.clip = 'death';
+    tgt.clipT = 0;
+    audio.play('death');
   }
 
   private syncCard(a: Actor): void {
@@ -706,34 +734,19 @@ export class BattleView {
       case 'Rewound': {
         const tgt = this.actors.get(ev.unitId);
         if (tgt) {
-          tgt.dead = false;
-          tgt.gone = false;
           tgt.death = ev.death;
-          tgt.hp = silent ? ev.hp : 0;
-          if (silent) {
-            tgt.rewindPhase = null;
-            tgt.clip = 'idle';
-            tgt.clipT = 0;
-          } else {
-            tgt.rewindPhase = 'out';
-            tgt.clip = 'death';
-            tgt.clipT = 0;
-            audio.play('death');
-          }
+          this.beginDeathRewind(tgt, ev.hp, translate(this.settings.locale, 'fx.rewind'), 'is-rewind', silent);
         }
         return silent ? 0 : clipDuration('death') * 2;
       }
       case 'Revived': {
         const tgt = this.actors.get(ev.unitId);
         if (tgt) {
-          tgt.dead = false;
-          tgt.hp = ev.hp;
-          tgt.clip = 'idle';
-          tgt.clipT = 0;
-          if (!silent) this.float(tgt, translate(this.settings.locale, 'fx.revive'), 'is-revive');
+          tgt.death = getUnit(tgt.defId).art.death;
+          this.beginDeathRewind(tgt, ev.hp, translate(this.settings.locale, 'fx.revive'), 'is-revive', silent);
         }
         this.pulse(ev.unitId);
-        return 0.22;
+        return silent ? 0 : clipDuration('death') * 2;
       }
       case 'GiftedStat': {
         const tgt = this.actors.get(ev.recipientId);
@@ -1186,7 +1199,7 @@ export class BattleView {
     const stacked = layer.querySelectorAll('.battle-float').length;
     el.style.left = `${at.cx + (stacked % 3) * 14 - 14}px`;
     // Banf sits on the card face; other floats rise from the top edge.
-    el.style.top = kind === 'is-rewind' ? `${at.cy}px` : `${at.top + 18 - stacked * 18}px`;
+    el.style.top = kind === 'is-rewind' || kind === 'is-revive' ? `${at.cy}px` : `${at.top + 18 - stacked * 18}px`;
     layer.appendChild(el);
     const life = 1.5;
     this.holdFx(life);

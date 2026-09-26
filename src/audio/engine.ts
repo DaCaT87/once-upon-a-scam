@@ -42,6 +42,16 @@ export class AudioEngine {
   private readonly musicEls = new Map<MusicCue, HTMLAudioElement>();
   private readonly sfxBuffers = new Map<SfxName, AudioBuffer>();
   private readonly sfxLoading = new Set<SfxName>();
+  private readonly sfxRaw = new Map<SfxName, Promise<ArrayBuffer>>();
+
+  constructor() {
+    for (const [name, src] of Object.entries(SFX_SRC) as [SfxName, string][]) {
+      this.sfxRaw.set(
+        name,
+        fetch(src).then((res) => res.arrayBuffer()),
+      );
+    }
+  }
 
   unlock(): void {
     if (!this.ctx) this.ctx = new AudioContext();
@@ -109,13 +119,12 @@ export class AudioEngine {
 
   private loadSfx(): void {
     if (!this.ctx) return;
-    for (const [name, src] of Object.entries(SFX_SRC) as [SfxName, string][]) {
+    const ctx = this.ctx;
+    for (const [name, pending] of this.sfxRaw) {
       if (this.sfxBuffers.has(name) || this.sfxLoading.has(name)) continue;
       this.sfxLoading.add(name);
-      const ctx = this.ctx;
-      void fetch(src)
-        .then((res) => res.arrayBuffer())
-        .then((raw) => ctx.decodeAudioData(raw))
+      void pending
+        .then((raw) => ctx.decodeAudioData(raw.slice(0)))
         .then((buf) => this.sfxBuffers.set(name, buf))
         .catch(() => {})
         .finally(() => this.sfxLoading.delete(name));

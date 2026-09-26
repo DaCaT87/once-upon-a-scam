@@ -3928,6 +3928,9 @@ html.is-codex #app {
 .battle-float.is-gift {
   color: #2a5f9e;
 }
+.battle-float.is-revive {
+  color: #c45a18;
+}
 .battle-card.is-silenced .ability,
 .battle-card.is-silenced .timing-type {
   display: none !important;
