@@ -527,8 +527,8 @@ export class AudioEngine {
   }
 
   /**
-   * Hunt closes on the next beat. The scrap closes on the next bar, so the cadence
-   * does not land in the middle of another chord.
+   * Hunt closes on the next beat with its cadence sting.
+   * The scrap melts out over a few bars so the last hit does not cut the tune short.
    */
   private finishBed(): number {
     if (!this.ctx || !this.bedCue || this.bedCue === 'menu' || !this.bedLive) return 0;
@@ -545,6 +545,30 @@ export class AudioEngine {
     const at = now + remain;
     this.bedLive = false;
     this.bedPhase = 'finale';
+
+    if (cue === 'fight') {
+      // Soft release: ride the bar, then fade the bed away. No sting.
+      const fadeSec = 3.4;
+      const gain = this.musicOut();
+      const level = Math.max(0.0001, gain.gain.value);
+      gain.gain.cancelScheduledValues(now);
+      gain.gain.setValueAtTime(level, now);
+      gain.gain.setValueAtTime(level, at);
+      gain.gain.exponentialRampToValueAtTime(0.0001, at + fadeSec);
+      window.setTimeout(() => {
+        if (gen !== this.bedGen || this.bedPhase !== 'finale') return;
+        this.dropNow(this.openSrc);
+        this.dropNow(this.loopSrc);
+        this.dropNow(this.finaleSrc);
+        this.openSrc = this.loopSrc = this.finaleSrc = null;
+        this.bedPhase = null;
+        this.bedCue = null;
+        this.snapBed(this.musicLevel());
+      }, Math.round((remain + fadeSec) * 1000) + 40);
+      // Let the end banner wait for the first soft beat of the fade.
+      return remain + 0.85;
+    }
+
     void pending.then(([, , finale]) => {
       if (gen !== this.bedGen || !this.ctx || this.bedPhase !== 'finale') return;
       this.haltAt(this.openSrc, at);
