@@ -626,7 +626,8 @@ function applyOp(state: SimState, source: Combatant, target: Combatant, op: Effe
     }
     case 'counterAttack':
       emit(state, { type: 'Log', message: `guardian:${source.uid}` });
-      strike(state, source, target);
+      // Pacifists do not start fights, but a guardian still hits back when struck.
+      strike(state, source, target, true);
       break;
     case 'extraAttack':
       if (op.noChain && state.drainingExtraAttacks) break;
@@ -1990,8 +1991,8 @@ function resolveAttack(state: SimState, u: Combatant, target: Combatant): void {
   strike(state, u, target);
 }
 
-function strike(state: SimState, u: Combatant, target: Combatant): void {
-  if (refusesToAttack(u) || u.dead || target.dead || u.atk <= 0) return;
+function strike(state: SimState, u: Combatant, target: Combatant, allowPacifist = false): void {
+  if ((!allowPacifist && refusesToAttack(u)) || u.dead || target.dead || u.atk <= 0) return;
   u.lastTargetId = target.uid;
   emit(state, { type: 'BeforeAttack', unitId: u.uid, targetId: target.uid });
   fireAbilities(state, 'beforeAttack', (c) => c.uid === u.uid, { attackTarget: target, attacker: u, isAttack: true });

@@ -3202,7 +3202,9 @@ assertShopCurve();
   ) {
     throw new Error('patchwork princess stats');
   }
-  if (getUnit('magic-mirror').targeting !== 'brawler') throw new Error('goose targeting');
+  if (getUnit('magic-mirror').targeting !== 'pacifist' || getUnit('magic-mirror').atk !== 2) {
+    throw new Error('goose targeting');
+  }
   if (getUnit('village-fool').targeting !== 'pacifist' || getUnit('village-fool').atk !== 0 || getUnit('village-fool').speed !== 0) {
     throw new Error('fool targeting');
   }
@@ -3273,7 +3275,9 @@ assertShopCurve();
   }
   for (const u of UNITS) {
     if (u.targeting !== 'pacifist') continue;
-    if (u.atk !== 0) throw new Error(`pacifist ${u.id} atk ${u.atk}`);
+    // Guard Goose keeps ATK for the counter hit; every other Pacifist stays at 0.
+    const wantAtk = u.id === 'magic-mirror' ? 2 : 0;
+    if (u.atk !== wantAtk) throw new Error(`pacifist ${u.id} atk ${u.atk}`);
     const wantSpeed =
       u.id === 'little-fairy' || u.id === 'time-master' || u.id === 'gingerbread-man' ? 9 : u.id === 'patchwork-princess' ? 3 : 0;
     if (u.speed !== wantSpeed) throw new Error(`pacifist ${u.id} spd ${u.speed}`);

@@ -267,7 +267,7 @@ export const UNITS: UnitDef[] = [
       effects: [{ op: 'counterAttack' }],
     },
     passives: { guardian: true },
-    targeting: 'brawler',
+    targeting: 'pacifist',
     art: { archetype: 'smoke', primary: '#8a8880', secondary: '#c8c4b8', tertiary: '#4a4840', glove: '#e8e4dc', size: 0.9, death: 'puff' },
     tags: ['buff'],
     recruitable: true,
