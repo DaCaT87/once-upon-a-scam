@@ -106,6 +106,8 @@ export function bindLandscapeHold(): void {
   window.addEventListener('pointerdown', (e) => {
     const target = e.target as HTMLElement | null;
     if (target?.closest('#fullscreen-btn, [data-act="fullscreen"]')) return;
+    // Fight starts its own fullscreen after the button tick; stealing this gesture delays the click.
+    if (target?.closest('[data-act="fight"], .btn-fight-art')) return;
     if (!wantsFullscreen() || isFullscreen()) return;
     if (isHandheld()) void holdLandscape();
     else void enterFullscreen();

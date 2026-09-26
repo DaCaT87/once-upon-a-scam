@@ -161,7 +161,7 @@ export class BattleView {
     this.host.closest('.screen-battle')?.classList.remove('is-preamble');
     document.documentElement.classList.remove('is-preamble');
     commitScene();
-    this.showField();
+    // Keep the scrap bed quiet while the round girl is still holding the board.
   }
 
   private endIntro(): void {

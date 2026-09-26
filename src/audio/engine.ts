@@ -105,8 +105,8 @@ export class AudioEngine {
   private readonly sfxLoading = new Set<SfxName>();
   private readonly sfxRaw = new Map<SfxName, Promise<ArrayBuffer>>();
   private sfxOut: GainNode | null = null;
-  /** Button ticks use HTML audio so they are not stuck behind a suspended WebAudio bus. */
-  private clickEl: HTMLAudioElement | null = null;
+  /** Preloaded HTML tick so Fight does not wait on the first network fetch. */
+  private clickWarm: HTMLAudioElement | null = null;
 
   constructor() {
     for (const [name, src] of Object.entries(SFX_SRC) as [SfxName, string][]) {
@@ -114,6 +114,16 @@ export class AudioEngine {
         name,
         fetch(src).then((res) => res.arrayBuffer()),
       );
+    }
+    const clickSrc = SFX_SRC.click;
+    if (clickSrc) {
+      this.clickWarm = new Audio(clickSrc);
+      this.clickWarm.preload = 'auto';
+      try {
+        this.clickWarm.load();
+      } catch {
+        /* ignore */
+      }
     }
   }
 
@@ -633,23 +643,11 @@ export class AudioEngine {
   private playHtmlClick(): void {
     const src = SFX_SRC.click;
     if (!src) return;
-    if (!this.clickEl) {
-      this.clickEl = new Audio(src);
-      this.clickEl.preload = 'auto';
-    }
-    const el = this.clickEl;
+    const el = this.clickWarm
+      ? (this.clickWarm.cloneNode(true) as HTMLAudioElement)
+      : new Audio(src);
     el.volume = Math.max(0, Math.min(1, this.ui));
-    try {
-      el.currentTime = 0;
-    } catch {
-      /* not ready yet */
-    }
-    void el.play().catch(() => {
-      // First tap on some phones: clone so a fresh element rides the gesture.
-      const one = new Audio(src);
-      one.volume = el.volume;
-      void one.play().catch(() => {});
-    });
+    void el.play().catch(() => {});
   }
 
   private playSample(name: SfxName, vol: number): boolean {
@@ -667,6 +665,9 @@ export class AudioEngine {
 
   play(name: SfxName, bus: 'sfx' | 'ui' = 'sfx'): void {
     if (name === 'click') {
+      // Prefer the already-decoded WebAudio buffer while the bus is live — it starts
+      // even if the main thread then blocks on Fight. HTML audio is the cold-start fallback.
+      if (this.ctx?.state === 'running' && this.playSample('click', this.ui)) return;
       this.playHtmlClick();
       return;
     }

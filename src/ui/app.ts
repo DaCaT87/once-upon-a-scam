@@ -1268,10 +1268,10 @@ export class GameApp {
               <div class="vs-banner-wrap is-pinup">
                 <div class="pinup-mover">
                   <div class="pinup-stage">
-                    <img class="pinup-cel" src="./art/ui/vs-pinup-1.png?v=pinup11" alt="" />
-                    <img class="pinup-cel" src="./art/ui/vs-pinup-2.png?v=pinup11" alt="" />
-                    <img class="pinup-cel" src="./art/ui/vs-pinup-3.png?v=pinup11" alt="" />
-                    <img class="pinup-cel" src="./art/ui/vs-pinup-4.png?v=pinup11" alt="" />
+                    <img class="pinup-cel" src="./art/ui/vs-pinup-1.png?v=pinup12" alt="" />
+                    <img class="pinup-cel" src="./art/ui/vs-pinup-2.png?v=pinup12" alt="" />
+                    <img class="pinup-cel" src="./art/ui/vs-pinup-3.png?v=pinup12" alt="" />
+                    <img class="pinup-cel" src="./art/ui/vs-pinup-4.png?v=pinup12" alt="" />
                   </div>
                   <div class="round-sign">
                     <span class="round-sign-head"><span class="round-sign-kicker">${this.L('round')}</span><span class="round-sign-num">${run.round}</span></span>
@@ -3347,8 +3347,8 @@ export class GameApp {
     }
     if (act === 'fight' && this.run) {
       if (this.isHuntLineup()) return this.launchHuntFight();
-      // Yield so the HTML tick can start before fullscreen / the scrap sim run.
-      await new Promise<void>((r) => setTimeout(r, 40));
+      // Click already fired on pointerdown. Yield so it can leave the speaker before we block.
+      await new Promise<void>((r) => setTimeout(r, 80));
       await this.maybeFullscreen();
       audio.unlock();
       await this.beginFight();
