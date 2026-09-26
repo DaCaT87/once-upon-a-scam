@@ -47,6 +47,59 @@ export function syncFullscreenChrome(enterLabel: string, exitLabel: string): voi
   }
 }
 
+/** A phone, not a desktop window. The short side of a handset stays under 700. */
+export function isHandheld(): boolean {
+  const coarse = window.matchMedia('(pointer: coarse)').matches;
+  const shortSide = Math.min(window.screen.width, window.screen.height);
+  return coarse && shortSide > 0 && shortSide < 700;
+}
+
+export function isPortrait(): boolean {
+  return window.matchMedia('(orientation: portrait)').matches;
+}
+
+export function syncLandscapeGate(): void {
+  document.documentElement.classList.toggle('needs-landscape', isHandheld() && isPortrait());
+}
+
+export function setLandscapeGateLabel(text: string): void {
+  const el = document.querySelector('.landscape-gate p');
+  if (el) el.textContent = text;
+}
+
+/** Full screen, then keep the phone sideways. Browsers only allow the lock after a tap. */
+export async function holdLandscape(): Promise<void> {
+  if (!isHandheld()) return;
+  await enterFullscreen();
+  try {
+    await screen.orientation?.lock?.('landscape');
+  } catch {
+    /* Safari refuses the lock. The portrait gate covers that case. */
+  }
+  syncLandscapeGate();
+}
+
+export function bindLandscapeHold(): void {
+  const apply = () => syncLandscapeGate();
+  apply();
+  window.addEventListener('resize', apply);
+  window.addEventListener('orientationchange', apply);
+  window.matchMedia('(orientation: portrait)').addEventListener('change', apply);
+  document.addEventListener('fullscreenchange', () => {
+    if (isFullscreen() && isHandheld()) {
+      void screen.orientation?.lock?.('landscape').catch(() => {});
+    }
+    apply();
+  });
+  document.addEventListener('webkitfullscreenchange', apply);
+  window.addEventListener('pointerdown', (e) => {
+    if (!isHandheld()) return;
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('#fullscreen-btn, [data-act="fullscreen"]')) return;
+    void holdLandscape();
+  });
+}
+
 export function bindFullscreenControls(labels: () => { enter: string; exit: string }): void {
   const apply = () => syncFullscreenChrome(labels().enter, labels().exit);
   document.getElementById('fullscreen-btn')?.addEventListener('click', () => {

@@ -55,7 +55,7 @@ import { createLocalServices } from '../services/local';
 import type { AlleyChoice, CodexState, EventId, Locale, RunState, Settings, UnitInstance } from '../core/types';
 import { ALLEY_PICK, DATA_VERSION, DRAFT_PICK, MAX_STICKERS, MAX_TEAM, RUN_ROUNDS, STICKER_PICK } from '../core/types';
 import { bindTargetingTips, fitCardSlabs, paintPortraits, rarityLabel, renderDossierOverlay, renderOfferCard, renderStickerCard, renderTeamLane, renderUnitCard, t } from './cards';
-import { bindFullscreenControls, enterFullscreen, exitFullscreen, syncFullscreenChrome, toggleFullscreen } from './fullscreen';
+import { bindFullscreenControls, enterFullscreen, exitFullscreen, setLandscapeGateLabel, syncFullscreenChrome, toggleFullscreen } from './fullscreen';
 
 type Screen =
   | 'menu'
@@ -417,6 +417,7 @@ export class GameApp {
     }
     this.mountDossier();
     syncFullscreenChrome(this.L('fullscreen'), this.L('fullscreenExit'));
+    setLandscapeGateLabel(this.L('turnPhone'));
     const stamps = document.querySelector('.corner-stamps');
     if (stamps instanceof HTMLElement) stamps.hidden = this.screen === 'codex';
     const menuStamp = document.getElementById('menu-stamp');

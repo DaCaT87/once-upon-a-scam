@@ -124,6 +124,31 @@ html.is-codex #stage-fill {
   background: linear-gradient(180deg, var(--cream), #d8c49a);
 }
 
+.landscape-gate {
+  display: none;
+}
+html.needs-landscape .landscape-gate {
+  display: grid;
+  place-items: center;
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  margin: 0;
+  padding: 32px;
+  background: #100c0a center top / cover no-repeat;
+  background-image: url('/art/ui/bg-home.jpg?v=home7');
+  color: var(--cream);
+  text-align: center;
+}
+.landscape-gate p {
+  margin: 0;
+  max-width: 16ch;
+  font-family: "Limelight", serif;
+  font-size: 42px;
+  line-height: 1.15;
+  text-shadow: 2px 3px 0 #1a1410;
+}
+
 .menu-stage {
   position: absolute;
   inset: 0;

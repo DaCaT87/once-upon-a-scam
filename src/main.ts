@@ -7,6 +7,7 @@ import { assertShopCurve } from './data/rarity';
 import { assertTargetingRules } from './sim/targeting';
 import { preloadArt } from './render/atlas';
 import { GameApp } from './ui/app';
+import { bindLandscapeHold } from './ui/fullscreen';
 import { bindViewportScale } from './ui/scale';
 
 function selfTest(): void {
@@ -34,6 +35,7 @@ function selfTest(): void {
 selfTest();
 
 bindViewportScale();
+bindLandscapeHold();
 
 const root = document.querySelector<HTMLElement>('#app');
 if (!root) throw new Error('#app missing');
