@@ -5,6 +5,7 @@ import type { BattleEvent, DeathStyle, PublicUnitView, Settings, TeamId } from '
 import { MAX_TEAM } from '../core/types';
 import { renderBattleCard, renderCocoonBattleAbility, renderStickerRail, fitCardSlabs } from '../ui/cards';
 import { cardMotion, clipDuration, type AnimClip } from './character';
+import { commitScene } from '../ui/sceneFade';
 
 const SLIDE_DUR = 0.38;
 const SIDE_FLIP_DUR = 0.34;
@@ -154,6 +155,8 @@ export class BattleView {
     this.curtain = 0;
     this.host.classList.remove('is-preamble');
     this.host.closest('.screen-battle')?.classList.remove('is-preamble');
+    document.documentElement.classList.remove('is-preamble');
+    commitScene();
   }
 
   private endIntro(): void {
@@ -161,6 +164,8 @@ export class BattleView {
     this.curtain = 0;
     this.host.classList.remove('is-intro', 'is-preamble');
     this.host.closest('.screen-battle')?.classList.remove('is-preamble');
+    document.documentElement.classList.remove('is-preamble');
+    commitScene();
     this.host.querySelector('.battle-intro')?.classList.add('is-gone');
   }
 

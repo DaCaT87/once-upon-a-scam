@@ -56,6 +56,7 @@ import type { AlleyChoice, CodexState, EventId, Locale, RunState, Settings, Unit
 import { ALLEY_PICK, DATA_VERSION, DRAFT_PICK, MAX_STICKERS, MAX_TEAM, RUN_ROUNDS, STICKER_PICK } from '../core/types';
 import { bindTargetingTips, fitCardSlabs, paintPortraits, rarityLabel, renderDossierOverlay, renderOfferCard, renderStickerCard, renderTeamLane, renderUnitCard, t } from './cards';
 import { bindFullscreenControls, enterFullscreen, exitFullscreen, setLandscapeGateLabel, syncFullscreenChrome, toggleFullscreen } from './fullscreen';
+import { commitScene } from './sceneFade';
 
 type Screen =
   | 'menu'
@@ -376,6 +377,7 @@ export class GameApp {
     document.documentElement.classList.toggle('is-hunt', hunt);
     document.documentElement.classList.toggle('is-square', this.screen === 'run' && !huntResult);
     document.documentElement.classList.toggle('is-codex', this.screen === 'codex');
+    document.documentElement.classList.toggle('is-preamble', this.screen === 'battle');
     switch (this.screen) {
       case 'menu':
         this.root.innerHTML = this.menuHtml();
@@ -418,6 +420,7 @@ export class GameApp {
     this.mountDossier();
     syncFullscreenChrome(this.L('fullscreen'), this.L('fullscreenExit'));
     setLandscapeGateLabel(this.L('turnPhone'));
+    commitScene();
     const stamps = document.querySelector('.corner-stamps');
     if (stamps instanceof HTMLElement) stamps.hidden = this.screen === 'codex';
     const menuStamp = document.getElementById('menu-stamp');
@@ -616,7 +619,7 @@ export class GameApp {
         </section>`;
     }
     if (run.phase === 'event') {
-      if (this.isHuntLineup() && run.team.length > 0) return this.teamLineupHtml();
+      if (this.isHuntLineup()) return this.teamLineupHtml();
       if (run.eventId === 'wishing-well') return this.wellHtml();
       if (run.eventId === 'witch-oven') return this.ovenHtml();
       if (run.eventId === 'cloning-chamber') return this.cloneHtml();

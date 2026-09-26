@@ -3752,6 +3752,31 @@ if (!assertDeterministic(a, b, 12345)) throw new Error('determinism failed');
   if (!spawned || spawned.type !== 'UnitSpawned' || !spawned.unit.stickers.includes('filth') || spawned.unit.atk !== 6) {
     throw new Error(`sewer lord should enter wearing filth atk=${spawned && spawned.type === 'UnitSpawned' ? spawned.unit.atk : 'none'}`);
   }
+  const emptyHunt = resolveHuntFight({
+    ...createRun('ai', 'tester', 'EmptyHunt', 0x73),
+    phase: 'event',
+    eventId: 'monster-hunt',
+    eventStep: 'hunt-lineup',
+    huntMonsterId: 'thousand-maws',
+    round: 1,
+    team: [],
+  });
+  if (emptyHunt.lastBattle?.winner !== 'enemy' || emptyHunt.team.length !== 0) {
+    throw new Error('an empty hunt should still start and lose');
+  }
+  const emptyScrap = resolveFight(
+    { ...createRun('ai', 'tester', 'EmptyScrap', 0x74), phase: 'formation', team: [] },
+    makeSnapshot({
+      playerId: 'rival',
+      playerName: 'Rival',
+      runId: 'r',
+      round: 1,
+      team: [instanceFromDef('paper-dove', 1, 'doveEmpty')],
+    }),
+  );
+  if (emptyScrap.phase !== 'result' || emptyScrap.lastBattle?.winner !== 'enemy') {
+    throw new Error('an empty scrap should still start');
+  }
 }
 {
   const poisonCard = renderStickerCard('en', 'poison', false);
