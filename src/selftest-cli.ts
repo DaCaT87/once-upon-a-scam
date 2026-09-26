@@ -3780,12 +3780,12 @@ if (!assertDeterministic(a, b, 12345)) throw new Error('determinism failed');
 }
 {
   const poisonCard = renderStickerCard('en', 'poison', false);
-  if (!poisonCard.includes('ON MY TURN') || !poisonCard.includes('timing-type') || !poisonCard.includes('Take 1 damage') || !poisonCard.includes('Exhaust') || poisonCard.includes('Up to 3')) {
+  if (!poisonCard.includes('Beginning of my turn') || !poisonCard.includes('timing-type') || !poisonCard.includes('Take 1 damage') || !poisonCard.includes('End of the scrap') || !poisonCard.includes('Exhaust') || poisonCard.includes('ON MY TURN') || poisonCard.includes('Up to 3')) {
     throw new Error('poison card');
   }
   if (!poisonCard.includes('rarity-gold')) throw new Error('poison should be gold');
   const poisonIt = renderStickerCard('it', 'poison', false);
-  if (!poisonIt.includes('IL MIO TURNO') || !poisonIt.includes('Subisci 1 danno') || !poisonIt.includes('Esaurisci')) {
+  if (!poisonIt.includes('Inizio del mio turno') || !poisonIt.includes('Subisci 1 danno') || !poisonIt.includes('Fine dello scontro') || !poisonIt.includes('Esaurisci') || poisonIt.includes('IL MIO TURNO')) {
     throw new Error('poison it');
   }
   const ticked = simulateBattle(

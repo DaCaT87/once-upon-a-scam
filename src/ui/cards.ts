@@ -601,6 +601,12 @@ export function renderOfferCard(
   });
 }
 
+function poisonRules(locale: Locale): string {
+  const line = (whenKey: string, effectKey: string) =>
+    `<p class="poison-rule"><span class="timing-type">${escapeHtml(t(locale, whenKey))}</span>: ${linkKeywords(locale, t(locale, effectKey))}</p>`;
+  return `${line('stk.poison.when', 'stk.poison.hit')}${line('stk.poison.then', 'stk.poison.out')}`;
+}
+
 function stickerSlots(locale: Locale, stickerIds: string[], opts?: { spent?: boolean }): string {
   const stickers = stickerIds.map((id) => getSticker(id));
   const allSpent = Boolean(opts?.spent);
@@ -615,12 +621,15 @@ function stickerSlots(locale: Locale, stickerIds: string[], opts?: { spent?: boo
       const grant = splitAt > 0 ? desc.slice(0, splitAt + 1) : '';
       const effect = splitAt > 0 ? desc.slice(splitAt + 2) : desc;
       const timing = splitAt > 0 ? resolveAbilityTiming(s) : null;
-      const timed = s.id === 'filth' || s.id === 'poison' || s.id === 'mythic-treasure' || s.id === 'cocoon' ? resolveAbilityTiming(s) : null;
-      const tip = grant
-        ? `${grant} ${t(locale, `timing.${timing}`)}. ${effect}`
-        : timed
-          ? `${t(locale, `timing.${timed}`)}. ${desc}`
-          : desc;
+      const poison = s.id === 'poison';
+      const timed = s.id === 'filth' || s.id === 'mythic-treasure' || s.id === 'cocoon' ? resolveAbilityTiming(s) : null;
+      const tip = poison
+        ? `${t(locale, 'stk.poison.when')}: ${t(locale, 'stk.poison.hit')} ${t(locale, 'stk.poison.then')}: ${t(locale, 'stk.poison.out')}`
+        : grant
+          ? `${grant} ${t(locale, `timing.${timing}`)}. ${effect}`
+          : timed
+            ? `${t(locale, `timing.${timed}`)}. ${desc}`
+            : desc;
       const spent = t(locale, 'stickerSpent');
       const img = hasStickerArt(s.id)
         ? `<img src="./art/stickers/${stickerArtFile(s.id)}.png?v=cast173" alt="${escapeHtml(name)}" draggable="false" />`
@@ -628,11 +637,13 @@ function stickerSlots(locale: Locale, stickerIds: string[], opts?: { spent?: boo
       const aria = allSpent
         ? `${escapeHtml(name)}. ${escapeHtml(rarityName)}. ${escapeHtml(tip)}. ${escapeHtml(spent)}`
         : `${escapeHtml(name)}. ${escapeHtml(rarityName)}. ${escapeHtml(tip)}`;
-      const effectHtml = grant
-        ? `<span class="tip-effect">${escapeHtml(grant)}</span>${timing ? renderTimingLabel(locale, timing) : ''}<span class="tip-effect">${linkKeywords(locale, effect)}</span>`
-        : timed
-          ? `${renderTimingLabel(locale, timed)}<span class="tip-effect">${linkKeywords(locale, desc)}</span>`
-          : `<span class="tip-effect">${escapeHtml(desc)}</span>`;
+      const effectHtml = poison
+        ? poisonRules(locale)
+        : grant
+          ? `<span class="tip-effect">${escapeHtml(grant)}</span>${timing ? renderTimingLabel(locale, timing) : ''}<span class="tip-effect">${linkKeywords(locale, effect)}</span>`
+          : timed
+            ? `${renderTimingLabel(locale, timed)}<span class="tip-effect">${linkKeywords(locale, desc)}</span>`
+            : `<span class="tip-effect">${escapeHtml(desc)}</span>`;
       return `<div class="sticker-slot filled rule-tip${allSpent ? ' is-spent' : ''}" data-sticker-slot="${i}" data-sticker="${s.id}" aria-expanded="false" aria-label="${aria}">
       ${img}
       <span class="targeting-tip tip-sticker" role="tooltip">
@@ -697,6 +708,16 @@ export function renderStickerCard(locale: Locale, id: string, picked: boolean, e
   const timing = resolveAbilityTiming(s);
   const title = timing ? renderTimingLabel(locale, timing) : '';
   const monster = s.frame === 'monster' ? ' monster' : '';
+  if (s.id === 'poison') {
+    return `
+    <article class="sticker-card rarity-${s.rarity} ${picked ? 'picked' : ''} ${extraClass}${monster}" data-sticker="${id}" data-rarity="${s.rarity}">
+      ${renderStickerRarity(locale, s.rarity)}
+      ${art}
+      <h4>${t(locale, s.nameKey)}</h4>
+      ${poisonRules(locale)}
+    </article>
+  `;
+  }
   const desc = t(locale, s.descKey);
   const splitAt = s.id === 'woodsmans-axe' ? desc.indexOf('. ') : -1;
   const grant = splitAt > 0 ? desc.slice(0, splitAt + 1) : '';
