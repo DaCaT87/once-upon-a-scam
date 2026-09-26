@@ -79,8 +79,12 @@ export const HUNT_MONSTERS: HuntMonster[] = [
 
 const HUNT_RARITY_BY_LEVEL: Rarity[] = ['bronze', 'silver', 'gold', 'platinum', 'diamond'];
 
+export function huntRarityForRound(round: number): Rarity {
+  return HUNT_RARITY_BY_LEVEL[huntLevelForRound(round) - 1] ?? 'bronze';
+}
+
 export function huntMonstersFor(round: number): HuntMonster[] {
-  const rarity = HUNT_RARITY_BY_LEVEL[huntLevelForRound(round) - 1] ?? 'bronze';
+  const rarity = huntRarityForRound(round);
   return HUNT_MONSTERS.filter((m) => m.rarity === rarity);
 }
 
@@ -107,8 +111,8 @@ export function huntPower(level: ShopLevel): { atk: number; hp: number; speed: n
 
 export function huntLevelForRound(round: number): ShopLevel {
   if (round >= 9) return 5;
-  if (round <= 2) return 1;
-  if (round <= 5) return 2;
-  if (round <= 7) return 3;
-  return 4;
+  if (round >= 8) return 4;
+  if (round >= 6) return 3;
+  if (round >= 4) return 2;
+  return 1;
 }

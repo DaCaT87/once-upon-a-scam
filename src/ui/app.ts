@@ -1,7 +1,7 @@
 import { audio, type MusicCue } from '../audio/engine';
 import { firstFreeSlot, getUnit, stickerArtFile } from '../core/catalog';
 import { EVENT_BY_ID, eventHidesRarity, huntStickerFor, lossRewardRarity } from '../data/events';
-import { rarityRank, shopMaxRarity } from '../data/rarity';
+import { rarityRank, shopMaxRarity, stickerMaxRarity } from '../data/rarity';
 import { grantableStickers, libraryHuntStickers } from '../data/stickers';
 import { UNITS } from '../data/units';
 import { discover, loadCodex, loadPlayer, loadSettings, saveCodex, savePlayer, saveSettings } from '../persist/settings';
@@ -15,6 +15,7 @@ import {
   settleStickerAssign,
   settleStickerShop,
   chooseAlley,
+  canMoveUnitSlot,
   claimHunt,
   compareRuns,
   confirmDraft,
@@ -38,6 +39,7 @@ import {
   playerSnapshot,
   replaceEventUnit,
   replaceRecruit,
+  seatGoldUnit,
   replaceBookUnit,
   resolveFight,
   resolveHuntFight,
@@ -77,6 +79,8 @@ export class GameApp {
   private screen: Screen = 'menu';
   private cuts: string[] = [];
   private battleView: BattleView | null = null;
+  /** Fight music starts when the board is visible, not during the round sign. */
+  private battleFieldUp = false;
   private raf = 0;
   private lastTs = 0;
   private dragSticker: string | null = null;
@@ -85,7 +89,7 @@ export class GameApp {
   private ghostGrabY = 36;
   private dragSlot: number | null = null;
   /** Offer waiting for which team card to fire when the line is full. */
-  private recruitReplace: { defId: string } | null = null;
+  private recruitReplace: { defId: string; gold?: boolean } | null = null;
   private bagPick: string | null = null;
   /** Card waiting for which of 3 stickers to peel when applying a new one. */
   private replacePick: { instanceId: string; from: 'assign' | 'bag' | 'shop' | 'book'; stickerId?: string } | null = null;
@@ -177,8 +181,8 @@ export class GameApp {
       if (btn?.classList.contains('book-page') && target.closest('.rule-tip')) return;
       if (btn) this.onAction(btn.dataset.act!, btn);
     });
-    this.root.addEventListener('mouseover', (e) => {
-      if ((e.target as HTMLElement).closest('.btn, .unit-card, .sticker-card')) audio.play('hover', 'ui');
+    this.root.addEventListener('dragstart', (e) => {
+      if ((e.target as HTMLElement).closest('.btn-fight-art')) e.preventDefault();
     });
     this.root.addEventListener('contextmenu', (e) => {
       const card = (e.target as HTMLElement).closest<HTMLElement>('.unit-card[data-def]');
@@ -360,6 +364,7 @@ export class GameApp {
 
   private go(screen: Screen): void {
     this.dossierDefId = null;
+    if (screen === 'battle') this.battleFieldUp = false;
     this.screen = screen;
     this.render();
   }
@@ -369,16 +374,27 @@ export class GameApp {
     this.stopMenu = null;
     if (this.screen !== 'battle') cancelAnimationFrame(this.raf);
     audio.setVolumes(this.settings.music, this.settings.sfx, this.settings.ui);
-    audio.setCue(this.musicCue());
     document.title = this.tryTitle() ?? (this.isWidowTry() || this.isWidowCardTry() ? 'Widow' : null) ?? (this.isHuntCardsTry() ? 'Hunt cards' : null) ?? (this.isWoodsmanTry() ? 'Woodsman' : null) ?? (this.isFilthTry() ? 'Filth' : null) ?? (this.isScrapTry() ? 'Scrap' : null) ?? (this.isMarketTry() ? 'Market' : null) ?? this.L('title');
-    const hunt = this.screen === 'battle' && this.isHuntBattle();
-    const huntResult = this.screen === 'run' && this.run?.eventId === 'monster-hunt' && this.run.eventStep === 'hunt-result';
+    if (this.run?.phase === 'recruit' && this.run.pendingGoldUnitId) {
+      this.recruitReplace = { defId: this.run.pendingGoldUnitId, gold: true };
+    }
+    const huntFight = this.screen === 'battle' && this.isHuntBattle();
+    const huntReward =
+      this.screen === 'run' &&
+      this.run?.eventId === 'monster-hunt' &&
+      (this.run.eventStep === 'hunt-result' || this.run.phase === 'stickerAssign');
     document.documentElement.classList.toggle('is-menu', this.screen === 'menu' || this.screen === 'mode' || this.screen === 'settings' || this.screen === 'leaderboard');
-    document.documentElement.classList.toggle('is-battle', (this.screen === 'battle' && !hunt) || huntResult);
-    document.documentElement.classList.toggle('is-hunt', hunt);
-    document.documentElement.classList.toggle('is-square', this.screen === 'run' && !huntResult);
+    document.documentElement.classList.toggle('is-battle', this.screen === 'battle' && !huntFight);
+    document.documentElement.classList.toggle('is-hunt', huntFight || huntReward);
+    document.documentElement.classList.toggle('is-square', this.screen === 'run' && !huntReward);
     document.documentElement.classList.toggle('is-codex', this.screen === 'codex');
     document.documentElement.classList.toggle('is-preamble', this.screen === 'battle');
+    const huntEvent = this.screen === 'run' && this.run?.eventId === 'monster-hunt';
+    const pinup = this.screen === 'battle' && !this.battleFieldUp;
+    if (pinup) {
+      /* The waltz is already fading. The fight piece starts when the field appears. */
+    } else if (huntEvent) audio.fadeOut();
+    else audio.setCue(this.musicCue());
     switch (this.screen) {
       case 'menu':
         this.root.innerHTML = this.menuHtml();
@@ -548,9 +564,12 @@ export class GameApp {
         const extra = opts?.extraClass ? ` ${opts.extraClass}` : '';
         const hunt = Boolean(opts?.extraClass?.includes('is-hunt-plate'));
         const hideRarity = Boolean(opts?.extraClass?.includes('is-event-plain'));
-        const mark = hunt && !hideRarity && !opts?.extraClass?.includes('printed-card')
-          ? `<img class="hunt-rarity" src="./art/ui/rarity-corner-${rar}.png?v=gem1" alt="" draggable="false" /><div class="rarity-mark"><img src="./art/ui/rarity-${rar}.png?v=metal" alt="" draggable="false" /></div>`
-          : '';
+        const shopGem = id === 'recruit' || id === 'sticker';
+        const mark = shopGem
+          ? `<img class="shop-gem" src="./art/ui/shop-gem-${rar}.png?v=gem2" alt="" draggable="false" />`
+          : hunt && !hideRarity && !opts?.extraClass?.includes('printed-card')
+            ? `<img class="hunt-rarity" src="./art/ui/rarity-corner-${rar}.png?v=gem1" alt="" draggable="false" /><div class="rarity-mark"><img src="./art/ui/rarity-${rar}.png?v=metal" alt="" draggable="false" /></div>`
+            : '';
         return `<button type="button" class="unit-card rarity-${rar} choice-plate is-${id}${extra}${used ? ' is-done' : ''}" data-act="alley-${id}" ${used ? 'disabled' : ''}>
           <div class="card-art">
             <img class="portrait-art scenic" src="${art}" alt="" draggable="false" />
@@ -611,6 +630,7 @@ export class GameApp {
             })}
             ${plate('sticker', './art/ui/plate-sticker.png?v=alley3', this.L('alleySticker'), this.L('alleyStickerD'), {
               extraClass: 'is-event-plain is-alley-full-plate',
+              rarity: stickerMaxRarity(run.round),
             })}
             ${eventPlateHtml}
           </div>
@@ -707,21 +727,23 @@ export class GameApp {
             <p class="hint sticker-shop-hint">${replacing ? hint : this.recruitCountHint(run.recruitPicks.length, limit)}</p>
             <span class="recruit-round">${this.recruitRoundHtml(run.round, victoryPointsOf(run))}</span>
           </div>
-          <div class="recruit-shop-offers grid5">${run.recruitOffers
+          <div class="recruit-shop-offers grid5">${this.recruitOfferIds(run)
             .map((id) => renderOfferCard(loc, id, this.recruitReplace?.defId === id, '', stats))
             .join('')}</div>
           <div class="recruit-shop-team grid5 team-table">${renderTeamLane(loc, run.team, {
             showEmpty: true,
             ...stats,
-            cardOpts: () => ({
-              extraClass: replacing ? 'is-replace-pick' : '',
+            cardOpts: (u) => ({
+              extraClass: replacing && !this.goldWouldReplaceHerald(u) ? 'is-replace-pick' : '',
             }),
           })}</div>
           <div class="row recruit-actions">
             ${
-              replacing
+              replacing && !this.recruitReplace?.gold
                 ? `<button class="btn ghost" data-act="cancel-replace-recruit">${this.L('cancel')}</button>`
-                : `<button class="${this.shopPassClass()}" data-act="skip-recruit">${this.L('skipRecruit')}</button>`
+                : replacing
+                  ? ''
+                  : `<button class="${this.shopPassClass()}" data-act="skip-recruit">${this.L('skipRecruit')}</button>`
             }
           </div>
         </section>`;
@@ -811,8 +833,8 @@ export class GameApp {
           }),
         })}</div>
         <div class="team-actions">
-          <button class="btn-fight-art" data-act="fight" aria-label="${this.L('fight')}">
-            <img src="./art/ui/btn-fight.png?v=fight-alpha1" alt="${this.L('fight')}" />
+          <button class="btn-fight-art" data-act="fight" draggable="false" aria-label="${this.L('fight')}">
+            <img src="./art/ui/btn-fight.png?v=fight-alpha1" alt="${this.L('fight')}" draggable="false" />
           </button>
         </div>
       </section>`;
@@ -1177,8 +1199,11 @@ export class GameApp {
   }
 
   private musicCue(): MusicCue {
-    if (this.screen === 'battle' && this.isHuntBattle()) return 'hunt';
-    if (this.screen === 'battle') return 'fight';
+    if (this.screen === 'battle' && this.battleFieldUp && this.isHuntBattle()) return 'hunt';
+    if (this.screen === 'battle' && this.battleFieldUp) return 'fight';
+    if (this.screen === 'run' && this.run?.phase === 'final') return 'final';
+    if (this.screen === 'menu' || this.screen === 'mode' || this.screen === 'settings' || this.screen === 'leaderboard' || this.screen === 'codex') return 'menu';
+    if (this.screen === 'run') return 'square';
     return 'menu';
   }
 
@@ -1567,7 +1592,6 @@ export class GameApp {
         e.preventDefault();
         this.replacePick = null;
         this.dragSticker = sid;
-        audio.play('peel', 'ui');
 
         const art = sticker.querySelector<HTMLElement>('.sticker-art');
         const peelFrom = art ?? sticker;
@@ -1620,7 +1644,7 @@ export class GameApp {
       this.replacePick = null;
       this.run = next;
       this.noteTeam();
-      audio.play('sticker', 'ui');
+      audio.play('peel', 'ui');
       this.applyFx = { instanceId, stickerId };
       void this.persist();
       this.renderPreservingScroll();
@@ -1638,7 +1662,7 @@ export class GameApp {
     this.replacePick = null;
     this.shopBusy = true;
     window.clearTimeout(this.shopHoldTimer);
-    audio.play('sticker', 'ui');
+    audio.play('peel', 'ui');
 
     const after = next.team.find((u) => u.instanceId === instanceId);
     const transformed = Boolean(beforeDef && after && beforeDef !== after.defId);
@@ -1805,7 +1829,17 @@ export class GameApp {
           this.moveGhost(ev);
           lineup.querySelectorAll('.unit-card').forEach((c) => c.classList.remove('drop-glow'));
           const over = slotUnder(ev);
-          if (over && lineup.contains(over) && over !== el) over.classList.add('drop-glow');
+          const to = over ? Number(over.dataset.slot) : 0;
+          if (
+            over &&
+            lineup.contains(over) &&
+            over !== el &&
+            this.run &&
+            this.dragSlot != null &&
+            canMoveUnitSlot(this.run.team, this.dragSlot, to)
+          ) {
+            over.classList.add('drop-glow');
+          }
         };
         const onUp = (ev: PointerEvent) => {
           this.unlistenDrag(onMove, onUp);
@@ -1815,7 +1849,7 @@ export class GameApp {
           lineup.querySelectorAll('.drop-glow').forEach((c) => c.classList.remove('drop-glow'));
           if (over && lineup.contains(over) && this.run && this.dragSlot != null) {
             const b = Number(over.dataset.slot);
-            if (b && b !== this.dragSlot) {
+            if (canMoveUnitSlot(this.run.team, this.dragSlot, b)) {
               this.run = swapSlots(this.run, this.dragSlot, b);
               audio.play('wood', 'ui');
               this.persistAndRender();
@@ -1851,7 +1885,7 @@ export class GameApp {
           if (next === this.run) return;
           this.replacePick = null;
           this.run = next;
-          audio.play('sticker', 'ui');
+          audio.play('peel', 'ui');
           this.holdBookClose();
         });
       });
@@ -1892,7 +1926,6 @@ export class GameApp {
           this.ghostGrabX = Math.min(Math.max(8, e.clientX - rect.left), Math.max(16, rect.width - 8));
           this.ghostGrabY = Math.min(Math.max(8, e.clientY - rect.top), Math.max(16, rect.height - 8));
           card.classList.add('is-peeled');
-          audio.play('peel', 'ui');
           this.ghost.className = 'ghost-sticker';
           const img = document.createElement('img');
           img.src = `./art/stickers/${stickerArtFile(sid)}.png?v=cast155`;
@@ -1970,7 +2003,7 @@ export class GameApp {
               return;
             }
             this.run = next;
-            audio.play('sticker', 'ui');
+            audio.play('peel', 'ui');
             this.holdBookClose();
           }
         };
@@ -2388,7 +2421,7 @@ export class GameApp {
     const loc = this.settings.locale;
     const count = run.phase === 'draft' ? run.draftPicks.length : run.recruitPicks.length;
     const limit = run.phase === 'draft' ? DRAFT_PICK : recruitPickLimit(run.recruitPicks, run.eventId, run.eventStep);
-    const offers = run.phase === 'draft' ? run.draftOffers : run.recruitOffers;
+    const offers = this.recruitOfferIds(run);
 
     const offersRoot = this.root.querySelector('.recruit-shop-offers');
     if (offersRoot) {
@@ -2413,16 +2446,18 @@ export class GameApp {
       teamRoot.innerHTML = renderTeamLane(loc, run.team, {
         showEmpty: true,
         ...this.runStatCtx(),
-        cardOpts: () => ({ extraClass: replacing ? 'is-replace-pick' : '' }),
+        cardOpts: (u) => ({ extraClass: replacing && !this.goldWouldReplaceHerald(u) ? 'is-replace-pick' : '' }),
       });
       requestAnimationFrame(() => fitCardSlabs(teamRoot));
     }
 
     const actions = this.root.querySelector('.recruit-actions');
     if (actions && (run.phase === 'recruit' || run.phase === 'draft')) {
-      actions.innerHTML = this.recruitReplace
-        ? `<button class="btn ghost" data-act="cancel-replace-recruit">${this.L('cancel')}</button>`
-        : `<button class="${this.shopPassClass()}" data-act="skip-recruit">${this.L('skipRecruit')}</button>`;
+      actions.innerHTML = this.recruitReplace?.gold
+        ? ''
+        : this.recruitReplace
+          ? `<button class="btn ghost" data-act="cancel-replace-recruit">${this.L('cancel')}</button>`
+          : `<button class="${this.shopPassClass()}" data-act="skip-recruit">${this.L('skipRecruit')}</button>`;
     }
 
     const screen = this.root.querySelector('.screen-recruit');
@@ -2438,9 +2473,12 @@ export class GameApp {
         if (!this.run || !this.recruitReplace) return;
         const slot = Number(el.dataset.slot);
         if (!slot) return;
+        const host = this.run.team.find((u) => u.slot === slot);
+        if (host && this.goldWouldReplaceHerald(host)) return;
         const defId = this.recruitReplace.defId;
+        const gold = this.recruitReplace.gold;
         this.recruitReplace = null;
-        this.run = replaceRecruit(this.run, defId, slot);
+        this.run = gold ? seatGoldUnit(this.run, slot) : replaceRecruit(this.run, defId, slot);
         audio.play('paper', 'ui');
         this.afterRecruitChange();
       });
@@ -2561,11 +2599,24 @@ export class GameApp {
     this.render();
   }
 
+  private goldWouldReplaceHerald(unit: { defId: string }): boolean {
+    return Boolean(this.recruitReplace?.gold && getUnit(unit.defId).passives?.grantGoldUnitOnRecruit);
+  }
+
   private afterRecruitChange(): void {
     this.noteTeam();
     void this.persist();
+    if (this.run?.pendingGoldUnitId) this.recruitReplace = { defId: this.run.pendingGoldUnitId, gold: true };
     this.patchRecruitShopDom();
     this.scheduleShopClose();
+  }
+
+  private recruitOfferIds(run: RunState): string[] {
+    if (run.phase === 'draft') return run.draftOffers;
+    const ids = run.recruitOffers.slice();
+    const gold = run.pendingGoldUnitId;
+    if (gold && !ids.includes(gold)) ids.push(gold);
+    return ids;
   }
 
   private takeRecruitOffer(defId: string): void {
@@ -2738,7 +2789,7 @@ export class GameApp {
     const order = ['thousand-maws', 'purple-widows', 'sewer-lord', 'mad-woodsman', 'greed-fang'];
     const stored = sessionStorage.getItem('oua.scrap-boss');
     const boss = order.includes(stored ?? '') ? stored! : 'thousand-maws';
-    const round = boss === 'purple-widows' ? 3 : boss === 'sewer-lord' ? 6 : boss === 'mad-woodsman' ? 8 : boss === 'greed-fang' ? 9 : 1;
+    const round = boss === 'purple-widows' ? 4 : boss === 'sewer-lord' ? 6 : boss === 'mad-woodsman' ? 8 : boss === 'greed-fang' ? 9 : 1;
     return resolveHuntFight({
       ...this.ovenLoopRun(),
       runId: 'run-scrap-test',
@@ -3079,28 +3130,10 @@ export class GameApp {
     this.render();
   }
 
-  private marketSfx(act: string): 'click' | 'shopRecruit' | 'shopSticker' | 'hunt' | 'well' | 'oven' | 'clone' | 'book' | 'paper' {
-    if (act === 'alley-recruit') return 'shopRecruit';
-    if (act === 'alley-sticker') return 'shopSticker';
-    if (act !== 'alley-event') return 'click';
-    switch (this.run?.eventId) {
-      case 'monster-hunt':
-        return 'hunt';
-      case 'wishing-well':
-        return 'well';
-      case 'witch-oven':
-        return 'oven';
-      case 'cloning-chamber':
-        return 'clone';
-      case 'book-of-lost-tales':
-        return 'book';
-      default:
-        return 'paper';
-    }
-  }
-
   private async onAction(act: string, el: HTMLElement): Promise<void> {
-    audio.play(this.marketSfx(act), 'ui');
+    if (act !== 'alley-recruit' && act !== 'alley-sticker' && act !== 'alley-event') {
+      audio.play('click', 'ui');
+    }
     if (act === 'preview-clip') {
       const clip = el.dataset.clip;
       const img = this.root.querySelector<HTMLImageElement>('#card-sample .portrait-art');
@@ -3276,12 +3309,14 @@ export class GameApp {
       return;
     }
     if (act === 'cancel-replace-recruit') {
+      if (this.recruitReplace?.gold) return;
       this.recruitReplace = null;
       if (this.run?.phase === 'recruit' || this.run?.phase === 'draft') this.patchRecruitShopDom();
       else this.render();
       return;
     }
     if (act === 'skip-recruit' && this.run) {
+      if (this.run.pendingGoldUnitId) return;
       this.clearShopHold();
       this.shopBusy = false;
       if (this.run.phase === 'draft') {
@@ -3367,6 +3402,7 @@ export class GameApp {
     this.run = resolveHuntFight(this.run);
     await this.persist();
     this.go('battle');
+    audio.leaveSquare('hunt');
     await this.maybeFullscreen();
   }
 
@@ -3400,6 +3436,7 @@ export class GameApp {
     if (!validateSnapshot(snap).length) await this.services.snapshots.save(snap);
     await this.persist();
     this.go('battle');
+    audio.leaveSquare('fight');
   }
 
   private esc(text: string): string {
@@ -3449,7 +3486,19 @@ export class GameApp {
     const field = this.root.querySelector<HTMLElement>('#battlefield');
     const battle = run?.lastBattle;
     if (!run || !field || !battle || field.querySelector('.battle-end')) return;
-    audio.setCue('menu');
+    const waitMs = Math.round(audio.beginEnding() * 1000);
+    window.setTimeout(() => {
+      if (this.screen !== 'battle' || this.run?.phase !== 'result') return;
+      const live = this.root.querySelector<HTMLElement>('#battlefield');
+      const still = this.run?.lastBattle;
+      if (!live || !still || live.querySelector('.battle-end')) return;
+      this.revealBattleEnd(live, still);
+    }, waitMs);
+  }
+
+  private revealBattleEnd(field: HTMLElement, battle: NonNullable<NonNullable<typeof this.run>['lastBattle']>): void {
+    const run = this.run;
+    if (!run) return;
     field.classList.add('is-ended');
     const winner = battle.winner;
     const gained = winner === 'player' ? 3 : winner === 'draw' ? 1 : 0;
@@ -3516,18 +3565,22 @@ export class GameApp {
     this.battleView = view;
     view.setSpeed(this.settings.battleSpeed);
     view.load(this.run.lastBattle.events);
-    audio.play('trumpet');
+    view.onField = () => {
+      this.battleFieldUp = true;
+      audio.setCue(this.musicCue());
+    };
     view.onDone = () => {
       const winner = this.run?.lastBattle?.winner;
       if (winner) view.beginVictory(winner);
       if (this.run?.phase !== 'result') {
-        audio.play(winner === 'player' ? 'win' : 'lose');
+        if (!this.isScrapTry()) audio.beginEnding();
         window.setTimeout(() => {
           if (this.isScrapTry()) {
             const order = ['thousand-maws', 'purple-widows', 'sewer-lord', 'mad-woodsman', 'greed-fang'];
             const cur = sessionStorage.getItem('oua.scrap-boss') ?? 'thousand-maws';
             const next = order[(order.indexOf(cur) + 1) % order.length] ?? 'thousand-maws';
             sessionStorage.setItem('oua.scrap-boss', next);
+            this.battleFieldUp = false;
             this.run = this.scrapTryRun();
             this.screen = 'battle';
             this.render();
@@ -3544,7 +3597,6 @@ export class GameApp {
         }, 700);
         return;
       }
-      audio.play(winner === 'player' ? 'win' : 'lose');
       this.playBattleEnd();
     };
     cancelAnimationFrame(this.raf);

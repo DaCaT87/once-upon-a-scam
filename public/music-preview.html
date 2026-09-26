@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Battle music preview</title>
+  <style>
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #1a120e; color: #f3efe4; font-family: Georgia, serif; }
+    main { text-align: center; width: min(640px, 92vw); }
+    h1 { font-size: 40px; margin: 0 0 8px; }
+    p { font-size: 20px; margin: 0 0 22px; opacity: 0.8; }
+    .row { margin: 10px 0 18px; }
+    button { font-size: 22px; padding: 16px 22px; margin: 8px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Battle music</h1>
+    <p id="note">La piazza è un valzer. Lo scrap è un'altra musica, più dura. La caccia resta la sua. La fine dello scrap entra sul battere, ed è corta.</p>
+    <div class="row">
+      <button type="button" id="play-square">Square</button>
+      <button type="button" id="play-scrap">Start scrap</button>
+      <button type="button" id="play-hunt">Start hunt</button>
+    </div>
+    <button type="button" id="end">End</button>
+  </main>
+  <script>
+    const note = document.getElementById('note');
+    const bust = Date.now();
+    const ctx = new AudioContext();
+    const cache = {};
+    let openSrc = null;
+    let loopSrc = null;
+    let finaleSrc = null;
+    let introEndsAt = 0;
+    let loopStartsAt = 0;
+    let startedAt = 0;
+    let current = null;
+
+    const cues = {
+      square: { files: ['./audio/menu-open.wav', './audio/menu-loop.wav'], introShare: 2 / 10, bpm: 120 },
+      scrap: { files: ['./audio/scrap-open.wav', './audio/scrap-loop.wav', './audio/scrap-finale.wav'], introShare: 2 / 10, bpm: 160 },
+      hunt: { files: ['./audio/hunt-open.wav', './audio/hunt-loop.wav', './audio/hunt-finale.wav'], introShare: 2 / 6, bpm: 108 },
+    };
+
+    async function load(name) {
+      const res = await fetch(name + '?v=' + bust);
+      if (!res.ok) throw new Error(name);
+      return ctx.decodeAudioData(await res.arrayBuffer());
+    }
+
+    async function buffers(id) {
+      if (!cache[id]) cache[id] = await Promise.all(cues[id].files.map(load));
+      return cache[id];
+    }
+
+    function drop(src) {
+      if (!src) return;
+      try { src.stop(); } catch { /* already stopped */ }
+      try { src.disconnect(); } catch { /* already gone */ }
+    }
+
+    function stopAll() {
+      drop(openSrc);
+      drop(loopSrc);
+      drop(finaleSrc);
+      openSrc = loopSrc = finaleSrc = null;
+    }
+
+    function startBuffer(buffer, when, loop) {
+      const src = ctx.createBufferSource();
+      src.buffer = buffer;
+      src.loop = loop;
+      src.connect(ctx.destination);
+      src.start(when);
+      return src;
+    }
+
+    async function play(id) {
+      stopAll();
+      current = id;
+      if (ctx.state === 'suspended') await ctx.resume();
+      const [open, loop] = await buffers(id);
+      const t0 = ctx.currentTime + 0.05;
+      startedAt = t0;
+      note.textContent = id === 'hunt' ? 'Hunt opening' : id === 'square' ? 'Square waltz' : 'Scrap opening';
+      openSrc = startBuffer(open, t0, false);
+      introEndsAt = t0 + open.duration * cues[id].introShare;
+      loopStartsAt = t0 + open.duration;
+      loopSrc = startBuffer(loop, loopStartsAt, true);
+      openSrc.onended = () => {
+        if (openSrc) note.textContent = id === 'hunt'
+          ? 'Hunt motif looping. End when you want.'
+          : id === 'square'
+            ? 'Square waltz looping.'
+            : 'Motif looping. End the scrap when you want.';
+      };
+    }
+
+    document.getElementById('play-square').addEventListener('click', () => { void play('square'); });
+    document.getElementById('play-scrap').addEventListener('click', () => { void play('scrap'); });
+    document.getElementById('play-hunt').addEventListener('click', () => { void play('hunt'); });
+
+    document.getElementById('end').addEventListener('click', async () => {
+      if (!current || current === 'square') {
+        stopAll();
+        note.textContent = 'Square stopped.';
+        return;
+      }
+      if (ctx.state === 'suspended') await ctx.resume();
+      const id = current;
+      const [, loop, finale] = await buffers(id);
+      const now = ctx.currentTime;
+      const beat = 60 / cues[id].bpm;
+      let at = now + 0.05;
+      if (id === 'scrap' && startedAt) {
+        const bar = beat * 4;
+        const into = Math.max(0, now - startedAt) % bar;
+        at = into < 0.03 ? now + 0.02 : now + (bar - into);
+      } else if (loopSrc && now < introEndsAt) at = introEndsAt;
+      else if (loopSrc && now < loopStartsAt) at = loopStartsAt;
+      else if (loopSrc) {
+        const into = (now - loopStartsAt) % loop.duration;
+        at = now + (loop.duration - into);
+      }
+      if (openSrc) {
+        const src = openSrc;
+        openSrc = null;
+        try { src.stop(at); } catch { /* already stopped */ }
+      }
+      if (loopSrc) {
+        const src = loopSrc;
+        loopSrc = null;
+        try { src.stop(at); } catch { /* already stopped */ }
+      }
+      drop(finaleSrc);
+      note.textContent = 'Finale';
+      finaleSrc = startBuffer(finale, at, false);
+      finaleSrc.onended = () => {
+        if (finaleSrc) note.textContent = id === 'hunt' ? 'Hunt over.' : 'Scrap over.';
+      };
+    });
+  </script>
+</body>
+</html>

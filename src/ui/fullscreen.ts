@@ -79,6 +79,17 @@ export async function holdLandscape(): Promise<void> {
   syncLandscapeGate();
 }
 
+function wantsFullscreen(): boolean {
+  try {
+    const raw = localStorage.getItem('oua.settings.v1');
+    if (!raw) return true;
+    const saved = JSON.parse(raw) as { preferFullscreen?: boolean };
+    return saved.preferFullscreen !== false;
+  } catch {
+    return true;
+  }
+}
+
 export function bindLandscapeHold(): void {
   const apply = () => syncLandscapeGate();
   apply();
@@ -93,10 +104,11 @@ export function bindLandscapeHold(): void {
   });
   document.addEventListener('webkitfullscreenchange', apply);
   window.addEventListener('pointerdown', (e) => {
-    if (!isHandheld()) return;
     const target = e.target as HTMLElement | null;
     if (target?.closest('#fullscreen-btn, [data-act="fullscreen"]')) return;
-    void holdLandscape();
+    if (!wantsFullscreen() || isFullscreen()) return;
+    if (isHandheld()) void holdLandscape();
+    else void enterFullscreen();
   });
 }
 

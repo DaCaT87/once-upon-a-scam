@@ -404,6 +404,7 @@ export type BattleEvent =
   | { type: 'ExhaustedSticker'; unitId: string; stickerId: string }
   | { type: 'TrashedStickers'; unitId: string; removed: string[]; stickers: string[] }
   | { type: 'PoisonApplied'; unitId: string; added: boolean; removed: string | null; stickers: string[] }
+  | { type: 'PoisonFaded'; unitId: string; stickers: string[] }
   | { type: 'StickerSpent'; unitId: string; stickerId: string; stickerSlot?: number }
   | { type: 'ExhaustedUnit'; unitId: string; recipientId?: string | null; atk: number; hp: number }
   | { type: 'GiftedStat'; unitId: string; recipientId: string; stat: 'atk' | 'hp' | 'speed'; amount: number }
@@ -493,6 +494,10 @@ export interface RunState {
   eventOffers: string[];
   eventPicks: string[];
   huntMonsterId: string | null;
+  /** Hunt rarities already offered this run. Each rarity appears once. */
+  huntRaritiesSeen?: Rarity[];
+  /** Gold figure owed by Royal Herald when the line had no free slot. */
+  pendingGoldUnitId?: string | null;
   recruitRarityBump: boolean;
   alleyPicks: AlleyChoice[];
   alleyQueue: AlleyChoice[];

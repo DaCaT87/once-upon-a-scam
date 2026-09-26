@@ -1,6 +1,6 @@
 import { computedStats, getSticker, getUnit, hasCardFace, hasStickerArt, hasUnitArt, isScenicArt, nextFormOf, prevFormOf, resolveAbilityTiming, resolveTargeting, stickerArtFile, teamLaneOrder, unitArtFolder, usesPrintedCardFace, type StatContext } from '../core/catalog';
 import { translate } from '../data/i18n';
-import type { AbilityTiming, Locale, PublicUnitView, TargetingType, TeamId, UnitInstance } from '../core/types';
+import type { AbilityTiming, Locale, PublicUnitView, StickerDef, TargetingType, TeamId, UnitInstance } from '../core/types';
 
 export function t(locale: Locale, key: string): string {
   return translate(locale, key);
@@ -118,6 +118,7 @@ function linkKeywords(locale: Locale, text: string): string {
     ['keywordRevenge', 'keywordRevengeD'],
     ['keywordRevive', 'keywordReviveD'],
     ['keywordProvoke', 'keywordProvokeD'],
+    ['keywordSpawn', 'keywordSpawnD'],
     ['keywordSneak', 'keywordSneakD'],
     ['keywordHitman', 'keywordHitmanD'],
     ['keywordDoubleAttack', 'keywordDoubleAttackD'],
@@ -456,7 +457,7 @@ function portraitHtml(locale: Locale, defId: string, opts?: { clip?: string; loc
   const file = clip === 'idle' && hasCardFace(defId) ? 'card' : clip;
   const locked = opts?.locked ? ' data-locked="true"' : '';
   const scenic = isScenicArt(defId) ? ' scenic' : '';
-  const src = `./art/units/${folder}/${file}.png?v=cast176`;
+  const src = `./art/units/${folder}/${file}.png?v=cast180`;
   return `<img class="portrait-art${scenic}" data-unit="${folder}"${locked} src="${src}" alt="${t(locale, getUnit(defId).nameKey)}" draggable="false" />`;
 }
 
@@ -475,7 +476,7 @@ export function renderDossierOverlay(locale: Locale, defId: string): string {
     ? `<button type="button" class="btn ghost" data-act="next-dossier" data-def="${escapeHtml(nextId)}">${escapeHtml(t(locale, 'next'))}</button>`
     : '';
   const art = hasUnitArt(defId)
-    ? `<img class="dossier-portrait" data-unit="${folder}" src="./art/units/${folder}/idle.png?v=cast176" alt="${escapeHtml(name)}" draggable="false" />`
+    ? `<img class="dossier-portrait" data-unit="${folder}" src="./art/units/${folder}/idle.png?v=cast180" alt="${escapeHtml(name)}" draggable="false" />`
     : `<div class="dossier-art-empty" aria-hidden="true"></div>`;
   return `
     <div class="dossier-overlay" role="presentation">
@@ -607,6 +608,34 @@ function poisonRules(locale: Locale): string {
   return `${line('stk.poison.when', 'stk.poison.hit')}${line('stk.poison.then', 'stk.poison.out')}`;
 }
 
+/** Same rules the sticker card prints, so a glued sticker's hover matches its own card. */
+function stickerRulesHtml(locale: Locale, s: StickerDef): string {
+  if (s.id === 'poison') return poisonRules(locale);
+  const desc = t(locale, s.descKey);
+  const splitAt = s.id === 'woodsmans-axe' ? desc.indexOf('. ') : -1;
+  const grant = splitAt > 0 ? desc.slice(0, splitAt + 1) : '';
+  const effect = splitAt > 0 ? desc.slice(splitAt + 2) : desc;
+  const timing = resolveAbilityTiming(s);
+  const timingHtml = timing ? renderTimingLabel(locale, timing) : '';
+  if (grant) return `<p>${escapeHtml(grant)}</p>${timingHtml}<p>${linkKeywords(locale, effect)}</p>`;
+  return `${timingHtml}<p>${linkKeywords(locale, effect)}</p>`;
+}
+
+function stickerRulesPlain(locale: Locale, s: StickerDef): string {
+  if (s.id === 'poison') {
+    return `${t(locale, 'stk.poison.when')}: ${t(locale, 'stk.poison.hit')} ${t(locale, 'stk.poison.then')}: ${t(locale, 'stk.poison.out')}`;
+  }
+  const desc = t(locale, s.descKey);
+  const splitAt = s.id === 'woodsmans-axe' ? desc.indexOf('. ') : -1;
+  const grant = splitAt > 0 ? desc.slice(0, splitAt + 1) : '';
+  const effect = splitAt > 0 ? desc.slice(splitAt + 2) : desc;
+  const timing = resolveAbilityTiming(s);
+  const when = timing ? t(locale, `timing.${timing}`) : '';
+  if (grant) return `${grant} ${when}. ${effect}`.trim();
+  if (when) return `${when}. ${desc}`;
+  return desc;
+}
+
 function stickerSlots(locale: Locale, stickerIds: string[], opts?: { spent?: boolean }): string {
   const stickers = stickerIds.map((id) => getSticker(id));
   const allSpent = Boolean(opts?.spent);
@@ -616,20 +645,7 @@ function stickerSlots(locale: Locale, stickerIds: string[], opts?: { spent?: boo
       if (!s) return `<div class="sticker-slot" data-sticker-slot="${i}" aria-hidden="true"></div>`;
       const name = t(locale, s.nameKey);
       const rarityName = rarityLabel(locale, s.rarity);
-      const desc = t(locale, s.descKey);
-      const splitAt = s.id === 'woodsmans-axe' ? desc.indexOf('. ') : -1;
-      const grant = splitAt > 0 ? desc.slice(0, splitAt + 1) : '';
-      const effect = splitAt > 0 ? desc.slice(splitAt + 2) : desc;
-      const timing = splitAt > 0 ? resolveAbilityTiming(s) : null;
-      const poison = s.id === 'poison';
-      const timed = s.id === 'filth' || s.id === 'mythic-treasure' || s.id === 'cocoon' ? resolveAbilityTiming(s) : null;
-      const tip = poison
-        ? `${t(locale, 'stk.poison.when')}: ${t(locale, 'stk.poison.hit')} ${t(locale, 'stk.poison.then')}: ${t(locale, 'stk.poison.out')}`
-        : grant
-          ? `${grant} ${t(locale, `timing.${timing}`)}. ${effect}`
-          : timed
-            ? `${t(locale, `timing.${timed}`)}. ${desc}`
-            : desc;
+      const tip = stickerRulesPlain(locale, s);
       const spent = t(locale, 'stickerSpent');
       const img = hasStickerArt(s.id)
         ? `<img src="./art/stickers/${stickerArtFile(s.id)}.png?v=cast173" alt="${escapeHtml(name)}" draggable="false" />`
@@ -637,13 +653,7 @@ function stickerSlots(locale: Locale, stickerIds: string[], opts?: { spent?: boo
       const aria = allSpent
         ? `${escapeHtml(name)}. ${escapeHtml(rarityName)}. ${escapeHtml(tip)}. ${escapeHtml(spent)}`
         : `${escapeHtml(name)}. ${escapeHtml(rarityName)}. ${escapeHtml(tip)}`;
-      const effectHtml = poison
-        ? poisonRules(locale)
-        : grant
-          ? `<span class="tip-effect">${escapeHtml(grant)}</span>${timing ? renderTimingLabel(locale, timing) : ''}<span class="tip-effect">${linkKeywords(locale, effect)}</span>`
-          : timed
-            ? `${renderTimingLabel(locale, timed)}<span class="tip-effect">${linkKeywords(locale, desc)}</span>`
-            : `<span class="tip-effect">${escapeHtml(desc)}</span>`;
+      const effectHtml = `<span class="tip-effect">${stickerRulesHtml(locale, s)}</span>`;
       return `<div class="sticker-slot filled rule-tip${allSpent ? ' is-spent' : ''}" data-sticker-slot="${i}" data-sticker="${s.id}" aria-expanded="false" aria-label="${aria}">
       ${img}
       <span class="targeting-tip tip-sticker" role="tooltip">
@@ -705,31 +715,13 @@ export function renderStickerCard(locale: Locale, id: string, picked: boolean, e
   const art = hasStickerArt(id)
     ? `<img class="sticker-art" src="./art/stickers/${stickerArtFile(id)}.png?v=cast173" alt="${t(locale, s.nameKey)}" draggable="false" />`
     : '<div class="sticker-art is-empty" aria-hidden="true"></div>';
-  const timing = resolveAbilityTiming(s);
-  const title = timing ? renderTimingLabel(locale, timing) : '';
   const monster = s.frame === 'monster' ? ' monster' : '';
-  if (s.id === 'poison') {
-    return `
-    <article class="sticker-card rarity-${s.rarity} ${picked ? 'picked' : ''} ${extraClass}${monster}" data-sticker="${id}" data-rarity="${s.rarity}">
-      ${renderStickerRarity(locale, s.rarity)}
-      ${art}
-      <h4>${t(locale, s.nameKey)}</h4>
-      ${poisonRules(locale)}
-    </article>
-  `;
-  }
-  const desc = t(locale, s.descKey);
-  const splitAt = s.id === 'woodsmans-axe' ? desc.indexOf('. ') : -1;
-  const grant = splitAt > 0 ? desc.slice(0, splitAt + 1) : '';
-  const effect = splitAt > 0 ? desc.slice(splitAt + 2) : desc;
   return `
     <article class="sticker-card rarity-${s.rarity} ${picked ? 'picked' : ''} ${extraClass}${monster}" data-sticker="${id}" data-rarity="${s.rarity}">
       ${renderStickerRarity(locale, s.rarity)}
       ${art}
       <h4>${t(locale, s.nameKey)}</h4>
-      ${grant ? `<p>${escapeHtml(grant)}</p>` : ''}
-      ${title}
-      <p>${linkKeywords(locale, effect)}</p>
+      ${stickerRulesHtml(locale, s)}
     </article>
   `;
 }

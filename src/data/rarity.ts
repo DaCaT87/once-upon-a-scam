@@ -56,6 +56,10 @@ export function shopMaxRarity(round: number): Rarity {
   return maxInMix(recruitRarityMix(round));
 }
 
+export function stickerMaxRarity(round: number): Rarity {
+  return maxInMix(stickerRarityMix(round));
+}
+
 export function mixToWeights(mix: readonly Rarity[]): RarityWeights {
   const w: RarityWeights = { bronze: 0, silver: 0, gold: 0, platinum: 0, diamond: 0 };
   for (const r of mix) w[r] += 1;
@@ -124,6 +128,13 @@ export function assertShopCurve(): void {
   if (shopLevelForRound(7) !== 4 || shopLevelForRound(9) !== 4) throw new Error('shop-l4');
   if (shopMaxRarity(1) !== 'bronze' || shopMaxRarity(2) !== 'silver' || shopMaxRarity(5) !== 'gold' || shopMaxRarity(7) !== 'platinum') {
     throw new Error('shop-max');
+  }
+  if (
+    stickerMaxRarity(1) !== 'bronze' || stickerMaxRarity(2) !== 'bronze' ||
+    stickerMaxRarity(3) !== 'silver' || stickerMaxRarity(5) !== 'gold' ||
+    stickerMaxRarity(7) !== 'gold' || stickerMaxRarity(8) !== 'platinum'
+  ) {
+    throw new Error('sticker-max');
   }
   const units = countMix(RECRUIT_MIX, [1, 2, 3, 4, 5, 6, 7, 8, 9]);
   units.bronze += DRAFT_UNIT_MIX.length;

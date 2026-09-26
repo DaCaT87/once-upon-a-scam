@@ -175,7 +175,7 @@ export function preloadArt(): Promise<void> {
     );
   };
   for (const id of UNIT_IDS) {
-    for (const clip of CLIPS) put(`unit:${id}:${clip}`, `./art/units/${id}/${clip}.png?v=cast176`);
+    for (const clip of CLIPS) put(`unit:${id}:${clip}`, `./art/units/${id}/${clip}.png?v=cast180`);
   }
   for (const id of STICKERS) put(`sticker:${id}`, `./art/stickers/${id}.png?v=cast173`);
   for (const id of UI) put(`ui:${id}`, `./art/ui/${id}.png${id === 'arena' ? '?v=court2' : ''}`);

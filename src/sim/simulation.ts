@@ -12,6 +12,7 @@ import {
   scaleStickerAbility,
   stickerEffectScale,
   baseFormOf,
+  type StatContext,
 } from '../core/catalog';
 import { SeededRng } from '../core/rng';
 import type {
@@ -69,6 +70,8 @@ interface Combatant {
   turnsTaken: number;
   hitsTaken: number;
   permanentMods: { atk: number; hp: number; speed: number };
+  /** Run counters used when sticker and figure effects were printed onto the stats. */
+  statCtx: StatContext;
   stickerEffectsSuppressed: boolean;
   silenced: boolean;
   coreAtk: number;
@@ -77,6 +80,8 @@ interface Combatant {
   cooldownLeft: number;
   /** Set when Cooldown starts during this figure’s own turn, so that turn does not count. */
   cooldownDefer: boolean;
+  /** Poison gained this scrap, so End of Scrap can put the covered sticker back. */
+  poisonUndo: { slot: number; restore: string | null }[];
   ravenFlockHp?: number;
   pigRevert?: {
     defId: string;
@@ -209,6 +214,7 @@ function hydrate(snap: TeamSnapshot, team: TeamId): Combatant[] {
       turnsTaken: 0,
       hitsTaken: 0,
       permanentMods: { ...su.permanentMods },
+      statCtx,
       stickerEffectsSuppressed: false,
       silenced: false,
       coreAtk: stats.atk,
@@ -216,6 +222,7 @@ function hydrate(snap: TeamSnapshot, team: TeamId): Combatant[] {
       cheatDeathUsed: false,
       cooldownLeft: 0,
       cooldownDefer: false,
+      poisonUndo: [],
     };
     return c;
   });
@@ -828,6 +835,7 @@ function revertToBaseVersion(state: SimState, target: Combatant): void {
   const baseId = baseFormOf(target.defId);
   target.defId = baseId;
   target.stickers = [];
+  target.poisonUndo = [];
   target.permanentMods = { atk: 0, hp: 0, speed: 0 };
   target.stickerEffectsSuppressed = false;
   rebuildFromDef(target);
@@ -1086,8 +1094,10 @@ function canAcceptCombatSticker(target: Combatant): boolean {
 function stealCombatSticker(state: SimState, thief: Combatant, victim: Combatant): void {
   if (thief.uid === victim.uid) return;
   if (!victim.stickers.length) return;
-  const sid = victim.stickers.splice(state.rng.int(victim.stickers.length), 1)[0];
+  const stolenAt = state.rng.int(victim.stickers.length);
+  const sid = victim.stickers.splice(stolenAt, 1)[0];
   if (!sid) return;
+  forgetPoisonSlot(victim, stolenAt);
   const applied = canAcceptCombatSticker(thief);
   emit(state, { type: 'StoleSticker', thiefId: thief.uid, victimId: victim.uid, stickerId: sid, applied });
   if (!victim.stickerEffectsSuppressed) reverseCombatSticker(state, victim, sid);
@@ -1119,6 +1129,7 @@ function peelCombatSticker(state: SimState, _source: Combatant, target: Combatan
   const sid = target.stickers[idx];
   if (!sid) return;
   target.stickers.splice(idx, 1);
+  forgetPoisonSlot(target, idx);
   if (!target.stickerEffectsSuppressed) reverseCombatSticker(state, target, sid);
   emit(state, { type: 'PeeledSticker', unitId: target.uid, stickerId: sid, stickerSlot: idx });
   emit(state, { type: 'StickerSpent', unitId: target.uid, stickerId: sid, stickerSlot: idx });
@@ -1132,6 +1143,7 @@ function exhaustCombatSticker(state: SimState, target: Combatant, stickerId: str
   const idx = target.stickers.indexOf(stickerId);
   if (idx < 0) return;
   target.stickers.splice(idx, 1);
+  forgetPoisonSlot(target, idx);
   if (!target.stickerEffectsSuppressed) reverseCombatSticker(state, target, stickerId);
   emit(state, { type: 'ExhaustedSticker', unitId: target.uid, stickerId });
 }
@@ -1168,6 +1180,33 @@ function trashCombatStickers(state: SimState, target: Combatant): void {
   emit(state, { type: 'TrashedStickers', unitId: target.uid, removed, stickers: [...target.stickers] });
 }
 
+function forgetPoisonSlot(unit: Combatant, index: number): void {
+  const steps = unit.poisonUndo;
+  if (!steps.length) return;
+  for (let i = steps.length - 1; i >= 0; i--) {
+    const step = steps[i]!;
+    if (step.slot === index) steps.splice(i, 1);
+    else if (step.slot > index) step.slot -= 1;
+  }
+}
+
+/** End of Scrap: Poison leaves every figure, standing or knocked out, and a covered sticker comes back. */
+function fadePoison(state: SimState): void {
+  for (const unit of state.units) {
+    if (!unit.poisonUndo.length) continue;
+    const stickers = [...unit.stickers];
+    for (const step of [...unit.poisonUndo].reverse()) {
+      if (stickers[step.slot] !== 'poison') continue;
+      if (step.restore) stickers[step.slot] = step.restore;
+      else stickers.splice(step.slot, 1);
+    }
+    unit.poisonUndo = [];
+    if (stickers.join('\0') === unit.stickers.join('\0')) continue;
+    unit.stickers = stickers;
+    emit(state, { type: 'PoisonFaded', unitId: unit.uid, stickers: [...stickers] });
+  }
+}
+
 /** One Poison sticker. A free slot gets a new one; a full card converts one random non-Poison sticker. Cap 3. */
 function applyPoison(state: SimState, target: Combatant): void {
   if (target.dead || target.dying) return;
@@ -1176,6 +1215,7 @@ function applyPoison(state: SimState, target: Combatant): void {
     const before = target.stickers.length;
     applyCombatSticker(state, target, 'poison');
     if (target.stickers.length === before + 1 && target.stickers[target.stickers.length - 1] === 'poison') {
+      target.poisonUndo.push({ slot: target.stickers.length - 1, restore: null });
       emit(state, { type: 'PoisonApplied', unitId: target.uid, added: true, removed: null, stickers: [...target.stickers] });
     }
     return;
@@ -1188,6 +1228,7 @@ function applyPoison(state: SimState, target: Combatant): void {
   const index = state.rng.pick(open);
   const removed = target.stickers[index]!;
   target.stickers[index] = 'poison';
+  target.poisonUndo.push({ slot: index, restore: removed });
   if (!target.stickerEffectsSuppressed) {
     reverseCombatSticker(state, target, removed, true);
     const st = getSticker('poison');
@@ -1248,18 +1289,68 @@ function nudgeCombatStat(state: SimState, target: Combatant, stat: 'atk' | 'spee
   emit(state, { type: 'StatChanged', unitId: target.uid, stat: 'hp', amount, now: target.hp });
 }
 
+function bareCombatStats(target: Combatant): { atk: number; hp: number; speed: number } {
+  const def = getUnit(target.defId);
+  return {
+    atk: clampStat('atk', def.atk + target.permanentMods.atk),
+    hp: clampStat('maxHp', def.hp + target.permanentMods.hp),
+    speed: clampStat('speed', def.speed + target.permanentMods.speed),
+  };
+}
+
+/** Drop figure passives and sticker bonuses. Combat changes from this scrap stay. */
+function stripEffectStats(state: SimState, target: Combatant): void {
+  const bare = bareCombatStats(target);
+  const full = computedStats(
+    {
+      instanceId: target.uid,
+      defId: target.defId,
+      slot: target.slot,
+      stickerIds: [...target.stickers],
+      permanentMods: { ...target.permanentMods },
+    },
+    target.statCtx,
+  );
+  const nextAtk = clampStat('atk', target.atk - (full.atk - bare.atk));
+  const nextMax = clampStat('maxHp', target.maxHp - (full.hp - bare.hp));
+  const nextSpeed = clampStat('speed', target.speed - (full.speed - bare.speed));
+  const missing = Math.max(0, target.maxHp - target.hp);
+  const nextHp = Math.min(nextMax, Math.max(0, nextMax - missing));
+  if (nextAtk !== target.atk) {
+    const amount = nextAtk - target.atk;
+    target.atk = nextAtk;
+    emit(state, { type: 'StatChanged', unitId: target.uid, stat: 'atk', amount, now: target.atk });
+  }
+  if (nextMax !== target.maxHp) {
+    const amount = nextMax - target.maxHp;
+    target.maxHp = nextMax;
+    emit(state, { type: 'StatChanged', unitId: target.uid, stat: 'maxHp', amount, now: target.maxHp });
+  }
+  if (nextHp !== target.hp) {
+    const amount = nextHp - target.hp;
+    target.hp = nextHp;
+    emit(state, { type: 'StatChanged', unitId: target.uid, stat: 'hp', amount, now: target.hp });
+  }
+  if (nextSpeed !== target.speed) {
+    const amount = nextSpeed - target.speed;
+    target.speed = nextSpeed;
+    emit(state, { type: 'StatChanged', unitId: target.uid, stat: 'speed', amount, now: target.speed });
+  }
+  target.coreAtk = target.atk;
+  if (target.hp <= 0 && !target.dead && !target.dying) queueDeath(state, target, null);
+}
+
 function silenceCard(state: SimState, source: Combatant, target: Combatant): void {
   if (target.dead || target.dying || target.uid === source.uid) return;
   if (target.silenced) return;
   const def = getUnit(target.defId);
-  // Stickers stay on the card but look spent; effects are suppressed for this scrap.
+  // Stickers stay on the card but look spent. Their stats and keywords go with the figure's effects.
+  stripEffectStats(state, target);
   target.stickerEffectsSuppressed = true;
   target.silenced = true;
   target.passives = {};
   target.abilities = [];
   target.targeting = def.targeting;
-  // Keep current combat ATK/HP/Speed (Sandman slows and other mods already applied stay).
-  target.coreAtk = target.atk;
   emit(state, { type: 'Silenced', sourceId: source.uid, unitId: target.uid });
 }
 
@@ -1427,6 +1518,7 @@ function trySummon(state: SimState, source: Combatant, unitId: string): void {
     turnsTaken: 0,
     hitsTaken: 0,
     permanentMods: { atk: 0, hp: 0, speed: 0 },
+    statCtx: { stickersGained: 0, deathsThisRun: 0 },
     stickerEffectsSuppressed: false,
     silenced: false,
     coreAtk: def.atk,
@@ -1434,6 +1526,7 @@ function trySummon(state: SimState, source: Combatant, unitId: string): void {
     cheatDeathUsed: false,
     cooldownLeft: 0,
     cooldownDefer: false,
+    poisonUndo: [],
   };
   state.units.push(c);
   emit(state, { type: 'Summoned', unit: viewOf(c) });
@@ -1492,6 +1585,7 @@ function trySummonFallen(state: SimState, source: Combatant): void {
     turnsTaken: 0,
     hitsTaken: 0,
     permanentMods: { ...fallen.permanentMods },
+    statCtx: { stickersGained: 0, deathsThisRun: 0 },
     stickerEffectsSuppressed: false,
     silenced: false,
     coreAtk: stats.atk,
@@ -1499,6 +1593,7 @@ function trySummonFallen(state: SimState, source: Combatant): void {
     cheatDeathUsed: false,
     cooldownLeft: 0,
     cooldownDefer: false,
+    poisonUndo: [],
   };
   state.units.push(c);
   emit(state, { type: 'Summoned', unit: viewOf(c) });
@@ -1511,6 +1606,7 @@ function fireAbilities(
   trigger: AbilityDef['trigger'],
   ownerFilter: (c: Combatant) => boolean,
   ctx: { attackTarget?: Combatant; attacker?: Combatant; kind?: string; isAttack?: boolean },
+  abilityFilter?: (ab: AbilityState) => boolean,
 ): void {
   if (state.depth >= MAX_DEPTH || state.events.length >= MAX_EVENTS) {
     emit(state, { type: 'Log', message: 'trigger-depth-cap' });
@@ -1524,6 +1620,7 @@ function fireAbilities(
   for (const owner of owners) {
     for (const ab of owner.abilities) {
       if (ab.def.trigger !== trigger) continue;
+      if (abilityFilter && !abilityFilter(ab)) continue;
       if (ab.used && ab.def.once) continue;
       if (!condOk(state, owner, ab.def.condition, ctx)) continue;
       const targets = resolveTargets(state, owner, ab.def.target, ctx);
@@ -1730,11 +1827,21 @@ function flushDeaths(state: SimState): void {
     const id = state.deathQueue.shift()!;
     const victim = byUid(state, id);
     if (!victim || victim.dead) continue;
-    fireAbilities(state, 'onDeath', (c) => c.uid === victim.uid, { attacker: byUid(state, victim.lastAttackerId) });
+    const attacker = byUid(state, victim.lastAttackerId);
+    const deathCtx = { attacker };
+    const saves = (ab: AbilityState) =>
+      ab.def.effects.length > 0 && ab.def.effects.every((op) => op.op === 'healToFull');
+    fireAbilities(state, 'onDeath', (c) => c.uid === victim.uid, deathCtx, saves);
     if (victim.hp > 0 && !victim.dead) {
       state.pendingSideSwitches = state.pendingSideSwitches.filter((p) => p.sourceId !== victim.uid);
       victim.dying = false;
       emit(state, { type: 'Revived', unitId: victim.uid, hp: victim.hp });
+      continue;
+    }
+    fireAbilities(state, 'onDeath', (c) => c.uid === victim.uid, deathCtx, (ab) => !saves(ab));
+    if (victim.hp > 0 && !victim.dead) {
+      state.pendingSideSwitches = state.pendingSideSwitches.filter((p) => p.sourceId !== victim.uid);
+      victim.dying = false;
       continue;
     }
     const master = rewindMaster(state, victim);
@@ -2150,6 +2257,7 @@ export function simulateBattle(a: TeamSnapshot, b: TeamSnapshot, seed: number): 
   // so the form that just appeared is the one that dances.
   fireAbilities(state, 'battleEnded', () => true, {});
   fireAbilities(state, 'scrapEnded', () => true, {});
+  fadePoison(state);
   emit(state, {
     type: 'BattleEnded',
     winner,

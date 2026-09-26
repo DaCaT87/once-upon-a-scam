@@ -81,6 +81,9 @@ export class BattleView {
   /** Game-time when the Banf smoke veil is gone. Next beat waits for this. */
   private smokeUntil = 0;
   onDone: (() => void) | null = null;
+  /** The round sign is gone and the board can be seen. */
+  onField: (() => void) | null = null;
+  private fieldShown = false;
 
   constructor(
     private host: HTMLElement,
@@ -99,6 +102,7 @@ export class BattleView {
     this.ended = false;
     this.fxRemain = 0;
     this.smokeUntil = 0;
+    this.fieldShown = false;
     this.actors.clear();
     this.logLines = [];
     this.ambushFx = null;
@@ -157,6 +161,7 @@ export class BattleView {
     this.host.closest('.screen-battle')?.classList.remove('is-preamble');
     document.documentElement.classList.remove('is-preamble');
     commitScene();
+    this.showField();
   }
 
   private endIntro(): void {
@@ -167,6 +172,13 @@ export class BattleView {
     document.documentElement.classList.remove('is-preamble');
     commitScene();
     this.host.querySelector('.battle-intro')?.classList.add('is-gone');
+    this.showField();
+  }
+
+  private showField(): void {
+    if (this.fieldShown) return;
+    this.fieldShown = true;
+    this.onField?.();
   }
 
   tick(dt: number): void {
@@ -360,7 +372,7 @@ export class BattleView {
     tgt.rewindPhase = 'out';
     tgt.clip = 'death';
     tgt.clipT = 0;
-    audio.play('death');
+    audio.play('bell');
   }
 
   private syncCard(a: Actor): void {
@@ -434,7 +446,6 @@ export class BattleView {
           const tgt = this.actors.get(ev.unitId);
           if (tgt) this.float(tgt, translate(this.settings.locale, 'fx.ambush'), 'is-ambush');
           this.pulse(ev.unitId);
-          audio.play('bell');
         }
         return silent ? 0 : 0.08;
       }
@@ -539,7 +550,7 @@ export class BattleView {
         }
         if (prev) {
           this.burst(prev, 'smoke');
-          audio.play('paper');
+          audio.play('puff');
           this.smokeUntil = Math.max(this.smokeUntil, this.t + SMOKE_TOTAL_SEC);
           this.holdFx(SMOKE_TOTAL_SEC);
         }
@@ -678,7 +689,8 @@ export class BattleView {
         return 0.1;
       }
       case 'TrashedStickers':
-      case 'PoisonApplied': {
+      case 'PoisonApplied':
+      case 'PoisonFaded': {
         const tgt = this.actors.get(ev.unitId);
         if (tgt) {
           tgt.stickers = [...ev.stickers];
@@ -746,11 +758,19 @@ export class BattleView {
       case 'Revived': {
         const tgt = this.actors.get(ev.unitId);
         if (tgt) {
-          tgt.death = getUnit(tgt.defId).art.death;
-          this.beginDeathRewind(tgt, ev.hp, translate(this.settings.locale, 'fx.revive'), 'is-revive', silent);
+          tgt.dead = false;
+          tgt.gone = false;
+          tgt.hp = ev.hp;
+          tgt.clip = 'idle';
+          tgt.clipT = 0;
+          tgt.rewindPhase = null;
+          if (!silent) {
+            this.float(tgt, translate(this.settings.locale, 'fx.revive'), 'is-revive');
+            audio.play('bell');
+          }
         }
         this.pulse(ev.unitId);
-        return silent ? 0 : clipDuration('death') * 2;
+        return silent ? 0 : 0.35;
       }
       case 'GiftedStat': {
         const tgt = this.actors.get(ev.recipientId);
@@ -1155,7 +1175,7 @@ export class BattleView {
       }
     }
     this.pulse(uid);
-    if (!silent) audio.play('paper');
+    if (!silent) audio.play('peel');
   }
 
   /** Animate a sticker icon from one card rail to another, then run onDone. */

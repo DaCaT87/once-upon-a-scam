@@ -542,7 +542,7 @@ html.needs-landscape .landscape-gate {
 .unit-card .portrait-art[data-unit="pig"],
 .unit-card.is-form .portrait-art.scenic[data-unit="pig"] {
   object-fit: cover;
-  object-position: center bottom;
+  object-position: center center;
 }
 .unit-card.is-form .rarity-mark { display: none; }
 .unit-card .portrait-art[data-unit="frog-prince"] { object-position: center 46%; }
@@ -1197,6 +1197,9 @@ html.needs-landscape .landscape-gate {
 .targeting-float .tip-spent {
   display: block;
 }
+.targeting-float .tip-effect p {
+  margin: 0;
+}
 .targeting-float .tip-name {
   font-family: "Rye", serif;
   font-size: 13px;
@@ -1219,7 +1222,11 @@ html.needs-landscape .landscape-gate {
 .targeting-float .tip-rarity[data-rarity="bronze"] { background: #8c5a28; }
 .targeting-float .tip-rarity[data-rarity="silver"] { background: #5c656c; }
 .targeting-float .tip-rarity[data-rarity="gold"] { background: #9a7210; }
-.targeting-float .tip-rarity[data-rarity="platinum"] { background: #4a5e5a; }
+.targeting-float .tip-rarity[data-rarity="platinum"] {
+  background: linear-gradient(160deg, #8ea4b2 0%, #6a8494 45%, #4a6270 100%);
+  color: var(--cream);
+  box-shadow: inset 0 0 0 1px #3e5260;
+}
 .targeting-float .tip-rarity[data-rarity="diamond"] { background: #1e4a8a; }
 .targeting-float .tip-spent {
   display: none;
@@ -1442,7 +1449,11 @@ html.needs-landscape .landscape-gate {
 .sticker-rarity[data-rarity="bronze"] { background: #8c5a28; }
 .sticker-rarity[data-rarity="silver"] { background: #5c656c; }
 .sticker-rarity[data-rarity="gold"] { background: #9a7210; }
-.sticker-rarity[data-rarity="platinum"] { background: #4a5e5a; }
+.sticker-rarity[data-rarity="platinum"] {
+  background: linear-gradient(160deg, #8ea4b2 0%, #6a8494 45%, #4a6270 100%);
+  color: var(--cream);
+  box-shadow: inset 0 0 0 1px #3e5260;
+}
 .sticker-rarity[data-rarity="diamond"] { background: #1e4a8a; }
 
 .ghost-card {
@@ -2089,6 +2100,23 @@ h2.sign, .panel h2 {
 .unit-card.is-event-plain > .hunt-rarity,
 .unit-card.is-event-plain .rarity-mark {
   display: none !important;
+}
+.choice-table .is-recruit.is-alley-full-plate > .shop-gem,
+.choice-table .is-sticker.is-alley-full-plate > .shop-gem {
+  display: block;
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 28%;
+  height: auto;
+  object-fit: contain;
+  object-position: top right;
+  pointer-events: none;
+  z-index: 30;
+}
+.choice-table .is-recruit.is-alley-full-plate.is-done > .shop-gem,
+.choice-table .is-sticker.is-alley-full-plate.is-done > .shop-gem {
+  filter: grayscale(1) brightness(0.82);
 }
 .unit-card.choice-plate.is-hunt-plate {
   box-shadow: none !important;
@@ -3597,6 +3625,8 @@ html.is-codex #app {
   background: transparent;
   padding: 0;
   cursor: pointer;
+  -webkit-user-drag: none;
+  user-select: none;
   filter: drop-shadow(4px 6px 0 rgba(26, 20, 16, 0.55));
   transition: transform 0.14s ease, filter 0.14s ease;
 }
@@ -3605,6 +3635,9 @@ html.is-codex #app {
   width: min(380px, 42vw);
   height: auto;
   background: transparent;
+  -webkit-user-drag: none;
+  user-select: none;
+  pointer-events: none;
 }
 .btn-fight-art:hover { transform: translateY(-5px) rotate(-1.2deg); }
 .btn-fight-art:active { transform: translateY(2px); filter: drop-shadow(2px 3px 0 rgba(26, 20, 16, 0.55)); }
@@ -4047,6 +4080,7 @@ html.is-codex #app {
   padding: 0;
   background: transparent;
   border: 0;
+  overflow: visible;
 }
 .dossier-portrait,
 .dossier-art-empty {
@@ -4063,17 +4097,13 @@ html.is-codex #app {
   background: transparent;
   border: 0;
   box-shadow: none;
-  border-radius: 0;
-  -webkit-mask-image:
-    linear-gradient(to right, transparent 0%, #000 4%, #000 96%, transparent 100%),
-    linear-gradient(to bottom, transparent 0%, #000 4%, #000 96%, transparent 100%);
-  -webkit-mask-composite: source-in;
-  mask-image:
-    linear-gradient(to right, transparent 0%, #000 4%, #000 96%, transparent 100%),
-    linear-gradient(to bottom, transparent 0%, #000 4%, #000 96%, transparent 100%);
-  mask-composite: intersect;
+  -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='400' height='520' viewBox='0 0 400 520'><defs><filter id='s' x='-12%25' y='-12%25' width='124%25' height='124%25'><feGaussianBlur stdDeviation='3.2'/></filter></defs><path fill='white' filter='url(%23s)' d='M46 10 C100 5 160 16 220 8 C280 2 320 14 354 10 C378 8 392 24 392 48 C397 130 385 200 394 270 C401 340 385 410 392 472 C394 498 378 512 352 512 C290 518 220 505 150 514 C90 521 62 508 48 512 C22 514 8 498 8 472 C3 400 15 330 6 260 C-1 190 13 120 8 48 C6 22 22 8 46 10 Z'/></svg>");
+  mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='400' height='520' viewBox='0 0 400 520'><defs><filter id='s' x='-12%25' y='-12%25' width='124%25' height='124%25'><feGaussianBlur stdDeviation='3.2'/></filter></defs><path fill='white' filter='url(%23s)' d='M46 10 C100 5 160 16 220 8 C280 2 320 14 354 10 C378 8 392 24 392 48 C397 130 385 200 394 270 C401 340 385 410 392 472 C394 498 378 512 352 512 C290 518 220 505 150 514 C90 521 62 508 48 512 C22 514 8 498 8 472 C3 400 15 330 6 260 C-1 190 13 120 8 48 C6 22 22 8 46 10 Z'/></svg>");
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
 }
-.dossier-art::after,
 .screen-codex .unit-card:not(.is-cutout) > .card-art::after {
   content: "";
   position: absolute;
@@ -4089,6 +4119,16 @@ html.is-codex #app {
     linear-gradient(to right, #000 0%, transparent 7%, transparent 93%, #000 100%),
     linear-gradient(to bottom, #000 0%, transparent 7%, transparent 93%, #000 100%);
   mask-composite: add;
+}
+.screen-codex .unit-card:hover:not(.is-cutout) > .card-art::after,
+.screen-codex .unit-card.lift:not(.is-cutout) > .card-art::after {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.screen-codex .unit-card:hover:not(.is-cutout) .portrait-art,
+.screen-codex .unit-card.lift:not(.is-cutout) .portrait-art {
+  -webkit-mask-image: none;
+  mask-image: none;
 }
 .screen-codex .unit-card:not(.is-cutout) > .card-art {
   background: transparent;

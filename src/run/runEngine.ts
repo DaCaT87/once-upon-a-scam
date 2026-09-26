@@ -19,14 +19,14 @@ import {
   teamSizeForRound,
 } from '../core/catalog';
 import { STICKER_BY_ID } from '../data/stickers';
-import { EVENT_BY_ID, huntLevelForRound, huntMonstersFor, huntPower, huntStickerFor, lossRewardRarity } from '../data/events';
+import { EVENT_BY_ID, huntLevelForRound, huntMonstersFor, huntPower, huntRarityForRound, huntStickerFor, lossRewardRarity } from '../data/events';
 import { nextWellRarity } from '../data/rarity';
 import { STARTING_BRONZE_IDS, unitsByRarity } from '../data/units';
 import { makeId } from '../core/ids';
 import { mixSeed } from '../core/rng';
 import { SeededRng } from '../core/rng';
 import { simulateBattle } from '../sim/simulation';
-import type { AlleyChoice, BattleResult, EventId, LostTale, RunMode, RunState, TeamSnapshot, UnitInstance } from '../core/types';
+import type { AlleyChoice, BattleResult, EventId, LostTale, Rarity, RunMode, RunState, TeamSnapshot, UnitInstance } from '../core/types';
 import { growCircuit, openCircuit, settleCircuit } from './circuit';
 import { ALLEY_PICK, DATA_VERSION, DRAFT_OFFER, DRAFT_PICK, MAX_TEAM, RECRUIT_OFFER, RECRUIT_PICK, STICKER_OFFER, STICKER_PICK } from '../core/types';
 
@@ -72,6 +72,8 @@ export function migrateRun(run: RunState): RunState {
     eventOffers: Array.isArray(run.eventOffers) ? run.eventOffers : [],
     eventPicks: Array.isArray(run.eventPicks) ? run.eventPicks : [],
     huntMonsterId: run.huntMonsterId ?? null,
+    huntRaritiesSeen: Array.isArray(run.huntRaritiesSeen) ? run.huntRaritiesSeen : [],
+    pendingGoldUnitId: typeof run.pendingGoldUnitId === 'string' ? run.pendingGoldUnitId : null,
     lastBonusBattle: run.lastBonusBattle ?? null,
     recruitRarityBump: Boolean(run.recruitRarityBump),
     alleyPicks: Array.isArray(run.alleyPicks) ? run.alleyPicks : [],
@@ -128,6 +130,8 @@ export function bareRun(mode: RunMode, playerId: string, playerName: string, see
     eventOffers: [],
     eventPicks: [],
     huntMonsterId: null,
+    huntRaritiesSeen: [],
+    pendingGoldUnitId: null,
     recruitRarityBump: false,
     alleyPicks: [],
     alleyQueue: [],
@@ -570,10 +574,29 @@ export function swapSlots(run: RunState, slotA: number, slotB: number): RunState
   return moveUnitSlot(run, slotA, slotB);
 }
 
-/** Swap two occupied slots, or move a unit into an empty slot. */
+/**
+ * Occupied slots can swap. An empty slot accepts a card only when every slot
+ * in front of it stays filled — including the slot this card would leave.
+ */
+export function canMoveUnitSlot(team: { slot: number }[], fromSlot: number, toSlot: number): boolean {
+  if (fromSlot === toSlot) return false;
+  if (fromSlot < 1 || fromSlot > MAX_TEAM || toSlot < 1 || toSlot > MAX_TEAM) return false;
+  const occupied = new Set(team.map((u) => u.slot));
+  if (!occupied.has(fromSlot)) return false;
+  const targetOccupied = occupied.has(toSlot);
+  for (let slot = 1; slot < toSlot; slot++) {
+    if (slot === fromSlot) {
+      if (!targetOccupied) return false;
+      continue;
+    }
+    if (!occupied.has(slot)) return false;
+  }
+  return true;
+}
+
+/** Swap two occupied slots, or move a unit into an empty slot that has no free slot in front. */
 export function moveUnitSlot(run: RunState, fromSlot: number, toSlot: number): RunState {
-  if (fromSlot === toSlot) return run;
-  if (fromSlot < 1 || fromSlot > MAX_TEAM || toSlot < 1 || toSlot > MAX_TEAM) return run;
+  if (!canMoveUnitSlot(run.team, fromSlot, toSlot)) return run;
   const team = cloneTeam(run.team);
   const a = team.find((u) => u.slot === fromSlot);
   if (!a) return run;
@@ -672,7 +695,7 @@ export function afterResult(run: RunState): RunState {
 
 function beginPostFight(run: RunState): RunState {
   const rng = rngFor({ ...run, offerCounter: run.offerCounter + 1 }, 0xe7e);
-  const ev = rng.pick(Array.from(EVENT_BY_ID.keys()));
+  const ev = rollAlleyEvent(run, rng);
   return {
     ...run,
     phase: 'postFight',
@@ -686,12 +709,28 @@ function beginPostFight(run: RunState): RunState {
     eventOffers: [],
     eventPicks: [],
     huntMonsterId: ev === 'monster-hunt' ? rng.pick(huntMonstersFor(run.round)).unitId : null,
+    huntRaritiesSeen: noteHuntOffer(run, ev),
     lastBonusBattle: null,
     alleyPicks: [],
     alleyQueue: [],
     alleyDone: [],
     offerCounter: run.offerCounter + 1,
   };
+}
+
+/** Monster Hunt is offered once per rarity. Later alleys in that band roll the other events. */
+function rollAlleyEvent(run: RunState, rng: SeededRng): EventId {
+  const seen = run.huntRaritiesSeen ?? [];
+  const keys = Array.from(EVENT_BY_ID.keys());
+  const pool = seen.includes(huntRarityForRound(run.round)) ? keys.filter((id) => id !== 'monster-hunt') : keys;
+  return rng.pick(pool);
+}
+
+function noteHuntOffer(run: RunState, eventId: EventId | null): Rarity[] {
+  const seen = run.huntRaritiesSeen ?? [];
+  if (eventId !== 'monster-hunt') return seen;
+  const rarity = huntRarityForRound(run.round);
+  return seen.includes(rarity) ? seen : [...seen, rarity];
 }
 
 function isScrapStickerLoot(run: RunState): boolean {
@@ -796,7 +835,7 @@ export function beginSticker(run: RunState): RunState {
 
 export function beginEvent(run: RunState): RunState {
   const rng = rngFor(run, 0xe7e);
-  const eventId = run.eventId && EVENT_BY_ID.has(run.eventId) ? run.eventId : rng.pick(Array.from(EVENT_BY_ID.keys()));
+  const eventId = run.eventId && EVENT_BY_ID.has(run.eventId) ? run.eventId : rollAlleyEvent(run, rng);
   const huntMonsterId =
     eventId === 'monster-hunt'
       ? run.huntMonsterId ?? rng.pick(huntMonstersFor(run.round)).unitId
@@ -814,6 +853,7 @@ export function beginEvent(run: RunState): RunState {
     eventOffers: [] as string[],
     eventPicks: [] as string[],
     huntMonsterId,
+    huntRaritiesSeen: noteHuntOffer(run, eventId),
     offerCounter: run.offerCounter + 1,
   };
   return eventId === 'book-of-lost-tales' ? ensureBookOffers(opened) : opened;
@@ -998,14 +1038,29 @@ function canTakeRecruit(run: RunState, defId: string): boolean {
   return run.recruitPicks.length < recruitPickLimit(run.recruitPicks, run.eventId, run.eventStep);
 }
 
-function appendGoldRecruit(run: RunState, team: UnitInstance[], defId: string): UnitInstance[] {
-  if (!grantsGoldOnRecruit(defId)) return team;
-  if (team.length >= MAX_TEAM) return team;
+function appendGoldRecruit(
+  run: RunState,
+  team: UnitInstance[],
+  defId: string,
+): { team: UnitInstance[]; pending: string | null | undefined } {
+  if (!grantsGoldOnRecruit(defId)) return { team, pending: undefined };
   const gold = collectRecruitGoldUnits(run, [defId])[0];
-  if (!gold) return team;
+  if (!gold) return { team, pending: null };
+  if (team.length >= MAX_TEAM) return { team, pending: gold };
   const slot = firstFreeSlot(team);
-  if (slot < 1 || slot > MAX_TEAM || team.some((u) => u.slot === slot)) return team;
-  return [...team, instanceFromDef(gold, slot, makeId('u'))];
+  if (slot < 1 || slot > MAX_TEAM || team.some((u) => u.slot === slot)) return { team, pending: gold };
+  return { team: [...team, instanceFromDef(gold, slot, makeId('u'))], pending: null };
+}
+
+function withGoldRecruit(run: RunState, team: UnitInstance[], defId: string, picks: string[], offers: string[]): RunState {
+  const added = appendGoldRecruit(run, team, defId);
+  return {
+    ...run,
+    team: added.team,
+    recruitPicks: picks,
+    recruitOffers: offers,
+    pendingGoldUnitId: added.pending === undefined ? run.pendingGoldUnitId ?? null : added.pending,
+  };
 }
 
 /** Drag an offer onto an empty team slot. */
@@ -1015,13 +1070,7 @@ export function placeRecruit(run: RunState, defId: string, slot: number): RunSta
   let team = cloneTeam(run.team);
   if (team.some((u) => u.slot === slot)) return run;
   team.push(instanceFromDef(defId, slot, makeId('u')));
-  team = appendGoldRecruit(run, team, defId);
-  return {
-    ...run,
-    team,
-    recruitPicks: [...run.recruitPicks, defId],
-    recruitOffers: run.recruitOffers.filter((id) => id !== defId),
-  };
+  return withGoldRecruit(run, team, defId, [...run.recruitPicks, defId], run.recruitOffers.filter((id) => id !== defId));
 }
 
 /** Drag an offer onto an occupied slot — fires the occupant (stickers and all). */
@@ -1033,20 +1082,15 @@ export function replaceRecruit(run: RunState, defId: string, slot: number): RunS
   if (!victim) return placeRecruit(run, defId, slot);
   team = team.filter((u) => u.instanceId !== victim.instanceId);
   team.push(instanceFromDef(defId, slot, makeId('u')));
-  team = appendGoldRecruit(run, team, defId);
   return rememberLost(
-    {
-      ...run,
-      team,
-      recruitPicks: [...run.recruitPicks, defId],
-      recruitOffers: run.recruitOffers.filter((id) => id !== defId),
-    },
+    withGoldRecruit(run, team, defId, [...run.recruitPicks, defId], run.recruitOffers.filter((id) => id !== defId)),
     [victim],
   );
 }
 
 /** Leave the recruit shop; units are already on the team from place/replace. */
 export function finishRecruit(run: RunState): RunState {
+  if (run.pendingGoldUnitId) return run;
   const taking = run.recruitPicks;
   const bump = taking.some(hasRecruitRarityBump);
   const granted = collectRecruitStickers(run, taking);
@@ -1059,7 +1103,20 @@ export function finishRecruit(run: RunState): RunState {
   return finishAlley(next);
 }
 
-/** @deprecated Prefer placeRecruit + finishRecruit. Kept for batch callers. */
+/** Put the owed gold figure into a slot, firing whoever stands there. The herald who created it stays. */
+export function seatGoldUnit(run: RunState, slot: number): RunState {
+  const gold = run.pendingGoldUnitId;
+  if (!gold || run.phase !== 'recruit') return run;
+  if (slot < 1 || slot > MAX_TEAM) return run;
+  let team = cloneTeam(run.team);
+  const victim = team.find((u) => u.slot === slot);
+  if (victim && grantsGoldOnRecruit(victim.defId)) return run;
+  team = team.filter((u) => u.slot !== slot);
+  team.push(instanceFromDef(gold, slot, makeId('u')));
+  const next = { ...run, team, pendingGoldUnitId: null };
+  return victim ? rememberLost(next, [victim]) : next;
+}
+
 export function toggleRecruit(run: RunState, defId: string): RunState {
   const has = run.recruitPicks.includes(defId);
   if (has) return { ...run, recruitPicks: run.recruitPicks.filter((id) => id !== defId) };
@@ -1099,6 +1156,7 @@ export function confirmRecruit(run: RunState, cuts: string[]): RunState {
 }
 
 export function skipRecruit(run: RunState): RunState {
+  if (run.pendingGoldUnitId) return run;
   if (run.recruitPicks.length) return finishRecruit(run);
   return finishAlley({ ...run, recruitPicks: [] });
 }

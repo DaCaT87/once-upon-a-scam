@@ -20,6 +20,7 @@ import {
   eventSelectUnit,
   eventUnitReward,
   finishRecruit,
+  seatGoldUnit,
   ensureBookOffers,
   claimBookSticker,
   pickEventKind,
@@ -27,6 +28,7 @@ import {
   placeEventUnit,
   placeRecruit,
   recruitPickLimit,
+  moveUnitSlot,
   resolveFight,
   resolveHuntFight,
   skipEmptyEvent,
@@ -75,6 +77,11 @@ assertShopCurve();
   }
   if (!glued.includes('tip-spent') || !glued.includes('Spent')) {
     throw new Error('sticker hover should include Spent');
+  }
+  const shieldCard = renderStickerCard('en', 'spiked-shield', false);
+  const shieldHover = renderUnitCard('en', applySticker(instanceFromDef('farm-boy', 1, 'fbShieldTip'), 'spiked-shield'));
+  if (!shieldCard.includes('WHEN HIT') || !shieldHover.includes('WHEN HIT') || !shieldHover.includes('Thorn 1')) {
+    throw new Error('glued sticker hover should match the sticker card');
   }
   const gluedIt = renderUnitCard('it', applySticker(instanceFromDef('farm-boy', 1, 'fbSpentTipIt'), 'lucky-charm'));
   if (!gluedIt.includes('Usato')) throw new Error('sticker hover it should say Usato');
@@ -523,6 +530,42 @@ assertShopCurve();
     run.recruitRarityBump
   ) {
     throw new Error(`herald gold failed bump=${run.recruitRarityBump} team=${run.team.map((u) => u.defId).join(',')}`);
+  }
+  if (run.pendingGoldUnitId) throw new Error('herald gold should sit when the line has room');
+}
+{
+  let tight = createRun('ai', 'tester', 'HeraldFull', 0x23);
+  tight = {
+    ...tight,
+    round: 5,
+    phase: 'recruit',
+    team: [
+      instanceFromDef('farm-boy', 1, 'a'),
+      instanceFromDef('hunter', 2, 'b'),
+      instanceFromDef('tin-soldier', 3, 'c'),
+    ],
+    recruitOffers: ['royal-herald', 'village-fool', 'puss-in-boots'],
+    recruitPicks: [],
+  };
+  tight = placeRecruit(tight, 'royal-herald', 4);
+  if (tight.team.length !== 4 || !tight.pendingGoldUnitId || getUnit(tight.pendingGoldUnitId).rarity !== 'gold') {
+    throw new Error(`herald should owe a gold figure when the line is full, team=${tight.team.map((u) => u.defId).join(',')} pending=${tight.pendingGoldUnitId}`);
+  }
+  if (finishRecruit(tight) !== tight) throw new Error('herald shop should wait for the gold figure');
+  const refused = seatGoldUnit(tight, 4);
+  if (!refused.pendingGoldUnitId || !refused.team.some((u) => u.slot === 4 && u.defId === 'royal-herald')) {
+    throw new Error('gold figure should not replace the herald');
+  }
+  tight = seatGoldUnit(tight, 2);
+  const seated = tight.team.find((u) => u.slot === 2);
+  if (
+    tight.pendingGoldUnitId ||
+    tight.team.length !== 4 ||
+    !seated ||
+    getUnit(seated.defId).rarity !== 'gold' ||
+    tight.team.some((u) => u.defId === 'hunter')
+  ) {
+    throw new Error(`herald gold seat failed team=${tight.team.map((u) => `${u.slot}:${u.defId}`).join(',')}`);
   }
 }
 {
@@ -1000,6 +1043,37 @@ assertShopCurve();
   if (abilityRule('en', 'ice-king') !== 'Silence all other figures.') throw new Error('ice king silence text');
 }
 {
+  const sword = simulateBattle(
+    makeSnapshot({
+      playerId: 'p',
+      playerName: 'p',
+      runId: 'r',
+      round: 1,
+      team: [instanceFromDef('ice-king', 1, 'iqEx')],
+    }),
+    makeSnapshot({
+      playerId: 'e',
+      playerName: 'e',
+      runId: 'r',
+      round: 1,
+      team: [applySticker(instanceFromDef('farm-boy', 1, 'fbExIce'), 'excalibur')],
+    }),
+    17,
+  );
+  const printed = sword.events.find((e) => e.type === 'UnitSpawned' && e.unit.uid === 'enemy:fbExIce');
+  if (!printed || printed.type !== 'UnitSpawned' || printed.unit.atk !== 9) {
+    throw new Error('excalibur should print on the farm boy before silence');
+  }
+  const stripped = sword.events.find((e) => e.type === 'StatChanged' && e.unitId === 'enemy:fbExIce' && e.stat === 'atk');
+  if (!stripped || stripped.type !== 'StatChanged' || stripped.now !== 2 || stripped.amount !== -7) {
+    throw new Error('ice king should take Excalibur off the farm boy');
+  }
+  const hit = sword.events.find((e) => e.type === 'DamageDealt' && e.sourceId === 'enemy:fbExIce' && e.kind === 'attack');
+  if (!hit || hit.type !== 'DamageDealt' || hit.amount !== 2) {
+    throw new Error('silenced Excalibur should swing for 2');
+  }
+}
+{
   const hush = simulateBattle(
     makeSnapshot({
       playerId: 'p',
@@ -1335,7 +1409,12 @@ assertShopCurve();
       playerName: 'e',
       runId: 'r',
       round: 1,
-      team: [instanceFromDef('ogre-king', 1, 'og3')],
+      team: [
+        {
+          ...instanceFromDef('ogre-king', 1, 'og3'),
+          permanentMods: { atk: 1, hp: 4, speed: 0 },
+        },
+      ],
     }),
     21,
   );
@@ -1906,7 +1985,7 @@ assertShopCurve();
     throw new Error('phoenix heart should revive the fool');
   }
   const revivedAt = phoenixFool.events.findIndex((e) => e.type === 'Revived' && e.unitId === 'player:bhPhx');
-  if (phoenixFool.events.slice(0, revivedAt).some((e) => e.type === 'SwitchedSides')) {
+  if (phoenixFool.events.slice(0, revivedAt).some((e) => e.type === 'SwitchedSides' || (e.type === 'Log' && e.message.startsWith('haha:')))) {
     throw new Error('phoenix heart on the fool should block the side switch');
   }
 }
@@ -1971,6 +2050,44 @@ assertShopCurve();
   ) {
     throw new Error('cooldown should block a second rewind before Time Master ends a turn');
   }
+  const waited = simulateBattle(
+    makeSnapshot({
+      playerId: 'p',
+      playerName: 'p',
+      runId: 'r',
+      round: 1,
+      team: [
+        instanceFromDef('paper-dove', 1, 'doveA'),
+        instanceFromDef('paper-dove', 2, 'doveB'),
+        instanceFromDef('time-master', 3, 'tmWait'),
+      ],
+    }),
+    makeSnapshot({
+      playerId: 'e',
+      playerName: 'e',
+      runId: 'r',
+      round: 1,
+      team: [instanceFromDef('tiny-brave-mouse', 1, 'mouseWait')],
+    }),
+    41,
+  );
+  const firstWait = waited.events.findIndex((e) => e.type === 'Rewound' && e.unitId === 'player:doveA');
+  const doveDies = waited.events.findIndex(
+    (e, i) => i > firstWait && e.type === 'UnitDied' && e.unitId === 'player:doveA',
+  );
+  const secondWait = waited.events.findIndex((e, i) => i > doveDies && e.type === 'Rewound' && e.unitId === 'player:doveB');
+  const turnsBeforeDeath = waited.events.filter(
+    (e, i) => i > firstWait && i < doveDies && e.type === 'TurnEnded' && e.unitId === 'player:tmWait',
+  ).length;
+  const turnsBeforeSecond = waited.events.filter(
+    (e, i) => i > firstWait && i < secondWait && e.type === 'TurnEnded' && e.unitId === 'player:tmWait',
+  ).length;
+  if (firstWait < 0 || doveDies < 0 || turnsBeforeDeath !== 1) {
+    throw new Error('cooldown 2 should still be down after one Time Master turn');
+  }
+  if (secondWait < 0 || turnsBeforeSecond !== 2) {
+    throw new Error('cooldown 2 should allow Rewind after two Time Master turns');
+  }
   const self = simulateBattle(
     makeSnapshot({
       playerId: 'p',
@@ -2024,13 +2141,13 @@ assertShopCurve();
   }
   if (
     abilityRule('en', 'time-master') !==
-    'When a figure on your side is knocked out, including this one, Rewind. Cooldown 1.'
+    'When a figure on your side is knocked out, including this one, Rewind. Cooldown 2.'
   ) {
     throw new Error('time master en');
   }
   if (
     abilityRule('it', 'time-master') !==
-    'Quando una figura dalla tua parte viene messa KO, anche questa, Rewind. Cooldown 1.'
+    'Quando una figura dalla tua parte viene messa KO, anche questa, Rewind. Cooldown 2.'
   ) {
     throw new Error('time master it');
   }
@@ -2169,6 +2286,8 @@ assertShopCurve();
   }
   if (translate('en', 'unit.circe') !== 'Witch Circe') throw new Error('circe en name');
   if (translate('it', 'unit.circe') !== 'Maga Circe') throw new Error('circe it name');
+  if (abilityRule('en', 'circe') !== 'Turn that figure into a Pig.') throw new Error('circe stops at Pig');
+  if (abilityRule('it', 'circe') !== 'Trasforma quella figura in un Porco.') throw new Error('circe it stops at Porco');
   if (translate('en', 'stk.bandageRoll') !== 'Life Potion') throw new Error('life potion en name');
   if (translate('it', 'stk.bandageRoll') !== 'Pozione della Vita') throw new Error('life potion it name');
   if (translate('en', 'stk.boomStick') !== 'Revenge Bomb') throw new Error('revenge bomb en name');
@@ -3016,7 +3135,9 @@ assertShopCurve();
   }
 }
 {
-  if (getUnit('gingerbread-man').targeting !== 'brawler') throw new Error('gingerbread targeting');
+  if (getUnit('gingerbread-man').targeting !== 'pacifist' || getUnit('gingerbread-man').atk !== 0) {
+    throw new Error('gingerbread targeting');
+  }
   if (getUnit('tiny-brave-mouse').targeting !== 'brawler') throw new Error('mouse targeting');
   if (getUnit('puss-in-boots').targeting !== 'hitman') throw new Error('puss targeting');
   const bat = getUnit('vampire-bat');
@@ -3024,6 +3145,8 @@ assertShopCurve();
     throw new Error(`vampire bat ${bat.hp}/${bat.atk}/${bat.speed} ${bat.targeting} ${bat.ability?.trigger}`);
   }
   {
+    const foe = instanceFromDef('tiny-brave-mouse', 1, 'gbBat');
+    foe.permanentMods = { atk: 0, hp: -2, speed: 0 };
     const sip = simulateBattle(
       makeSnapshot({
         playerId: 'p',
@@ -3037,7 +3160,7 @@ assertShopCurve();
         playerName: 'e',
         runId: 'r',
         round: 1,
-        team: [instanceFromDef('gingerbread-man', 1, 'gbBat')],
+        team: [foe],
       }),
       4,
     );
@@ -3152,7 +3275,7 @@ assertShopCurve();
     if (u.targeting !== 'pacifist') continue;
     if (u.atk !== 0) throw new Error(`pacifist ${u.id} atk ${u.atk}`);
     const wantSpeed =
-      u.id === 'little-fairy' || u.id === 'time-master' ? 9 : u.id === 'patchwork-princess' ? 3 : 0;
+      u.id === 'little-fairy' || u.id === 'time-master' || u.id === 'gingerbread-man' ? 9 : u.id === 'patchwork-princess' ? 3 : 0;
     if (u.speed !== wantSpeed) throw new Error(`pacifist ${u.id} spd ${u.speed}`);
   }
   {
@@ -3523,7 +3646,7 @@ assertShopCurve();
   if (!crestGuard.events.some((e) => e.type === 'AttackStarted' && e.unitId === 'player:kc1' && e.targetId === 'enemy:pdKc')) {
     throw new Error('knight crest guardian did not counter the rear hit');
   }
-  if (translate('en', 'stk.knightsCrest.d') !== 'This unit has Guardian.') {
+  if (translate('en', 'stk.knightsCrest.d') !== 'This figure has Guardian.') {
     throw new Error('knight crest text');
   }
 }
@@ -3706,6 +3829,12 @@ if (!assertDeterministic(a, b, 12345)) throw new Error('determinism failed');
   if (!boy || boy.stickerIds.join(',') !== 'fur-armor,rusty-knife' || after?.hp !== 8 || after?.atk !== 3) {
     throw new Error(`filth persist stk=${boy?.stickerIds.join(',')} hp=${after?.hp} atk=${after?.atk}`);
   }
+  const fadeAt = (run.lastBattle?.events ?? []).findIndex((e) => e.type === 'PoisonFaded' && e.unitId === 'player:fl1');
+  const endedAt = (run.lastBattle?.events ?? []).findIndex((e) => e.type === 'BattleEnded');
+  const fade = run.lastBattle?.events[fadeAt];
+  if (!fade || fade.type !== 'PoisonFaded' || fade.stickers.join(',') !== 'fur-armor,rusty-knife' || fadeAt > endedAt) {
+    throw new Error(`poison should leave the board at scrap end stk=${fade && fade.type === 'PoisonFaded' ? fade.stickers.join(',') : 'none'}`);
+  }
   let full = createRun('ai', 'tester', 'FilthFull', 0x73);
   full = {
     ...full,
@@ -3738,6 +3867,32 @@ if (!assertDeterministic(a, b, 12345)) throw new Error('determinism failed');
     restored.stickerIds.join(',') !== 'fur-armor,rusty-knife,trash'
   ) {
     throw new Error(`poison should give the sticker back stk=${restored?.stickerIds.join(',')}`);
+  }
+  const fullFade = (full.lastBattle?.events ?? []).find((e) => e.type === 'PoisonFaded' && e.unitId === 'player:fullRun');
+  if (!fullFade || fullFade.type !== 'PoisonFaded' || fullFade.stickers.join(',') !== 'fur-armor,rusty-knife,trash') {
+    throw new Error(`poison should uncover the sticker on the board stk=${fullFade && fullFade.type === 'PoisonFaded' ? fullFade.stickers.join(',') : 'none'}`);
+  }
+  const ko = simulateBattle(
+    makeSnapshot({
+      playerId: 'p',
+      playerName: 'p',
+      runId: 'r',
+      round: 1,
+      team: [instanceFromDef('paper-dove', 1, 'koDove')],
+    }),
+    makeSnapshot({
+      playerId: 'e',
+      playerName: 'e',
+      runId: 'r',
+      round: 1,
+      team: [applySticker(instanceFromDef('farm-boy', 1, 'koFilth'), 'filth')],
+    }),
+    9,
+  );
+  const koFade = ko.events.find((e) => e.type === 'PoisonFaded' && e.unitId === 'player:koDove');
+  const koDied = ko.events.some((e) => e.type === 'UnitDied' && e.unitId === 'player:koDove');
+  if (!koDied || !koFade || koFade.type !== 'PoisonFaded' || koFade.stickers.includes('poison')) {
+    throw new Error(`poison should leave a knocked-out figure stk=${koFade && koFade.type === 'PoisonFaded' ? koFade.stickers.join(',') : 'none'}`);
   }
   const hunt = resolveHuntFight({
     ...createRun('ai', 'tester', 'FilthHunt', 0x72),
@@ -3918,11 +4073,11 @@ if (!assertDeterministic(a, b, 12345)) throw new Error('determinism failed');
 }
 {
   const pile = getUnit('garbage-pile');
-  if (pile.rarity !== 'gold' || pile.hp !== 6 || pile.atk !== 0 || pile.speed !== 0 || pile.targeting !== 'pacifist' || !pile.passives?.provoke) {
+  if (pile.rarity !== 'gold' || pile.hp !== 10 || pile.atk !== 0 || pile.speed !== 0 || pile.targeting !== 'pacifist' || !pile.passives?.provoke) {
     throw new Error('garbage pile should be a gold pacifist taunt');
   }
   const lordCard = renderUnitCard('en', instanceFromDef('sewer-lord', 1, 'pileCard'));
-  if (!lordCard.includes('BATTLE START') || !lordCard.includes('Garbage Piles')) {
+  if (!lordCard.includes('START OF SCRAP') || !lordCard.includes('Spawn') || !lordCard.includes('Garbage Pile') || !lordCard.includes('in the first 3 slots') || !lordCard.includes('These figures are created.')) {
     throw new Error('sewer lord should open with three piles');
   }
   const piles = simulateBattle(
@@ -3977,11 +4132,11 @@ if (!assertDeterministic(a, b, 12345)) throw new Error('determinism failed');
     throw new Error('greed fang it');
   }
   const myth = renderStickerCard('en', 'mythic-treasure', false);
-  if (!myth.includes('BATTLE START') || !myth.includes('Exhaust') || myth.includes('ON STICKER')) {
+  if (!myth.includes('START OF SCRAP') || !myth.includes('Exhaust') || myth.includes('ON STICKER')) {
     throw new Error('mythic treasure should open at battle start and then exhaust');
   }
   const mythGlued = renderUnitCard('en', applySticker(instanceFromDef('greed-fang', 1, 'gfTip'), 'mythic-treasure'));
-  if (!mythGlued.includes('BATTLE START') || !mythGlued.includes('Exhaust')) {
+  if (!mythGlued.includes('START OF SCRAP') || !mythGlued.includes('Exhaust')) {
     throw new Error('mythic treasure hover should show battle start');
   }
   const diamonds = new Set(['reapers-scythe', 'void-heart', 'ares-helm']);
@@ -4015,9 +4170,36 @@ if (huntMonstersFor(1).some((m) => getUnit(m.unitId).rarity === 'diamond')) thro
 if (huntMonstersFor(9).some((m) => getUnit(m.unitId).rarity !== 'diamond')) throw new Error('r9 hunt not diamond');
 if (!huntMonstersFor(9).some((m) => m.unitId === 'greed-fang')) throw new Error('r9 hunt missing greed fang');
 if (huntMonstersFor(1).some((m) => m.unitId !== 'thousand-maws')) throw new Error('early hunt should be thousand maws');
+if (huntMonstersFor(3).some((m) => m.unitId !== 'thousand-maws')) throw new Error('round 3 hunt should be thousand maws');
+if (huntMonstersFor(4).some((m) => m.unitId !== 'purple-widows')) throw new Error('round 4 hunt should be purple widows');
 if (shopStickers().some((s) => s.frame === 'monster')) throw new Error('hunt sticker in shop');
 if (huntStickerFor('thousand-maws') !== 'endless-hunger') throw new Error('maws hunt sticker');
 if (HUNT_MONSTERS.length !== 5) throw new Error('hunt roster size');
+{
+  const huntRolls = (round: number, seen: Array<'bronze' | 'silver' | 'gold' | 'platinum' | 'diamond'>) => {
+    let appeared = 0;
+    for (let seed = 1; seed <= 24; seed++) {
+      let run = createRun('ai', 'tester', 'HuntOnce', seed);
+      run = { ...run, phase: 'result', lastBattle: null, round, huntRaritiesSeen: [...seen] };
+      let n = 0;
+      for (let i = 0; i < 10; i++) {
+        run = afterResult({ ...run, phase: 'result', lastBattle: null, round });
+        if (run.eventId === 'monster-hunt') n++;
+      }
+      if (n > 1) throw new Error(`hunt at round ${round} appeared ${n} times`);
+      if (n === 1) appeared++;
+    }
+    return appeared;
+  };
+  if (!huntRolls(1, [])) throw new Error('bronze hunt should still appear once');
+  if (!huntRolls(4, ['bronze'])) throw new Error('silver hunt should still appear once');
+  let blocked = createRun('ai', 'tester', 'HuntBlocked', 3);
+  blocked = { ...blocked, phase: 'result', lastBattle: null, round: 2, huntRaritiesSeen: ['bronze'] };
+  for (let i = 0; i < 20; i++) {
+    blocked = afterResult({ ...blocked, phase: 'result', lastBattle: null, round: 2 });
+    if (blocked.eventId === 'monster-hunt') throw new Error('bronze hunt returned after it had already appeared');
+  }
+}
 for (const id of ['thousand-maws', 'mad-woodsman', 'sewer-lord', 'purple-widows', 'greed-fang'] as const) {
   if (!hasUnitArt(id) || !hasCardFace(id) || !hasPrintedCard(id)) throw new Error(`hunt art ${id}`);
 }
@@ -4060,7 +4242,7 @@ if (huntStickerFor('mad-woodsman') !== 'woodsmans-axe') throw new Error('woodsma
 if (shopStickers().some((s) => s.id === 'woodsmans-axe')) throw new Error('axe in shop');
 {
   const glued = applySticker(instanceFromDef('mad-woodsman', 1, 'axeCard'), 'woodsmans-axe');
-  if (computedStats(glued).atk !== 6) throw new Error('axe should print +3 ATK');
+  if (computedStats(glued).atk !== 8) throw new Error('axe should print +5 ATK');
   const chop = simulateBattle(
     makeSnapshot({
       playerId: 'p',
@@ -4298,8 +4480,8 @@ ev = resolveHuntFight(ev);
     team: [instanceFromDef('cursed-doll', 1, 'wd1')],
   });
   const spawned = wood.lastBonusBattle?.events.find((e) => e.type === 'UnitSpawned' && e.unit.defId === 'mad-woodsman');
-  if (!spawned || spawned.type !== 'UnitSpawned' || !spawned.unit.stickers.includes('woodsmans-axe') || spawned.unit.atk !== 9) {
-    throw new Error('woodsman should enter with his axe, 9 ATK');
+  if (!spawned || spawned.type !== 'UnitSpawned' || !spawned.unit.stickers.includes('woodsmans-axe') || spawned.unit.atk !== 11) {
+    throw new Error('woodsman should enter with his axe, 11 ATK');
   }
 }
 ev = claimHunt(ev);
@@ -4633,6 +4815,43 @@ console.log('OK event smoke');
   }
 }
 console.log('OK pacifist stalemate');
+
+{
+  let line = createRun('ai', 'tester', 'Line', 1);
+  line = {
+    ...line,
+    phase: 'formation',
+    team: [instanceFromDef('farm-boy', 1, 'a'), instanceFromDef('hunter', 2, 'b')],
+  };
+  const skipped = moveUnitSlot(line, 1, 4);
+  if (skipped.team.find((u) => u.instanceId === 'a')?.slot !== 1) {
+    throw new Error('set line should refuse a rearward empty slot');
+  }
+  const stepped = moveUnitSlot(line, 2, 3);
+  if (stepped.team.find((u) => u.instanceId === 'b')?.slot !== 2) {
+    throw new Error('set line should refuse the first empty slot behind the line');
+  }
+  const swapped = moveUnitSlot(line, 1, 2);
+  if (
+    swapped.team.find((u) => u.instanceId === 'a')?.slot !== 2 ||
+    swapped.team.find((u) => u.instanceId === 'b')?.slot !== 1
+  ) {
+    throw new Error('set line should still swap occupied slots');
+  }
+  const gapped = {
+    ...line,
+    team: [instanceFromDef('farm-boy', 1, 'a'), instanceFromDef('hunter', 3, 'b')],
+  };
+  const behind = moveUnitSlot(gapped, 1, 4);
+  if (behind.team.find((u) => u.instanceId === 'a')?.slot !== 1) {
+    throw new Error('set line should refuse a slot behind a free one');
+  }
+  const closed = moveUnitSlot(gapped, 3, 2);
+  if (closed.team.find((u) => u.instanceId === 'b')?.slot !== 2) {
+    throw new Error('set line should allow moving forward into the free slot');
+  }
+}
+console.log('OK set line');
 
 const run = autoPlayRun(0x51a711);
 if (run.phase !== 'final' || run.history.length !== 10) {
