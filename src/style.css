@@ -2102,7 +2102,8 @@ h2.sign, .panel h2 {
   display: none !important;
 }
 .choice-table .is-recruit.is-alley-full-plate > .shop-gem,
-.choice-table .is-sticker.is-alley-full-plate > .shop-gem {
+.choice-table .is-sticker.is-alley-full-plate > .shop-gem,
+.choice-table .is-alley-hunt-cutout > .shop-gem {
   display: block;
   position: absolute;
   top: 0;
@@ -2115,7 +2116,8 @@ h2.sign, .panel h2 {
   z-index: 30;
 }
 .choice-table .is-recruit.is-alley-full-plate.is-done > .shop-gem,
-.choice-table .is-sticker.is-alley-full-plate.is-done > .shop-gem {
+.choice-table .is-sticker.is-alley-full-plate.is-done > .shop-gem,
+.choice-table .is-alley-hunt-cutout.is-done > .shop-gem {
   filter: grayscale(1) brightness(0.82);
 }
 .unit-card.choice-plate.is-hunt-plate {

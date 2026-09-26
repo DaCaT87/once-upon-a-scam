@@ -57,16 +57,16 @@ const MENU_LOOP_AT = 3;
 
 /** Real stings. The synth below is only the fallback if a file is still loading. */
 const SFX_SRC: Partial<Record<SfxName, string>> = {
-  punch: './audio/sfx/punch.mp3?v=hit1',
-  death: './audio/sfx/character-fall.mp3?v=fall2',
-  whoosh: './audio/sfx/swing.mp3?v=swing1',
-  puff: './audio/sfx/swoosh.mp3?v=puff1',
-  sticker: './audio/sfx/book-flip.ogg?v=full1',
-  peel: './audio/sfx/book-flip.ogg?v=full1',
-  paper: './audio/sfx/flipcard.mp3?v=flip2',
-  wood: './audio/sfx/flipcard.mp3?v=flip2',
-  bell: './audio/sfx/lucky.mp3?v=lucky1',
-  boing: './audio/sfx/damage-from-punch.mp3?v=dmg3',
+  punch: './audio/sfx/punch.wav?v=trim1',
+  death: './audio/sfx/character-fall.wav?v=trim1',
+  whoosh: './audio/sfx/swing.wav?v=trim1',
+  puff: './audio/sfx/swoosh.wav?v=trim1',
+  sticker: './audio/sfx/book-flip.wav?v=trim1',
+  peel: './audio/sfx/book-flip.wav?v=trim1',
+  paper: './audio/sfx/flipcard.wav?v=trim1',
+  wood: './audio/sfx/flipcard.wav?v=trim1',
+  bell: './audio/sfx/lucky.wav?v=trim1',
+  boing: './audio/sfx/damage-from-punch.wav?v=trim1',
   click: './audio/sfx/click.wav?v=tick1',
 };
 

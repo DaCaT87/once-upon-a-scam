@@ -1,6 +1,6 @@
 import { audio, type MusicCue } from '../audio/engine';
 import { firstFreeSlot, getUnit, stickerArtFile } from '../core/catalog';
-import { EVENT_BY_ID, eventHidesRarity, huntStickerFor, lossRewardRarity } from '../data/events';
+import { EVENT_BY_ID, HUNT_MONSTERS, eventHidesRarity, huntStickerFor, lossRewardRarity } from '../data/events';
 import { rarityRank, shopMaxRarity, stickerMaxRarity } from '../data/rarity';
 import { grantableStickers, libraryHuntStickers } from '../data/stickers';
 import { UNITS } from '../data/units';
@@ -175,6 +175,17 @@ export class GameApp {
   private bindGlobal(): void {
     window.addEventListener('pointerdown', () => audio.unlock());
     audio.setVolumes(this.settings.music, this.settings.sfx, this.settings.ui);
+    this.root.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-act]');
+      if (!btn || btn.matches(':disabled, [aria-disabled="true"]')) return;
+      const act = btn.dataset.act;
+      if (act === 'alley-recruit' || act === 'alley-sticker' || act === 'alley-event') return;
+      audio.play('click', 'ui');
+    });
+    document.getElementById('menu-stamp')?.addEventListener('pointerdown', (e) => {
+      if (e.button === 0) audio.play('click', 'ui');
+    });
     this.root.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
       const btn = target.closest<HTMLElement>('[data-act]');
@@ -564,7 +575,7 @@ export class GameApp {
         const extra = opts?.extraClass ? ` ${opts.extraClass}` : '';
         const hunt = Boolean(opts?.extraClass?.includes('is-hunt-plate'));
         const hideRarity = Boolean(opts?.extraClass?.includes('is-event-plain'));
-        const shopGem = id === 'recruit' || id === 'sticker';
+        const shopGem = id === 'recruit' || id === 'sticker' || Boolean(opts?.extraClass?.includes('is-alley-hunt-cutout'));
         const mark = shopGem
           ? `<img class="shop-gem" src="./art/ui/shop-gem-${rar}.png?v=gem2" alt="" draggable="false" />`
           : hunt && !hideRarity && !opts?.extraClass?.includes('printed-card')
@@ -588,7 +599,7 @@ export class GameApp {
             `./art/ui/plate-hunt-${run.huntMonsterId}.png?v=alley3`,
             ev ? this.L(ev.nameKey) : this.L('alleyEvent'),
             ev ? this.L(ev.descKey) : this.L('alleyEventD'),
-            { extraClass: 'is-event-plain is-alley-full-plate is-alley-hunt-cutout' },
+            { extraClass: 'is-event-plain is-alley-full-plate is-alley-hunt-cutout', rarity: HUNT_MONSTERS.find((m) => m.unitId === run.huntMonsterId)?.rarity },
           );
         }
         const title = ev ? this.L(ev.nameKey) : this.L('alleyEvent');
@@ -3131,9 +3142,6 @@ export class GameApp {
   }
 
   private async onAction(act: string, el: HTMLElement): Promise<void> {
-    if (act !== 'alley-recruit' && act !== 'alley-sticker' && act !== 'alley-event') {
-      audio.play('click', 'ui');
-    }
     if (act === 'preview-clip') {
       const clip = el.dataset.clip;
       const img = this.root.querySelector<HTMLImageElement>('#card-sample .portrait-art');
