@@ -176,14 +176,18 @@ export class GameApp {
     // Capture so the bus wakes before any button click tries to play.
     window.addEventListener('pointerdown', () => audio.unlock(), { capture: true });
     audio.setVolumes(this.settings.music, this.settings.sfx, this.settings.ui);
-    this.root.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0) return;
-      const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-act]');
-      if (!btn || btn.matches(':disabled, [aria-disabled="true"]')) return;
-      const act = btn.dataset.act;
-      if (act === 'alley-recruit' || act === 'alley-sticker' || act === 'alley-event') return;
-      audio.play('click', 'ui');
-    });
+    this.root.addEventListener(
+      'pointerdown',
+      (e) => {
+        if (e.button !== 0) return;
+        const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-act]');
+        if (!btn || btn.matches(':disabled, [aria-disabled="true"]')) return;
+        const act = btn.dataset.act;
+        if (act === 'alley-recruit' || act === 'alley-sticker' || act === 'alley-event') return;
+        audio.play('click', 'ui');
+      },
+      { capture: true },
+    );
     document.getElementById('menu-stamp')?.addEventListener('pointerdown', (e) => {
       if (e.button === 0) audio.play('click', 'ui');
     });
@@ -3343,7 +3347,10 @@ export class GameApp {
     }
     if (act === 'fight' && this.run) {
       if (this.isHuntLineup()) return this.launchHuntFight();
+      // Give the button tick a frame before fullscreen / the scrap sim steal the thread.
+      await new Promise<void>((r) => requestAnimationFrame(() => r()));
       await this.maybeFullscreen();
+      audio.unlock();
       await this.beginFight();
       return;
     }

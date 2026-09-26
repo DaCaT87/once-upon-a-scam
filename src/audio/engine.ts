@@ -650,12 +650,13 @@ export class AudioEngine {
   private playSample(name: SfxName, vol: number): boolean {
     const buf = this.sfxBuffers.get(name);
     if (!buf || !this.ctx) return false;
+    if (this.ctx.state === 'suspended') void this.ctx.resume();
     const src = this.ctx.createBufferSource();
     const g = this.ctx.createGain();
     src.buffer = buf;
     g.gain.value = vol;
     src.connect(g).connect(this.dest());
-    src.start();
+    src.start(this.ctx.currentTime);
     return true;
   }
 

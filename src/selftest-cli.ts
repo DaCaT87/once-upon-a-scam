@@ -1041,6 +1041,42 @@ assertShopCurve();
   }
   if (getUnit('ice-king').rarity !== 'platinum') throw new Error('ice king rarity');
   if (abilityRule('en', 'ice-king') !== 'Silence all other figures.') throw new Error('ice king silence text');
+  {
+    const withHero = simulateBattle(
+      makeSnapshot({
+        playerId: 'p',
+        playerName: 'p',
+        runId: 'r',
+        round: 1,
+        team: [instanceFromDef('ice-king', 1, 'iqH'), instanceFromDef('champion-of-the-arena', 2, 'chH')],
+      }),
+      makeSnapshot({
+        playerId: 'e',
+        playerName: 'e',
+        runId: 'r',
+        round: 1,
+        team: [instanceFromDef('ogre-king', 1, 'ogH')],
+      }),
+      17,
+    );
+    const hero = withHero.events
+      .filter((e) => e.type === 'StatChanged' && e.unitId === 'player:chH' && e.stat === 'atk')
+      .at(-1);
+    const spawn = withHero.events.find((e) => e.type === 'UnitSpawned' && e.unit.uid === 'player:chH');
+    const afterSilence =
+      hero && hero.type === 'StatChanged'
+        ? hero.now
+        : spawn && spawn.type === 'UnitSpawned'
+          ? spawn.unit.atk
+          : -1;
+    // Silence strips the arena passive; Hero falls back to printed 1, not the inflated peak.
+    if (afterSilence !== 1) {
+      throw new Error(`ice king should reset arena hero to 1 atk, got ${afterSilence}`);
+    }
+    if (!withHero.events.some((e) => e.type === 'Silenced' && e.unitId === 'player:chH')) {
+      throw new Error('ice king should silence the arena hero');
+    }
+  }
 }
 {
   const sword = simulateBattle(

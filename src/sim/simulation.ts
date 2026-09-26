@@ -1345,6 +1345,7 @@ function silenceCard(state: SimState, source: Combatant, target: Combatant): voi
   if (target.dead || target.dying || target.uid === source.uid) return;
   if (target.silenced) return;
   const def = getUnit(target.defId);
+  const hadChampion = Boolean(target.passives.championAtk);
   // Stickers stay on the card but look spent. Their stats and keywords go with the figure's effects.
   stripEffectStats(state, target);
   target.stickerEffectsSuppressed = true;
@@ -1352,7 +1353,18 @@ function silenceCard(state: SimState, source: Combatant, target: Combatant): voi
   target.passives = {};
   target.abilities = [];
   target.targeting = def.targeting;
+  // Hero of the Arena's ATK was rewritten by the passive; silence must put it back to print.
+  if (hadChampion) {
+    const bare = bareCombatStats(target);
+    if (target.atk !== bare.atk) {
+      const amount = bare.atk - target.atk;
+      target.atk = bare.atk;
+      emit(state, { type: 'StatChanged', unitId: target.uid, stat: 'atk', amount, now: target.atk });
+    }
+    target.coreAtk = target.atk;
+  }
   emit(state, { type: 'Silenced', sourceId: source.uid, unitId: target.uid });
+  refreshChampionAtk(state);
 }
 
 function anyOtherSilencer(state: SimState, exceptUid?: string): boolean {
