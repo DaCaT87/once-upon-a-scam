@@ -1,7 +1,6 @@
 import { audio } from '../audio/engine';
-import { slotRange } from '../core/catalog';
+import { getUnit, slotRange } from '../core/catalog';
 import { translate } from '../data/i18n';
-import { getUnit } from '../data/units';
 import type { BattleEvent, DeathStyle, PublicUnitView, Settings, TeamId } from '../core/types';
 import { MAX_TEAM } from '../core/types';
 import { renderBattleCard, renderCocoonBattleAbility, renderStickerRail, fitCardSlabs } from '../ui/cards';
