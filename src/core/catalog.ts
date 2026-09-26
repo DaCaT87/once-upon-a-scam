@@ -347,7 +347,7 @@ export function assertAbilityTiming(): void {
     ['cocoon', 'onHit'],
     ['mythic-treasure', 'battleStart'],
     ['filth', 'onHit'],
-    ['poison', 'turnEnd'],
+    ['poison', 'turnStart'],
     ['trash', null],
   ];
   for (const [id, want] of stickers) {

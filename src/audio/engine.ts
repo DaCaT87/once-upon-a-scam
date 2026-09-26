@@ -13,7 +13,14 @@ export type SfxName =
   | 'click'
   | 'win'
   | 'lose'
-  | 'whoosh';
+  | 'whoosh'
+  | 'shopRecruit'
+  | 'shopSticker'
+  | 'hunt'
+  | 'well'
+  | 'oven'
+  | 'clone'
+  | 'book';
 
 export type MusicCue = 'menu' | 'fight' | 'hunt';
 
@@ -31,6 +38,15 @@ const SFX_SRC: Partial<Record<SfxName, string>> = {
   punch: './audio/sfx/hit.mp3',
   death: './audio/sfx/ko.mp3',
   trumpet: './audio/sfx/banner.mp3',
+  win: './audio/sfx/win.mp3',
+  lose: './audio/sfx/lose.mp3',
+  shopRecruit: './audio/sfx/recruit.mp3',
+  shopSticker: './audio/sfx/shop-sticker.mp3',
+  hunt: './audio/sfx/hunt.mp3',
+  well: './audio/sfx/well.mp3',
+  oven: './audio/sfx/oven.mp3',
+  clone: './audio/sfx/clone.mp3',
+  book: './audio/sfx/book.mp3',
 };
 
 export class AudioEngine {
@@ -254,6 +270,31 @@ export class AudioEngine {
         break;
       case 'whoosh':
         this.noise(t, 0.18, 900, 0.14 * g, 'bandpass');
+        break;
+      case 'shopRecruit':
+        this.tone(t, 523, 0.1, 'triangle', 0.1 * g);
+        this.tone(t + 0.08, 784, 0.14, 'triangle', 0.08 * g);
+        break;
+      case 'shopSticker':
+        this.slide(t, 640, 900, 0.12, 0.1 * g);
+        break;
+      case 'hunt':
+        this.tone(t, 55, 0.22, 'sine', 0.16 * g);
+        this.noise(t, 0.08, 180, 0.1 * g, 'lowpass');
+        break;
+      case 'well':
+        this.slide(t, 1400, 400, 0.14, 0.08 * g);
+        break;
+      case 'oven':
+        this.noise(t, 0.2, 600, 0.1 * g, 'bandpass');
+        break;
+      case 'clone':
+        this.slide(t, 200, 1400, 0.12, 0.08 * g);
+        this.tone(t + 0.12, 880, 0.1, 'sine', 0.06 * g);
+        break;
+      case 'book':
+        this.tone(t, 330, 0.16, 'sine', 0.08 * g);
+        this.tone(t + 0.06, 494, 0.18, 'sine', 0.06 * g);
         break;
     }
   }

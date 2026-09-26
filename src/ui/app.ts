@@ -3079,8 +3079,28 @@ export class GameApp {
     this.render();
   }
 
+  private marketSfx(act: string): 'click' | 'shopRecruit' | 'shopSticker' | 'hunt' | 'well' | 'oven' | 'clone' | 'book' | 'paper' {
+    if (act === 'alley-recruit') return 'shopRecruit';
+    if (act === 'alley-sticker') return 'shopSticker';
+    if (act !== 'alley-event') return 'click';
+    switch (this.run?.eventId) {
+      case 'monster-hunt':
+        return 'hunt';
+      case 'wishing-well':
+        return 'well';
+      case 'witch-oven':
+        return 'oven';
+      case 'cloning-chamber':
+        return 'clone';
+      case 'book-of-lost-tales':
+        return 'book';
+      default:
+        return 'paper';
+    }
+  }
+
   private async onAction(act: string, el: HTMLElement): Promise<void> {
-    audio.play('click', 'ui');
+    audio.play(this.marketSfx(act), 'ui');
     if (act === 'preview-clip') {
       const clip = el.dataset.clip;
       const img = this.root.querySelector<HTMLImageElement>('#card-sample .portrait-art');

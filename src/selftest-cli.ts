@@ -3780,12 +3780,12 @@ if (!assertDeterministic(a, b, 12345)) throw new Error('determinism failed');
 }
 {
   const poisonCard = renderStickerCard('en', 'poison', false);
-  if (!poisonCard.includes('END OF TURN') || !poisonCard.includes('timing-type') || !poisonCard.includes('Exhaust') || poisonCard.includes('Up to 3')) {
+  if (!poisonCard.includes('ON MY TURN') || !poisonCard.includes('timing-type') || !poisonCard.includes('Take 1 damage') || !poisonCard.includes('Exhaust') || poisonCard.includes('Up to 3')) {
     throw new Error('poison card');
   }
   if (!poisonCard.includes('rarity-gold')) throw new Error('poison should be gold');
   const poisonIt = renderStickerCard('it', 'poison', false);
-  if (!poisonIt.includes('FINE TURNO') || !poisonIt.includes('Esaurisci')) {
+  if (!poisonIt.includes('IL MIO TURNO') || !poisonIt.includes('Subisci 1 danno') || !poisonIt.includes('Esaurisci')) {
     throw new Error('poison it');
   }
   const ticked = simulateBattle(
@@ -3811,8 +3811,8 @@ if (!assertDeterministic(a, b, 12345)) throw new Error('determinism failed');
   const tick = ticked.events.findIndex(
     (e) => e.type === 'DamageDealt' && e.targetId === 'player:tox' && e.kind === 'effect' && e.amount === 1,
   );
-  if (start < 0 || swing < 0 || ended < 0 || tick < 0 || !(start < swing && swing < ended && ended < tick)) {
-    throw new Error('poison should tick at the end of the turn');
+  if (start < 0 || swing < 0 || ended < 0 || tick < 0 || !(start < tick && tick < swing && swing < ended)) {
+    throw new Error('poison should tick at the start of the turn');
   }
   let triple = instanceFromDef('farm-boy', 1, 'tox3');
   triple = applySticker(triple, 'poison');
@@ -3830,16 +3830,17 @@ if (!assertDeterministic(a, b, 12345)) throw new Error('determinism failed');
     6,
   );
   const boyStart = stacked.events.findIndex((e) => e.type === 'TurnStarted' && e.unitId === 'player:tox3');
-  const boyEnd = stacked.events.findIndex((e) => e.type === 'TurnEnded' && e.unitId === 'player:tox3');
+  const boySwing = stacked.events.findIndex((e) => e.type === 'AttackStarted' && e.unitId === 'player:tox3');
   const stacks = stacked.events.filter(
     (e, i) =>
-      i > boyEnd &&
+      i > boyStart &&
+      i < boySwing &&
       e.type === 'DamageDealt' &&
       e.targetId === 'player:tox3' &&
       e.kind === 'effect',
   );
-  if (boyStart < 0 || boyEnd < boyStart || stacks.length !== 3 || stacks.reduce((n, e) => n + (e.type === 'DamageDealt' ? e.amount : 0), 0) !== 3) {
-    throw new Error(`three poisons should deal 3 at end of turn, got ${stacks.length}`);
+  if (boyStart < 0 || boySwing < boyStart || stacks.length !== 3 || stacks.reduce((n, e) => n + (e.type === 'DamageDealt' ? e.amount : 0), 0) !== 3) {
+    throw new Error(`three poisons should deal 3 at the start of the turn, got ${stacks.length}`);
   }
   const lethal = simulateBattle(
     makeSnapshot({
@@ -3858,12 +3859,13 @@ if (!assertDeterministic(a, b, 12345)) throw new Error('determinism failed');
     }),
     7,
   );
+  const lethalStart = lethal.events.findIndex((e) => e.type === 'TurnStarted' && e.unitId === 'player:toxDie');
   const lethalSwing = lethal.events.findIndex((e) => e.type === 'AttackStarted' && e.unitId === 'player:toxDie');
   const lethalTick = lethal.events.findIndex(
     (e) => e.type === 'DamageDealt' && e.targetId === 'player:toxDie' && e.kind === 'effect',
   );
-  if (lethalSwing < 0 || lethalTick < lethalSwing) {
-    throw new Error('lethal poison should land after the attack');
+  if (lethalStart < 0 || lethalTick < lethalStart || lethalSwing >= 0) {
+    throw new Error('lethal poison should drop the unit at the start of its turn');
   }
   const capped = simulateBattle(
     makeSnapshot({ playerId: 'p', playerName: 'p', runId: 'r', round: 1, team: [triple] }),
