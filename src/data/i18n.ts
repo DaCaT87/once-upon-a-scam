@@ -522,7 +522,7 @@ const en: Record<string, string> = {
   discovered: 'Seen',
   locked: 'Still in the alley',
   audioNote:
-    'Fairytale Waltz, Clash Defiant and The Descent by Kevin MacLeod (incompetech.com). Licensed under Creative Commons BY 4.0.',
+    'Fairytale Waltz, Clash Defiant and The Descent by Kevin MacLeod (incompetech.com), CC BY 4.0. Hit, fall and banner stings by Kenney (kenney.nl), CC0.',
   skipNeedResult: 'The scrap is already decided.',
   mustAssign: 'Every chosen sticker must be pasted before the next scrap.',
   mustPickDraft: 'Choose exactly two.',
@@ -822,7 +822,7 @@ const it: Record<string, string> = {
   discovered: 'Visti',
   locked: 'Ancora in vicolo',
   audioNote:
-    'Fairytale Waltz, Clash Defiant e The Descent di Kevin MacLeod (incompetech.com). Licenza Creative Commons BY 4.0.',
+    'Fairytale Waltz, Clash Defiant e The Descent di Kevin MacLeod (incompetech.com), CC BY 4.0. Colpo, caduta e stacco del cartello di Kenney (kenney.nl), CC0.',
   mustAssign: 'Ogni sticker scelto va incollato prima del prossimo scontro.',
   mustPickDraft: 'Scegline esattamente due.',
   recruited: 'Ingaggiato',

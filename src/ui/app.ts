@@ -3424,6 +3424,7 @@ export class GameApp {
     const field = this.root.querySelector<HTMLElement>('#battlefield');
     const battle = run?.lastBattle;
     if (!run || !field || !battle || field.querySelector('.battle-end')) return;
+    audio.setCue('menu');
     field.classList.add('is-ended');
     const winner = battle.winner;
     const gained = winner === 'player' ? 3 : winner === 'draw' ? 1 : 0;
@@ -3452,6 +3453,10 @@ export class GameApp {
         node = node.offsetParent instanceof HTMLElement ? node.offsetParent : null;
       }
       row.style.top = `${Math.max(0, y - 86)}px`;
+      const scale = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ui-scale')) || 1;
+      const limit = field.getBoundingClientRect().top + 36;
+      const box = row.getBoundingClientRect();
+      if (box.top < limit) row.style.top = `${(parseFloat(row.style.top) || 0) + (limit - box.top) / scale}px`;
     }
     const strip = field.querySelector<HTMLElement>('.vp-roll-strip');
     const stepH = strip?.querySelector<HTMLElement>('b')?.offsetHeight || 128;

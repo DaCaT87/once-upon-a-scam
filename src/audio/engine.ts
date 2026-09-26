@@ -23,6 +23,13 @@ const MUSIC_SRC: Record<MusicCue, string> = {
   hunt: './audio/the-descent.mp3',
 };
 
+/** Real stings. The synth below is only the fallback if a file is still loading. */
+const SFX_SRC: Partial<Record<SfxName, string>> = {
+  punch: './audio/sfx/hit.mp3',
+  death: './audio/sfx/ko.mp3',
+  trumpet: './audio/sfx/banner.mp3',
+};
+
 export class AudioEngine {
   ctx: AudioContext | null = null;
   music = 0.55;
@@ -32,10 +39,14 @@ export class AudioEngine {
   private cue: MusicCue = 'menu';
   private loaded: MusicCue | null = null;
   private musicEl: HTMLAudioElement | null = null;
+  private readonly musicEls = new Map<MusicCue, HTMLAudioElement>();
+  private readonly sfxBuffers = new Map<SfxName, AudioBuffer>();
+  private readonly sfxLoading = new Set<SfxName>();
 
   unlock(): void {
     if (!this.ctx) this.ctx = new AudioContext();
     if (this.ctx.state === 'suspended') void this.ctx.resume();
+    this.loadSfx();
     if (!this.playing) this.startMusic();
   }
 
@@ -43,7 +54,7 @@ export class AudioEngine {
     this.music = music;
     this.sfx = sfx;
     this.ui = ui;
-    if (this.musicEl) this.musicEl.volume = music;
+    for (const el of this.musicEls.values()) el.volume = music;
   }
 
   /** Menu, scrap, or monster hunt. The first touch on the title screen starts it. */
@@ -63,23 +74,70 @@ export class AudioEngine {
     this.musicEl?.pause();
   }
 
-  private playCue(): void {
-    const el = this.musicEl ?? new Audio();
-    this.musicEl = el;
-    el.loop = true;
-    el.volume = this.music;
-    if (this.loaded !== this.cue) {
-      el.src = MUSIC_SRC[this.cue];
-      this.loaded = this.cue;
+  /** Each cue keeps its own element, so coming back to the waltz does not wait on a fresh download. */
+  private elFor(cue: MusicCue): HTMLAudioElement {
+    let el = this.musicEls.get(cue);
+    if (!el) {
+      el = new Audio(MUSIC_SRC[cue]);
+      el.preload = 'auto';
+      el.loop = true;
+      this.musicEls.set(cue, el);
     }
-    void el.play().catch(() => {
+    return el;
+  }
+
+  private playCue(): void {
+    const next = this.elFor(this.cue);
+    for (const [cue, el] of this.musicEls) {
+      if (cue !== this.cue) el.pause();
+    }
+    this.musicEl = next;
+    next.loop = true;
+    next.volume = this.music;
+    if (this.loaded !== this.cue && next.readyState >= 1) {
+      try {
+        next.currentTime = 0;
+      } catch {
+        /* not seekable yet; play() still starts at the beginning */
+      }
+    }
+    this.loaded = this.cue;
+    void next.play().catch(() => {
       this.playing = false;
     });
+  }
+
+  private loadSfx(): void {
+    if (!this.ctx) return;
+    for (const [name, src] of Object.entries(SFX_SRC) as [SfxName, string][]) {
+      if (this.sfxBuffers.has(name) || this.sfxLoading.has(name)) continue;
+      this.sfxLoading.add(name);
+      const ctx = this.ctx;
+      void fetch(src)
+        .then((res) => res.arrayBuffer())
+        .then((raw) => ctx.decodeAudioData(raw))
+        .then((buf) => this.sfxBuffers.set(name, buf))
+        .catch(() => {})
+        .finally(() => this.sfxLoading.delete(name));
+    }
+  }
+
+  private playSample(name: SfxName, vol: number): boolean {
+    const buf = this.sfxBuffers.get(name);
+    if (!buf || !this.ctx) return false;
+    const src = this.ctx.createBufferSource();
+    const g = this.ctx.createGain();
+    src.buffer = buf;
+    g.gain.value = vol;
+    src.connect(g).connect(this.dest());
+    src.start();
+    return true;
   }
 
   play(name: SfxName, bus: 'sfx' | 'ui' = 'sfx'): void {
     if (!this.ctx) return;
     const g = bus === 'ui' ? this.ui : this.sfx;
+    if (this.playSample(name, g)) return;
     const t = this.ctx.currentTime;
     switch (name) {
       case 'paper':

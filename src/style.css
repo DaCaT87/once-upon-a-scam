@@ -3122,12 +3122,22 @@ h2.sign, .panel h2 {
   font-size: 22px;
   padding: 12px 36px;
 }
+html.is-codex #app {
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+}
 .screen-codex {
   display: grid;
   grid-template-columns: 1fr auto;
   align-items: start;
   justify-items: stretch;
+  min-height: 100%;
   padding-top: 0;
+  overflow: visible;
+  touch-action: pan-y;
   background: transparent;
 }
 .codex-wash {
