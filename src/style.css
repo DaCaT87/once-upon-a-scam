@@ -3687,12 +3687,12 @@ html.is-codex #app {
   --card: 210px;
   --card: min(248px, calc((100cqi - var(--gap) * 8) / 8));
   --card-fit: calc(var(--card) / var(--card-w));
-  width: 100%;
+  width: min(100%, calc(var(--card) * 8 + var(--gap) * 9 + 48px));
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0;
-  margin-inline: 0;
+  justify-content: center;
+  gap: clamp(28px, 5cqi, 72px);
+  margin-inline: auto;
   min-width: 0;
   position: relative;
 }
@@ -3705,12 +3705,12 @@ html.is-codex #app {
   min-width: 0;
 }
 .battle-side.is-player {
-  justify-content: start;
-  justify-items: start;
-}
-.battle-side.is-enemy {
   justify-content: end;
   justify-items: end;
+}
+.battle-side.is-enemy {
+  justify-content: start;
+  justify-items: start;
 }
 .battle-wrap.is-intro .battle-fx {
   opacity: 0;

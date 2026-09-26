@@ -1228,10 +1228,12 @@ function applyPoison(state: SimState, target: Combatant): void {
   if (!open.length) return;
   const index = state.rng.pick(open);
   const removed = target.stickers[index]!;
-  target.stickers[index] = 'poison';
+  // Pull the old sticker off first so reverse undoes its stats/passives/ability fully.
+  target.stickers.splice(index, 1);
+  if (!target.stickerEffectsSuppressed) reverseCombatSticker(state, target, removed, true);
+  target.stickers.splice(index, 0, 'poison');
   target.poisonUndo.push({ slot: index, restore: removed });
   if (!target.stickerEffectsSuppressed) {
-    reverseCombatSticker(state, target, removed, true);
     const st = getSticker('poison');
     if (st.ability) {
       target.abilities.push({
@@ -1252,6 +1254,35 @@ function reverseCombatSticker(state: SimState, target: Combatant, stickerId: str
   const st = getSticker(stickerId);
   const ghost = { ...combatSnap(target), stickerIds: [...target.stickers, stickerId] };
   const n = stickerEffectScale(ghost, stickerId);
+  if (st.passives?.doubleStats) {
+    // Mirror Mirror had multiplied live stats on apply; undo that multiplier.
+    const hadTriple = Boolean(mergePassives(ghost).buffTriple);
+    const div = hadTriple ? 6 : 2;
+    const nextAtk = clampStat('atk', Math.round(target.atk / div));
+    const nextSpeed = clampStat('speed', Math.round(target.speed / div));
+    const nextMax = clampStat('maxHp', Math.round(target.maxHp / div));
+    const nextHp = Math.min(nextMax, Math.max(1, Math.round(target.hp / div)));
+    if (nextAtk !== target.atk) {
+      const amount = nextAtk - target.atk;
+      target.atk = nextAtk;
+      emit(state, { type: 'StatChanged', unitId: target.uid, stat: 'atk', amount, now: target.atk });
+    }
+    if (nextSpeed !== target.speed) {
+      const amount = nextSpeed - target.speed;
+      target.speed = nextSpeed;
+      emit(state, { type: 'StatChanged', unitId: target.uid, stat: 'speed', amount, now: target.speed });
+    }
+    if (nextMax !== target.maxHp) {
+      const amount = nextMax - target.maxHp;
+      target.maxHp = nextMax;
+      emit(state, { type: 'StatChanged', unitId: target.uid, stat: 'maxHp', amount, now: target.maxHp });
+    }
+    if (nextHp !== target.hp) {
+      const amount = nextHp - target.hp;
+      target.hp = nextHp;
+      emit(state, { type: 'StatChanged', unitId: target.uid, stat: 'hp', amount, now: target.hp });
+    }
+  }
   if (st.statMods?.atk) nudgeCombatStat(state, target, 'atk', -scaleBuff(target, st.statMods.atk * n, true));
   if (st.statMods?.speed) nudgeCombatStat(state, target, 'speed', -scaleBuff(target, st.statMods.speed * n, true));
   if (st.statMods?.hp) {
@@ -1260,7 +1291,9 @@ function reverseCombatSticker(state: SimState, target: Combatant, stickerId: str
     nudgeCombatStat(state, target, 'hp', amount);
   }
   if (st.ability) {
-    const i = target.abilities.findIndex((ab) => ab.def.id === st.ability!.id);
+    const i = target.abilities.findIndex(
+      (ab) => ab.stickerId === stickerId || ab.def.id === st.ability!.id,
+    );
     if (i >= 0) target.abilities.splice(i, 1);
   }
   target.passives = mergePassives(combatSnap(target));

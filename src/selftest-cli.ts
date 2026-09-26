@@ -4110,6 +4110,47 @@ if (!assertDeterministic(a, b, 12345)) throw new Error('determinism failed');
   ) {
     throw new Error('a full card should turn one random sticker into poison');
   }
+  {
+    // A converted sticker must lose its old bonus for the rest of the scrap.
+    let sawKnife = false;
+    for (let seed = 1; seed <= 40; seed++) {
+      const scrap = simulateBattle(
+        makeSnapshot({
+          playerId: 'p',
+          playerName: 'p',
+          runId: 'r',
+          round: 1,
+          team: [
+            applySticker(
+              applySticker(applySticker(instanceFromDef('farm-boy', 1, 'knifeOnly'), 'fur-armor'), 'rusty-knife'),
+              'trash',
+            ),
+          ],
+        }),
+        makeSnapshot({
+          playerId: 'e',
+          playerName: 'e',
+          runId: 'r',
+          round: 1,
+          team: [applySticker(instanceFromDef('paper-dove', 1, 'filthKnife'), 'filth')],
+        }),
+        seed,
+      );
+      const knifeSwap = scrap.events.find(
+        (e) => e.type === 'PoisonApplied' && e.unitId === 'player:knifeOnly' && e.removed === 'rusty-knife',
+      );
+      if (!knifeSwap) continue;
+      sawKnife = true;
+      const after = scrap.events
+        .filter((e) => e.type === 'StatChanged' && e.unitId === 'player:knifeOnly' && e.stat === 'atk')
+        .at(-1);
+      if (!after || after.type !== 'StatChanged' || after.now !== getUnit('farm-boy').atk) {
+        throw new Error(`poisoned knife should drop ATK to print, got ${after && after.type === 'StatChanged' ? after.now : 'none'}`);
+      }
+      break;
+    }
+    if (!sawKnife) throw new Error('could not roll a rusty-knife poison convert');
+  }
 }
 {
   const pile = getUnit('garbage-pile');

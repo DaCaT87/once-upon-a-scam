@@ -3347,8 +3347,8 @@ export class GameApp {
     }
     if (act === 'fight' && this.run) {
       if (this.isHuntLineup()) return this.launchHuntFight();
-      // Give the button tick a frame before fullscreen / the scrap sim steal the thread.
-      await new Promise<void>((r) => requestAnimationFrame(() => r()));
+      // Yield so the HTML tick can start before fullscreen / the scrap sim run.
+      await new Promise<void>((r) => setTimeout(r, 40));
       await this.maybeFullscreen();
       audio.unlock();
       await this.beginFight();
@@ -3589,7 +3589,10 @@ export class GameApp {
       const winner = this.run?.lastBattle?.winner;
       if (winner) view.beginVictory(winner);
       if (this.run?.phase !== 'result') {
-        if (!this.isScrapTry()) audio.beginEnding();
+        // Hunt (and scrap try): soft music end + victory dance, then leave the arena.
+        // Do not claimHunt here — that was jumping straight to the sticker on the scrap court.
+        const ending = this.isScrapTry() ? 0 : audio.beginEnding();
+        const waitMs = Math.max(2600, Math.round(ending * 1000) + 1800);
         window.setTimeout(() => {
           if (this.isScrapTry()) {
             const order = ['thousand-maws', 'purple-widows', 'sewer-lord', 'mad-woodsman', 'greed-fang'];
@@ -3603,14 +3606,11 @@ export class GameApp {
             void this.persist();
             return;
           }
-          if (this.run?.eventId === 'monster-hunt' && this.run.eventStep === 'hunt-result') {
-            this.run = claimHunt(this.run);
-            this.codex = discover(this.codex, [], this.run.pendingStickerIds);
-          }
+          this.battleFieldUp = false;
           this.screen = 'run';
           this.render();
           void this.persist();
-        }, 700);
+        }, waitMs);
         return;
       }
       this.playBattleEnd();

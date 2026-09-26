@@ -105,6 +105,8 @@ export class AudioEngine {
   private readonly sfxLoading = new Set<SfxName>();
   private readonly sfxRaw = new Map<SfxName, Promise<ArrayBuffer>>();
   private sfxOut: GainNode | null = null;
+  /** Button ticks use HTML audio so they are not stuck behind a suspended WebAudio bus. */
+  private clickEl: HTMLAudioElement | null = null;
 
   constructor() {
     for (const [name, src] of Object.entries(SFX_SRC) as [SfxName, string][]) {
@@ -527,8 +529,8 @@ export class AudioEngine {
   }
 
   /**
-   * Hunt closes on the next beat with its cadence sting.
-   * The scrap melts out over a few bars so the last hit does not cut the tune short.
+   * Hunt and scrap both melt out over a few bars so the last hit does not cut the tune short.
+   * Hunt used to keep a sting; that fought the soft release when leaving the arena.
    */
   private finishBed(): number {
     if (!this.ctx || !this.bedCue || this.bedCue === 'menu' || !this.bedLive) return 0;
@@ -546,46 +548,26 @@ export class AudioEngine {
     this.bedLive = false;
     this.bedPhase = 'finale';
 
-    if (cue === 'fight') {
-      // Soft release: ride the bar, then fade the bed away. No sting.
-      const fadeSec = 3.4;
-      const gain = this.musicOut();
-      const level = Math.max(0.0001, gain.gain.value);
-      gain.gain.cancelScheduledValues(now);
-      gain.gain.setValueAtTime(level, now);
-      gain.gain.setValueAtTime(level, at);
-      gain.gain.exponentialRampToValueAtTime(0.0001, at + fadeSec);
-      window.setTimeout(() => {
-        if (gen !== this.bedGen || this.bedPhase !== 'finale') return;
-        this.dropNow(this.openSrc);
-        this.dropNow(this.loopSrc);
-        this.dropNow(this.finaleSrc);
-        this.openSrc = this.loopSrc = this.finaleSrc = null;
-        this.bedPhase = null;
-        this.bedCue = null;
-        this.snapBed(this.musicLevel());
-      }, Math.round((remain + fadeSec) * 1000) + 40);
-      // Let the end banner wait for the first soft beat of the fade.
-      return remain + 0.85;
-    }
-
-    void pending.then(([, , finale]) => {
-      if (gen !== this.bedGen || !this.ctx || this.bedPhase !== 'finale') return;
-      this.haltAt(this.openSrc, at);
-      this.openSrc = null;
-      this.haltAt(this.loopSrc, at);
-      this.loopSrc = null;
-      this.playFinale(finale, at, gen);
-    }).catch(() => {
-      if (gen !== this.bedGen) return;
-      this.stopBedSources();
-      if (this.playing) {
-        this.cue = 'menu';
-        this.loaded = null;
-        this.playCue();
-      }
-    });
-    return remain;
+    // Soft release: ride the bar, then fade the bed away.
+    const fadeSec = cue === 'fight' ? 3.4 : 2.8;
+    const gain = this.musicOut();
+    const level = Math.max(0.0001, gain.gain.value);
+    gain.gain.cancelScheduledValues(now);
+    gain.gain.setValueAtTime(level, now);
+    gain.gain.setValueAtTime(level, at);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + fadeSec);
+    window.setTimeout(() => {
+      if (gen !== this.bedGen || this.bedPhase !== 'finale') return;
+      this.dropNow(this.openSrc);
+      this.dropNow(this.loopSrc);
+      this.dropNow(this.finaleSrc);
+      this.openSrc = this.loopSrc = this.finaleSrc = null;
+      this.bedPhase = null;
+      this.bedCue = null;
+      this.snapBed(this.musicLevel());
+    }, Math.round((remain + fadeSec) * 1000) + 40);
+    // Let the end banner / dance wait for the first soft beat of the fade.
+    return remain + 0.85;
   }
 
   private playFinale(finale: AudioBuffer, when: number, gen: number): void {
@@ -647,6 +629,29 @@ export class AudioEngine {
     }
   }
 
+  /** UI ticks must fire in the same gesture, even if the WebAudio bus is still waking. */
+  private playHtmlClick(): void {
+    const src = SFX_SRC.click;
+    if (!src) return;
+    if (!this.clickEl) {
+      this.clickEl = new Audio(src);
+      this.clickEl.preload = 'auto';
+    }
+    const el = this.clickEl;
+    el.volume = Math.max(0, Math.min(1, this.ui));
+    try {
+      el.currentTime = 0;
+    } catch {
+      /* not ready yet */
+    }
+    void el.play().catch(() => {
+      // First tap on some phones: clone so a fresh element rides the gesture.
+      const one = new Audio(src);
+      one.volume = el.volume;
+      void one.play().catch(() => {});
+    });
+  }
+
   private playSample(name: SfxName, vol: number): boolean {
     const buf = this.sfxBuffers.get(name);
     if (!buf || !this.ctx) return false;
@@ -661,6 +666,10 @@ export class AudioEngine {
   }
 
   play(name: SfxName, bus: 'sfx' | 'ui' = 'sfx'): void {
+    if (name === 'click') {
+      this.playHtmlClick();
+      return;
+    }
     if (!this.ctx) this.ctx = new AudioContext();
     if (this.ctx.state === 'suspended') void this.ctx.resume();
     let g = bus === 'ui' ? this.ui : this.sfx;
