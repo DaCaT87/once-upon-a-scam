@@ -173,7 +173,8 @@ export class GameApp {
   }
 
   private bindGlobal(): void {
-    window.addEventListener('pointerdown', () => audio.unlock());
+    // Capture so the bus wakes before any button click tries to play.
+    window.addEventListener('pointerdown', () => audio.unlock(), { capture: true });
     audio.setVolumes(this.settings.music, this.settings.sfx, this.settings.ui);
     this.root.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;

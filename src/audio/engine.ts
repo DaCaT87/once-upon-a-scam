@@ -67,7 +67,7 @@ const SFX_SRC: Partial<Record<SfxName, string>> = {
   wood: './audio/sfx/flipcard.wav?v=trim1',
   bell: './audio/sfx/lucky.wav?v=trim1',
   boing: './audio/sfx/damage-from-punch.wav?v=trim1',
-  click: './audio/sfx/click.wav?v=tick1',
+  click: './audio/sfx/click.wav?v=tick2',
 };
 
 export class AudioEngine {
@@ -166,8 +166,8 @@ export class AudioEngine {
    * so the fanfare can start the moment the board appears.
    */
   leaveSquare(next: BattleCue): void {
-    const nextEl = this.elFor(next);
-    nextEl.preload = 'auto';
+    // Decode the scrap bed while the pinup is up, so the fanfare is ready on the board.
+    void this.loadBed(next).catch(() => {});
     const el = this.musicEl;
     if (!el || (this.cue !== 'menu' && this.cue !== 'square')) return;
     this.fadingEl = el;
@@ -230,6 +230,9 @@ export class AudioEngine {
    * and fades across that screen, instead of stopping on the last hit.
    */
   beginEnding(): number {
+    if ((this.cue === 'fight' || this.cue === 'hunt') && (this.bedLive || this.bedPhase === 'bed')) {
+      return this.finishBed();
+    }
     const el = this.musicEl;
     if (!el || (this.cue !== 'fight' && this.cue !== 'hunt')) return 0;
     if (this.fadingEl === el) return 0;
@@ -350,6 +353,10 @@ export class AudioEngine {
 
   private playCue(): void {
     this.resumeLoop = false;
+    if (this.cue === 'fight' || this.cue === 'hunt') {
+      void this.playBed(this.cue);
+      return;
+    }
     this.playTrack(this.cue);
   }
 
@@ -629,7 +636,8 @@ export class AudioEngine {
   }
 
   play(name: SfxName, bus: 'sfx' | 'ui' = 'sfx'): void {
-    if (!this.ctx) return;
+    if (!this.ctx) this.ctx = new AudioContext();
+    if (this.ctx.state === 'suspended') void this.ctx.resume();
     let g = bus === 'ui' ? this.ui : this.sfx;
     if (name === 'paper' || name === 'wood') g *= 2.6;
     if (name === 'punch' || name === 'boing') g *= 0.8;
