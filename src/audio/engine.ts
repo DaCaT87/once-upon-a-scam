@@ -23,6 +23,9 @@ const MUSIC_SRC: Record<MusicCue, string> = {
   hunt: './audio/the-descent.mp3',
 };
 
+/** Skip the quiet opening. The waltz also loops back to this point, not to 0. */
+const CUE_START: Partial<Record<MusicCue, number>> = { menu: 3 };
+
 /** Real stings. The synth below is only the fallback if a file is still loading. */
 const SFX_SRC: Partial<Record<SfxName, string>> = {
   punch: './audio/sfx/hit.mp3',
@@ -90,10 +93,61 @@ export class AudioEngine {
     if (!el) {
       el = new Audio(MUSIC_SRC[cue]);
       el.preload = 'auto';
-      el.loop = true;
+      const start = CUE_START[cue] ?? 0;
+      el.loop = start === 0;
+      if (start > 0) {
+        el.addEventListener('ended', () => {
+          if (this.cue !== cue || !this.playing || this.musicEl !== el) return;
+          const resume = () => {
+            el.removeEventListener('seeked', resume);
+            if (this.cue !== cue || !this.playing || this.musicEl !== el) return;
+            void el.play().catch(() => {
+              this.playing = false;
+            });
+          };
+          el.addEventListener('seeked', resume);
+          try {
+            el.currentTime = start;
+          } catch {
+            el.removeEventListener('seeked', resume);
+          }
+        });
+      }
       this.musicEls.set(cue, el);
     }
     return el;
+  }
+
+  private playFrom(el: HTMLAudioElement, start: number): void {
+    const go = () => {
+      if (this.musicEl !== el || !this.playing) return;
+      const begin = () => {
+        if (this.musicEl !== el || !this.playing) return;
+        void el.play().catch(() => {
+          this.playing = false;
+        });
+      };
+      if (Math.abs(el.currentTime - start) < 0.05) {
+        begin();
+        return;
+      }
+      const resume = () => {
+        el.removeEventListener('seeked', resume);
+        begin();
+      };
+      el.addEventListener('seeked', resume);
+      try {
+        el.currentTime = start;
+      } catch {
+        el.removeEventListener('seeked', resume);
+        begin();
+      }
+    };
+    if (el.readyState < 1) {
+      el.addEventListener('loadedmetadata', go, { once: true });
+      return;
+    }
+    go();
   }
 
   private playCue(): void {
@@ -102,19 +156,18 @@ export class AudioEngine {
       if (cue !== this.cue) el.pause();
     }
     this.musicEl = next;
-    next.loop = true;
+    const start = CUE_START[this.cue] ?? 0;
+    next.loop = start === 0;
     next.volume = this.music;
-    if (this.loaded !== this.cue && next.readyState >= 1) {
-      try {
-        next.currentTime = 0;
-      } catch {
-        /* not seekable yet; play() still starts at the beginning */
-      }
-    }
+    const fresh = this.loaded !== this.cue;
     this.loaded = this.cue;
-    void next.play().catch(() => {
-      this.playing = false;
-    });
+    if (!fresh) {
+      void next.play().catch(() => {
+        this.playing = false;
+      });
+      return;
+    }
+    this.playFrom(next, start);
   }
 
   private loadSfx(): void {
