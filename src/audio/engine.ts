@@ -58,7 +58,7 @@ const MENU_LOOP_AT = 3;
 /** Real stings. The synth below is only the fallback if a file is still loading. */
 const SFX_SRC: Partial<Record<SfxName, string>> = {
   punch: './audio/sfx/punch.mp3?v=hit1',
-  death: './audio/sfx/body-fall.mp3?v=fall1',
+  death: './audio/sfx/character-fall.mp3?v=fall2',
   whoosh: './audio/sfx/swing.mp3?v=swing1',
   puff: './audio/sfx/swoosh.mp3?v=puff1',
   sticker: './audio/sfx/book-flip.ogg?v=full1',

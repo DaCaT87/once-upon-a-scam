@@ -528,7 +528,7 @@ const en: Record<string, string> = {
   discovered: 'Seen',
   locked: 'Still in the alley',
   audioNote:
-    'Menu: Fairytale Waltz. Market Square: Thatched Villagers. Final standings: The Parting. Scrap: The Descent. Monster Hunt: Clash Defiant. Kevin MacLeod (incompetech.com), CC BY. Sticker peel and button tick by Kenney (kenney.nl), CC0. Cards from Freesound (freesound.org). Hit: Punch by Universfield. Attack: Item Swing by oxidvideos. KO: Body Fall by Universfield. Lucky: Lucky Guitar by sergequadrado. Other damage is the same Punch, a little lower and shorter. Transform: Swish by stereogenicstudio.',
+    'Menu: Fairytale Waltz. Market Square: Thatched Villagers. Final standings: The Parting. Scrap: The Descent. Monster Hunt: Clash Defiant. Kevin MacLeod (incompetech.com), CC BY. Sticker peel and button tick by Kenney (kenney.nl), CC0. Cards from Freesound (freesound.org). Hit: Punch by Universfield. Attack: Item Swing by oxidvideos. KO: Game Character Fall by Universfield. Lucky: Lucky Guitar by sergequadrado. Other damage is the same Punch, a little lower and shorter. Transform: Swish by stereogenicstudio.',
   skipNeedResult: 'The scrap is already decided.',
   mustAssign: 'Every chosen sticker must be pasted before the next scrap.',
   mustPickDraft: 'Choose exactly two.',
@@ -832,7 +832,7 @@ const it: Record<string, string> = {
   discovered: 'Visti',
   locked: 'Ancora in vicolo',
   audioNote:
-    'Menù: Fairytale Waltz. Piazza: Thatched Villagers. Classifica finale: The Parting. Scrap: The Descent. Caccia: Clash Defiant. Kevin MacLeod (incompetech.com), CC BY. Stacco sticker e tic del bottone di Kenney (kenney.nl), CC0. Carte da Freesound (freesound.org). Colpo: Punch di Universfield. Attacco: Item Swing di oxidvideos. KO: Body Fall di Universfield. Lucky: Lucky Guitar di sergequadrado. Altro danno è lo stesso Punch, un po’ più basso e più corto. Trasformazione: Swish di stereogenicstudio.',
+    'Menù: Fairytale Waltz. Piazza: Thatched Villagers. Classifica finale: The Parting. Scrap: The Descent. Caccia: Clash Defiant. Kevin MacLeod (incompetech.com), CC BY. Stacco sticker e tic del bottone di Kenney (kenney.nl), CC0. Carte da Freesound (freesound.org). Colpo: Punch di Universfield. Attacco: Item Swing di oxidvideos. KO: Game Character Fall di Universfield. Lucky: Lucky Guitar di sergequadrado. Altro danno è lo stesso Punch, un po’ più basso e più corto. Trasformazione: Swish di stereogenicstudio.',
   mustAssign: 'Ogni sticker scelto va incollato prima del prossimo scontro.',
   mustPickDraft: 'Scegline esattamente due.',
   recruited: 'Ingaggiato',
