@@ -3453,10 +3453,6 @@ export class GameApp {
         node = node.offsetParent instanceof HTMLElement ? node.offsetParent : null;
       }
       row.style.top = `${Math.max(0, y - 86)}px`;
-      const scale = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ui-scale')) || 1;
-      const limit = field.getBoundingClientRect().top + 36;
-      const box = row.getBoundingClientRect();
-      if (box.top < limit) row.style.top = `${(parseFloat(row.style.top) || 0) + (limit - box.top) / scale}px`;
     }
     const strip = field.querySelector<HTMLElement>('.vp-roll-strip');
     const stepH = strip?.querySelector<HTMLElement>('b')?.offsetHeight || 128;

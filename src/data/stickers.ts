@@ -433,7 +433,7 @@ export const STICKERS: StickerDef[] = [
     icon: 'brick2',
     ability: {
       id: 'poison.d',
-      trigger: 'turnStarted',
+      trigger: 'turnEnded',
       target: 'self',
       effects: [{ op: 'damage', amount: 1 }],
     },

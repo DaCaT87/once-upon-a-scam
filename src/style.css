@@ -4053,8 +4053,6 @@ html.is-codex #app {
   border: 0;
   box-shadow: none;
   border-radius: 0;
-  -webkit-mask-image: radial-gradient(ellipse 50% 50% at 50% 50%, #000 78%, transparent 100%);
-  mask-image: radial-gradient(ellipse 50% 50% at 50% 50%, #000 78%, transparent 100%);
 }
 .dossier-art-empty {
   width: 70%;
@@ -4213,6 +4211,8 @@ html.is-codex #app {
   font-weight: 400;
   line-height: 0.9;
   letter-spacing: 0.02em;
+  padding-top: 8px;
+  margin-top: -8px;
   -webkit-text-stroke: 6px #100c0a;
   paint-order: stroke fill;
   text-shadow: -2px 0 0 #100c0a, 2px 0 0 #100c0a, 0 -2px 0 #100c0a, 0 2px 0 #100c0a;
