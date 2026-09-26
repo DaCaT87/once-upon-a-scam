@@ -2173,9 +2173,9 @@ function pressesTheFight(state: SimState, u: Combatant): boolean {
   return false;
 }
 
-/** Both sides are still up, and nobody left will land a hit on their own. */
+/** Both sides are down to Pacifists only, and none of them will ever start hitting. */
 function scrapIsStalemate(state: SimState): boolean {
-  if (!teamAlive(state, 'player') || !teamAlive(state, 'enemy')) return false;
+  if (!onlyPacifistsRemain(state)) return false;
   return living(state).every((u) => !pressesTheFight(state, u));
 }
 

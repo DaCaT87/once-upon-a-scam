@@ -30,11 +30,11 @@ const TRACK: Record<MusicCue, { src: string; from: number; gain: number }> = {
 /** Open file is the short attack plus one pass of the motif. The loop file repeats until the scrap ends. */
 const BATTLE_MUSIC: Record<BattleCue, { open: string; loop: string; finale: string; introShare: number; bpm: number }> = {
   fight: {
-    open: './audio/scrap-open.wav',
-    loop: './audio/scrap-loop.wav',
-    finale: './audio/scrap-finale.wav',
-    introShare: 2 / 10,
-    bpm: 160,
+    open: './audio/scrap-open.wav?v=boss1',
+    loop: './audio/scrap-loop.wav?v=boss1',
+    finale: './audio/scrap-finale.wav?v=boss1',
+    introShare: 1,
+    bpm: 109.78,
   },
   hunt: {
     open: './audio/hunt-open.wav',

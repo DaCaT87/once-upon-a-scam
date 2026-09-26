@@ -4789,8 +4789,29 @@ console.log('OK event smoke');
     }),
     3,
   );
-  if (quiet.winner !== 'draw' || quiet.durationCycles !== 0) {
-    throw new Error(`zero-atk stall win=${quiet.winner} cycles=${quiet.durationCycles}`);
+  if (quiet.durationCycles === 0) {
+    throw new Error(`a non-pacifist keeps the scrap going cycles=${quiet.durationCycles}`);
+  }
+
+  const lopsided = simulateBattle(
+    makeSnapshot({
+      playerId: 'p',
+      playerName: 'p',
+      runId: 'r',
+      round: 1,
+      team: [instanceFromDef('village-fool', 1, 'v1')],
+    }),
+    makeSnapshot({
+      playerId: 'e',
+      playerName: 'e',
+      runId: 'r',
+      round: 1,
+      team: [instanceFromDef('hunter', 1, 'h1')],
+    }),
+    7,
+  );
+  if (lopsided.winner !== 'enemy' || lopsided.durationCycles === 0) {
+    throw new Error(`pacifists vs attacker win=${lopsided.winner} cycles=${lopsided.durationCycles}`);
   }
 
   const flock = simulateBattle(
