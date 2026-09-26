@@ -131,7 +131,25 @@ export class AudioEngine {
     if (!this.ctx) this.ctx = new AudioContext();
     if (this.ctx.state === 'suspended') void this.ctx.resume();
     this.loadSfx();
+    // Decode the tick first so Fight never waits on HTMLAudio on Samsung.
+    void this.ensureClickBuffer();
     if (!this.playing) this.startMusic();
+  }
+
+  private ensureClickBuffer(): Promise<void> {
+    if (this.sfxBuffers.has('click') || !this.ctx) return Promise.resolve();
+    const pending = this.sfxRaw.get('click');
+    if (!pending) return Promise.resolve();
+    if (this.sfxLoading.has('click')) return Promise.resolve();
+    this.sfxLoading.add('click');
+    const ctx = this.ctx;
+    return pending
+      .then((raw) => ctx.decodeAudioData(raw.slice(0)))
+      .then((buf) => {
+        this.sfxBuffers.set('click', buf);
+      })
+      .catch(() => {})
+      .finally(() => this.sfxLoading.delete('click'));
   }
 
   /** Wake the effect bus and decode the files. Does not start the music. */
@@ -639,35 +657,52 @@ export class AudioEngine {
     }
   }
 
-  /** UI ticks must fire in the same gesture, even if the WebAudio bus is still waking. */
+  /** UI ticks: reuse one warm element. Cloning is late on Samsung Chrome. */
   private playHtmlClick(): void {
     const src = SFX_SRC.click;
     if (!src) return;
-    const el = this.clickWarm
-      ? (this.clickWarm.cloneNode(true) as HTMLAudioElement)
-      : new Audio(src);
+    if (!this.clickWarm) {
+      this.clickWarm = new Audio(src);
+      this.clickWarm.preload = 'auto';
+    }
+    const el = this.clickWarm;
     el.volume = Math.max(0, Math.min(1, this.ui));
-    void el.play().catch(() => {});
+    try {
+      el.pause();
+      el.currentTime = 0;
+    } catch {
+      /* ignore */
+    }
+    void el.play().catch(() => {
+      const one = new Audio(src);
+      one.volume = el.volume;
+      void one.play().catch(() => {});
+    });
   }
 
   private playSample(name: SfxName, vol: number): boolean {
     const buf = this.sfxBuffers.get(name);
     if (!buf || !this.ctx) return false;
-    if (this.ctx.state === 'suspended') void this.ctx.resume();
+    // Even if suspended, schedule now — resume() below lets Samsung flush it.
     const src = this.ctx.createBufferSource();
     const g = this.ctx.createGain();
     src.buffer = buf;
     g.gain.value = vol;
     src.connect(g).connect(this.dest());
-    src.start(this.ctx.currentTime);
+    try {
+      src.start(0);
+    } catch {
+      return false;
+    }
+    if (this.ctx.state === 'suspended') void this.ctx.resume();
     return true;
   }
 
   play(name: SfxName, bus: 'sfx' | 'ui' = 'sfx'): void {
     if (name === 'click') {
-      // Prefer the already-decoded WebAudio buffer while the bus is live — it starts
-      // even if the main thread then blocks on Fight. HTML audio is the cold-start fallback.
-      if (this.ctx?.state === 'running' && this.playSample('click', this.ui)) return;
+      // WebAudio first: on Samsung, HTMLAudio started before a long Fight sim
+      // often only becomes audible after the pinup paints.
+      if (this.ctx && this.sfxBuffers.has('click') && this.playSample('click', this.ui)) return;
       this.playHtmlClick();
       return;
     }
