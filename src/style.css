@@ -4215,7 +4215,8 @@ html.is-codex #app {
 .battle-wrap.is-ended .battle-ui {
   display: none;
 }
-html:has(.battle-wrap.is-ended) #app {
+html:has(.battle-wrap.is-ended) #app,
+html:has(.battle-wrap.is-ended) .screen-battle {
   overflow: visible;
 }
 .battle-end,
