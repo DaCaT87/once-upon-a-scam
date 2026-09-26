@@ -1,0 +1,9 @@
+{
+  "name": "Once Upon a Scrap",
+  "short_name": "Scrap",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#100c0a",
+  "theme_color": "#100c0a",
+  "start_url": "./"
+}
