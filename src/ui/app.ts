@@ -1268,10 +1268,10 @@ export class GameApp {
               <div class="vs-banner-wrap is-pinup">
                 <div class="pinup-mover">
                   <div class="pinup-stage">
-                    <img class="pinup-cel" src="./art/ui/vs-pinup-1.png?v=pinup13" alt="" />
-                    <img class="pinup-cel" src="./art/ui/vs-pinup-2.png?v=pinup13" alt="" />
-                    <img class="pinup-cel" src="./art/ui/vs-pinup-3.png?v=pinup13" alt="" />
-                    <img class="pinup-cel" src="./art/ui/vs-pinup-4.png?v=pinup13" alt="" />
+                    <img class="pinup-cel" src="./art/ui/vs-pinup-1.png?v=pinup14" alt="" />
+                    <img class="pinup-cel" src="./art/ui/vs-pinup-2.png?v=pinup14" alt="" />
+                    <img class="pinup-cel" src="./art/ui/vs-pinup-3.png?v=pinup14" alt="" />
+                    <img class="pinup-cel" src="./art/ui/vs-pinup-4.png?v=pinup14" alt="" />
                   </div>
                   <div class="round-sign">
                     <span class="round-sign-head"><span class="round-sign-kicker">${this.L('round')}</span><span class="round-sign-num">${run.round}</span></span>
