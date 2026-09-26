@@ -50,6 +50,7 @@ import {
   swapSlots,
   throwEventReward,
   recruitPickLimit,
+  validateSnapshot,
 } from '../run/runEngine';
 import { createLocalServices } from '../services/local';
 import type { AlleyChoice, CodexState, EventId, Locale, RunState, Settings, UnitInstance } from '../core/types';
@@ -3375,7 +3376,8 @@ export class GameApp {
       circuitOpponent(this.run) ??
       (await this.services.matchmaking.findOpponent(this.run.round, this.run.runId, this.run.playerName));
     this.run = resolveFight(this.run, enemy);
-    await this.services.snapshots.save(playerSnapshot(this.run));
+    const snap = playerSnapshot(this.run);
+    if (!validateSnapshot(snap).length) await this.services.snapshots.save(snap);
     await this.persist();
     this.go('battle');
   }

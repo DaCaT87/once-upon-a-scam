@@ -4209,8 +4209,18 @@ html.is-codex #app {
   font-size: 18px;
 }
 
+.battle-wrap.is-ended {
+  overflow: visible;
+}
 .battle-wrap.is-ended .battle-ui {
   display: none;
+}
+html:has(.battle-wrap.is-ended) #app {
+  overflow: visible;
+}
+.battle-end,
+.battle-end-row {
+  overflow: visible;
 }
 .battle-end {
   position: absolute;
@@ -4261,8 +4271,9 @@ html.is-codex #app {
   font-weight: 400;
   line-height: 0.9;
   letter-spacing: 0.02em;
-  padding-top: 8px;
-  margin-top: -8px;
+  padding: 30px 32px;
+  margin: -30px -32px;
+  overflow: visible;
   -webkit-text-stroke: 6px #100c0a;
   paint-order: stroke fill;
   text-shadow: -2px 0 0 #100c0a, 2px 0 0 #100c0a, 0 -2px 0 #100c0a, 0 2px 0 #100c0a;
