@@ -91,18 +91,18 @@ export function buildOpponent(round: number, seed: number, quality = 0.65): Team
   const formed = formUp(withStickers);
 
   const names = [
-    'Dolly Two-Time',
-    'Ink-Stained Pete',
+    'Dolly Two',
+    'Ink Pete',
     'Velvet Mae',
-    'Lefty Calhoun',
-    'Miss Ribbon',
-    'Porkpie Joe',
-    'The Midnight Clerk',
-    'Hattie No-Last-Name',
+    'Lefty Cal',
+    'MissRibbon',
+    'Porkpie Jo',
+    'Mid Clerk',
+    'Hattie',
     'Cinder Sid',
     'Brass Nell',
-    'Quiet Irving',
-    'Marquee Bess',
+    'Quiet Irv',
+    'Marq Bess',
   ];
   const playerName = names[seed % names.length]!;
 

@@ -6,7 +6,6 @@ export type SfxName =
   | 'boing'
   | 'wood'
   | 'bell'
-  | 'crash'
   | 'death'
   | 'click'
   | 'whoosh'
@@ -15,16 +14,15 @@ export type SfxName =
 export type MusicCue = 'menu' | 'square' | 'final' | 'fight' | 'hunt';
 
 type BattleCue = 'fight' | 'hunt';
+type HtmlCue = 'menu' | 'square' | 'final';
 
 const MENU_SRC = './audio/fairytale-waltz.mp3';
 
-/** Kevin MacLeod, CC BY 4.0. Each phase keeps its own piece and fades that piece out. */
-const TRACK: Record<MusicCue, { src: string; from: number; gain: number }> = {
+/** Kevin MacLeod, CC BY 4.0. Scrap/hunt use WebAudio beds below, not these HTML tracks. */
+const TRACK: Record<HtmlCue, { src: string; from: number; gain: number }> = {
   menu: { src: MENU_SRC, from: 3, gain: 0.5 },
-  square: { src: './audio/thatched-villagers.mp3', from: 0, gain: 0.42 },
+  square: { src: './audio/enchanted-valley.mp3', from: 0, gain: 0.48 },
   final: { src: './audio/the-parting.mp3', from: 0, gain: 0.62 },
-  fight: { src: './audio/the-descent.mp3', from: 0, gain: 1 },
-  hunt: { src: './audio/clash-defiant.mp3', from: 0, gain: 1 },
 };
 
 /** Open file is the short attack plus one pass of the motif. The loop file repeats until the scrap ends. */
@@ -52,10 +50,6 @@ const MENU_MUSIC = {
   introShare: 2 / 10,
 };
 
-/** Skip the quiet opening. The waltz also loops back to this point, not to 0. */
-const MENU_LOOP_AT = 3;
-
-/** Real stings. The synth below is only the fallback if a file is still loading. */
 const SFX_SRC: Partial<Record<SfxName, string>> = {
   punch: './audio/sfx/punch.wav?v=trim1',
   death: './audio/sfx/character-fall.wav?v=trim1',
@@ -79,7 +73,7 @@ export class AudioEngine {
   private cue: MusicCue = 'menu';
   private loaded: MusicCue | null = null;
   private musicEl: HTMLAudioElement | null = null;
-  private readonly musicEls = new Map<MusicCue, HTMLAudioElement>();
+  private readonly musicEls = new Map<HtmlCue, HTMLAudioElement>();
   private bedGain: GainNode | null = null;
   private bedGen = 0;
   private bedCue: BattleCue | 'menu' | null = null;
@@ -192,11 +186,11 @@ export class AudioEngine {
   }
 
   /**
-   * Fight was pressed. The square waltz fades out now, and the scrap bed is decoded
-   * so the fanfare can start the moment the board appears.
+   * Fight was pressed. The square piece fades out now, and the scrap bed is decoded
+   * so the fanfare can start the moment the field appears.
    */
   leaveSquare(next: BattleCue): void {
-    // Decode the scrap bed while the pinup is up, so the fanfare is ready on the board.
+    // Decode the scrap bed during the curtain, so the fanfare is ready on the board.
     void this.loadBed(next).catch(() => {});
     const el = this.musicEl;
     if (!el || (this.cue !== 'menu' && this.cue !== 'square')) return;
@@ -289,7 +283,7 @@ export class AudioEngine {
     this.stopBedSources();
   }
 
-  private elFor(cue: MusicCue): HTMLAudioElement {
+  private elFor(cue: HtmlCue): HTMLAudioElement {
     let el = this.musicEls.get(cue);
     if (!el) {
       const spec = TRACK[cue];
@@ -306,7 +300,7 @@ export class AudioEngine {
   }
 
   /** One piece per phase. It starts at its own downbeat, never on top of the previous piece. */
-  private playTrack(cue: MusicCue): void {
+  private playTrack(cue: HtmlCue): void {
     this.stopBedSources();
     const spec = TRACK[cue];
     const next = this.elFor(cue);
@@ -319,34 +313,6 @@ export class AudioEngine {
     this.cue = cue;
     next.volume = this.music * spec.gain;
     this.playFrom(next, spec.from);
-  }
-
-  /** The waltz keeps its own element, so coming back does not wait on a fresh download. */
-  private elForMenu(): HTMLAudioElement {
-    let el = this.musicEls.get('menu');
-    if (!el) {
-      el = new Audio(MENU_SRC);
-      el.preload = 'auto';
-      el.loop = false;
-      el.addEventListener('ended', () => {
-        if (this.cue !== 'menu' || !this.playing || this.musicEl !== el) return;
-        const resume = () => {
-          el.removeEventListener('seeked', resume);
-          if (this.cue !== 'menu' || !this.playing || this.musicEl !== el) return;
-          void el.play().catch(() => {
-            this.playing = false;
-          });
-        };
-        el.addEventListener('seeked', resume);
-        try {
-          el.currentTime = MENU_LOOP_AT;
-        } catch {
-          el.removeEventListener('seeked', resume);
-        }
-      });
-      this.musicEls.set('menu', el);
-    }
-    return el;
   }
 
   private playFrom(el: HTMLAudioElement, start: number): void {
@@ -701,7 +667,7 @@ export class AudioEngine {
   play(name: SfxName, bus: 'sfx' | 'ui' = 'sfx'): void {
     if (name === 'click') {
       // WebAudio first: on Samsung, HTMLAudio started before a long Fight sim
-      // often only becomes audible after the pinup paints.
+      // often only becomes audible after the next paint.
       if (this.ctx && this.sfxBuffers.has('click') && this.playSample('click', this.ui)) return;
       this.playHtmlClick();
       return;
@@ -739,10 +705,6 @@ export class AudioEngine {
       case 'bell':
         this.tone(t, 880, 0.35, 'sine', 0.1 * g);
         this.tone(t, 1320, 0.28, 'sine', 0.05 * g);
-        break;
-      case 'crash':
-        this.noise(t, 0.35, 2000, 0.22 * g, 'highpass');
-        this.tone(t, 60, 0.2, 'sawtooth', 0.08 * g);
         break;
       case 'death':
         this.tone(t, 70, 0.16, 'sine', 0.2 * g);

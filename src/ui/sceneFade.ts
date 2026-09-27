@@ -1,6 +1,7 @@
-/** Short fade whenever the backdrop changes: menu, square, black round card, arena, hunt, library. */
+/** Fade through black whenever the visible screen changes, not only the backdrop. */
 
 let shown: string | null = null;
+let rampGen = 0;
 
 function sceneKey(): string {
   const root = document.documentElement;
@@ -13,24 +14,94 @@ function sceneKey(): string {
   return 'plain';
 }
 
-export function commitScene(): void {
-  const next = sceneKey();
-  if (shown === null) {
-    shown = next;
-    return;
-  }
-  if (next === shown) return;
-  shown = next;
-  const veil = document.getElementById('scene-fade');
+function veilEl(): HTMLElement | null {
+  return document.getElementById('scene-fade');
+}
+
+function reduceMotion(): boolean {
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+function lockVeil(opacity: string): void {
+  const veil = veilEl();
   if (!veil) return;
+  veil.getAnimations().forEach((anim) => anim.cancel());
   veil.style.transition = 'none';
-  veil.style.opacity = '1';
-  void veil.offsetWidth;
-  veil.style.transition = 'opacity 0.42s ease';
-  veil.style.opacity = '0';
-  window.setTimeout(() => {
-    if (sceneKey() !== next) return;
-    veil.style.transition = 'none';
-    veil.style.opacity = '0';
-  }, 480);
+  veil.style.opacity = opacity;
+}
+
+/** Move the veil by hand. A CSS transition on this layer was staying at the first frame. */
+function ramp(from: number, to: number, ms: number): Promise<void> {
+  const veil = veilEl();
+  const mine = ++rampGen;
+  if (!veil) return Promise.resolve();
+  lockVeil(String(from));
+  if (ms <= 0 || reduceMotion()) {
+    lockVeil(String(to));
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled || mine !== rampGen) return;
+      settled = true;
+      lockVeil(String(to));
+      resolve();
+    };
+    const t0 = performance.now();
+    const step = (now: number) => {
+      if (settled || mine !== rampGen) return;
+      const u = Math.min(1, (now - t0) / ms);
+      const eased = u * u * (3 - 2 * u);
+      veil.style.opacity = String(from + (to - from) * eased);
+      if (u >= 1) {
+        finish();
+        return;
+      }
+      window.requestAnimationFrame(step);
+    };
+    window.requestAnimationFrame(step);
+    window.setTimeout(finish, ms + 80);
+  });
+}
+
+/** True when this screen is not the one currently remembered. */
+export function willChangeScene(page: string): boolean {
+  return shown !== null && page !== shown;
+}
+
+/** Remember this screen without flashing the veil. The scrap curtain covers that swap. */
+export function syncScene(page?: string): void {
+  shown = page ?? sceneKey();
+}
+
+/** Darken the screen that is still visible. Resolves once the veil is opaque. */
+export async function fadeOutScene(): Promise<void> {
+  const veil = veilEl();
+  if (!veil) return;
+  veil.style.pointerEvents = 'auto';
+  const current = Number(getComputedStyle(veil).opacity);
+  const from = Number.isFinite(current) ? current : 0;
+  await ramp(from, 1, 360);
+}
+
+/** Uncover the screen that was just painted. */
+export function revealScene(page: string): void {
+  shown = page;
+  const veil = veilEl();
+  if (!veil) return;
+  void ramp(1, 0, 500).then(() => {
+    if (shown !== page) return;
+    const live = veilEl();
+    if (live) live.style.pointerEvents = 'none';
+  });
+}
+
+/** Drop the veil immediately. Used when the scrap curtain is the transition. */
+export function hideVeil(): void {
+  rampGen += 1;
+  const veil = veilEl();
+  if (!veil) return;
+  lockVeil('0');
+  veil.style.pointerEvents = 'none';
 }

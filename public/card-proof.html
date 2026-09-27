@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Prova carta</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Rye&display=swap" rel="stylesheet" />
+    <style>
+      html, body { margin: 0; min-height: 100%; background: #14110e; color: #f3e6c4; }
+      body {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 28px;
+        font-family: "Rye", serif;
+      }
+      p { margin: 0; font-size: 18px; letter-spacing: 0.02em; }
+      .row { display: flex; gap: 36px; align-items: flex-end; }
+      .card {
+        position: relative;
+        width: 300px;
+        aspect-ratio: 641 / 973;
+        background: #120c0a;
+        overflow: hidden;
+      }
+      .card .art {
+        position: absolute;
+        left: 3.9%;
+        top: 2.5%;
+        width: 92.2%;
+        height: 77.5%;
+        overflow: hidden;
+        z-index: 1;
+      }
+      .card .art img {
+        position: absolute;
+        left: 0;
+        bottom: 0;
+        width: 100%;
+        height: auto;
+        display: block;
+      }
+      .card .frame {
+        position: absolute;
+        inset: 0;
+        background: url('/card-proof-frame.png?v=7') center / 100% 100% no-repeat;
+        pointer-events: none;
+        z-index: 2;
+      }
+      .card .rarity {
+        position: absolute;
+        top: 1.4%;
+        right: 3.3%;
+        width: 15.6%;
+        height: auto;
+        z-index: 4;
+        pointer-events: none;
+      }
+      .card.monster { overflow: visible; }
+      .card.monster .spines {
+        position: absolute;
+        inset: -2.5%;
+        background: url('/art/ui/spines.png?v=spines7') center / 100% 100% no-repeat;
+        pointer-events: none;
+        z-index: 3;
+      }
+      .card.monster .rarity { z-index: 5; }
+      .card .slab {
+        position: absolute;
+        left: 8%;
+        right: 8%;
+        top: 81.2%;
+        bottom: 4.4%;
+        z-index: 3;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+      }
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        align-items: center;
+        justify-items: center;
+        width: 100%;
+      }
+      .stat {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        color: #2a1a10;
+        font-size: 18px;
+        line-height: 1;
+      }
+      .stat img { width: 26px; height: 26px; object-fit: contain; }
+      .target {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        height: 1.7em;
+        padding: 0 10px;
+        border-radius: 3px;
+        color: #f3e6c4;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        line-height: 1;
+      }
+      .target.brawler { background: #8c2420; }
+      .target.pacifist { background: #1f6b34; }
+      .target.sneak { background: #1f3d6e; }
+    </style>
+  </head>
+  <body>
+    <p>Prova. Ogni carta ha la sua rarità, nello stesso angolo. Non è nel gioco.</p>
+    <div class="row">
+      <article class="card">
+        <div class="art"><img src="/art/units/farm-boy/idle.png?v=cast180" alt="" /></div>
+        <div class="frame"></div>
+        <img class="rarity" src="/art/ui/rarity-bronze.png?v=metal" alt="" />
+        <div class="slab">
+          <div class="stats">
+            <span class="stat"><img src="/art/ui/stat-hp.png?v=swords10" alt="" />6</span>
+            <span class="stat"><img src="/art/ui/stat-atk.png?v=swords10" alt="" />2</span>
+            <span class="stat"><img src="/art/ui/stat-spd.png?v=swords10" alt="" />5</span>
+          </div>
+          <div class="target brawler">BRAWLER</div>
+        </div>
+      </article>
+      <article class="card">
+        <div class="art"><img src="/art/units/mimic/idle.png?v=cast180" alt="" /></div>
+        <div class="frame"></div>
+        <img class="rarity" src="/art/ui/rarity-gold.png?v=metal" alt="" />
+        <div class="slab">
+          <div class="stats">
+            <span class="stat"><img src="/art/ui/stat-hp.png?v=swords10" alt="" />8</span>
+            <span class="stat"><img src="/art/ui/stat-atk.png?v=swords10" alt="" />0</span>
+            <span class="stat"><img src="/art/ui/stat-spd.png?v=swords10" alt="" />0</span>
+          </div>
+          <div class="target pacifist">PACIFIST</div>
+        </div>
+      </article>
+      <article class="card monster">
+        <div class="art"><img src="/art/units/purple-widows/idle.png?v=cast180" alt="" /></div>
+        <div class="frame"></div>
+        <div class="spines"></div>
+        <img class="rarity" src="/art/ui/rarity-silver.png?v=metal" alt="" />
+        <div class="slab">
+          <div class="stats">
+            <span class="stat"><img src="/art/ui/stat-hp.png?v=swords10" alt="" />17</span>
+            <span class="stat"><img src="/art/ui/stat-atk.png?v=swords10" alt="" />3</span>
+            <span class="stat"><img src="/art/ui/stat-spd.png?v=swords10" alt="" />7</span>
+          </div>
+          <div class="target sneak">SNEAK</div>
+        </div>
+      </article>
+    </div>
+  </body>
+</html>

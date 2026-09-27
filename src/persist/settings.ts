@@ -1,4 +1,5 @@
 import type { CodexState, Settings } from '../core/types';
+import { clampPlayerName } from '../core/ids';
 
 const K_SET = 'oua.settings.v1';
 const K_CODEX = 'oua.codex.v1';
@@ -49,7 +50,10 @@ export function discover(c: CodexState, units: string[], stickers: string[]): Co
 export function loadPlayer(): { id: string; name: string } {
   try {
     const raw = localStorage.getItem(K_PLAYER);
-    if (raw) return JSON.parse(raw) as { id: string; name: string };
+    if (raw) {
+      const p = JSON.parse(raw) as { id: string; name: string };
+      return { id: p.id, name: clampPlayerName(p.name || 'Velvet Mae') };
+    }
   } catch {
     /* empty */
   }
@@ -60,5 +64,5 @@ export function loadPlayer(): { id: string; name: string } {
 }
 
 export function savePlayer(id: string, name: string): void {
-  localStorage.setItem(K_PLAYER, JSON.stringify({ id, name }));
+  localStorage.setItem(K_PLAYER, JSON.stringify({ id, name: clampPlayerName(name) }));
 }

@@ -1,5 +1,6 @@
 import { audio, type MusicCue } from '../audio/engine';
 import { firstFreeSlot, getUnit, stickerArtFile } from '../core/catalog';
+import { clampPlayerName, PLAYER_NAME_MAX } from '../core/ids';
 import { EVENT_BY_ID, HUNT_MONSTERS, eventHidesRarity, huntStickerFor, lossRewardRarity } from '../data/events';
 import { rarityRank, shopMaxRarity, stickerMaxRarity } from '../data/rarity';
 import { grantableStickers, libraryHuntStickers } from '../data/stickers';
@@ -9,7 +10,6 @@ import { BattleView } from '../render/battleView';
 import { circuitOpponent } from '../run/circuit';
 import {
   afterResult,
-  applyBagSticker,
   applyShopSticker,
   assignPendingSticker,
   settleStickerAssign,
@@ -17,7 +17,6 @@ import {
   chooseAlley,
   canMoveUnitSlot,
   claimHunt,
-  compareRuns,
   confirmDraft,
   createRun,
   bookSpread,
@@ -48,27 +47,19 @@ import {
   skipEmptyEvent,
   skipRecruit,
   skipStickers,
-  storePendingStickers,
   swapSlots,
   throwEventReward,
   recruitPickLimit,
   validateSnapshot,
 } from '../run/runEngine';
 import { createLocalServices } from '../services/local';
-import type { AlleyChoice, CodexState, EventId, Locale, RunState, Settings, UnitInstance } from '../core/types';
+import type { AlleyChoice, CodexState, EventId, RunState, Settings, UnitInstance } from '../core/types';
 import { ALLEY_PICK, DATA_VERSION, DRAFT_PICK, MAX_STICKERS, MAX_TEAM, RUN_ROUNDS, STICKER_PICK } from '../core/types';
 import { bindTargetingTips, fitCardSlabs, paintPortraits, rarityLabel, renderDossierOverlay, renderOfferCard, renderStickerCard, renderTeamLane, renderUnitCard, t } from './cards';
 import { bindFullscreenControls, enterFullscreen, exitFullscreen, setLandscapeGateLabel, syncFullscreenChrome, toggleFullscreen } from './fullscreen';
-import { commitScene } from './sceneFade';
+import { fadeOutScene, hideVeil, revealScene, syncScene, willChangeScene } from './sceneFade';
 
-type Screen =
-  | 'menu'
-  | 'mode'
-  | 'run'
-  | 'battle'
-  | 'settings'
-  | 'codex'
-  | 'leaderboard';
+type Screen = 'menu' | 'run' | 'battle' | 'codex';
 
 export class GameApp {
   private services = createLocalServices();
@@ -81,6 +72,8 @@ export class GameApp {
   private battleView: BattleView | null = null;
   /** Fight music starts when the board is visible, not during the round sign. */
   private battleFieldUp = false;
+  /** Latest screen fade. An older fade bails out when a newer one starts. */
+  private fadeTicket = 0;
   private raf = 0;
   private lastTs = 0;
   private dragSticker: string | null = null;
@@ -90,9 +83,8 @@ export class GameApp {
   private dragSlot: number | null = null;
   /** Offer waiting for which team card to fire when the line is full. */
   private recruitReplace: { defId: string; gold?: boolean } | null = null;
-  private bagPick: string | null = null;
   /** Card waiting for which of 3 stickers to peel when applying a new one. */
-  private replacePick: { instanceId: string; from: 'assign' | 'bag' | 'shop' | 'book'; stickerId?: string } | null = null;
+  private replacePick: { instanceId: string; from: 'assign' | 'shop' | 'book'; stickerId?: string } | null = null;
   private applyFx: { instanceId: string; stickerId: string } | null = null;
   private shopBusy = false;
   private shopHoldTimer = 0;
@@ -142,6 +134,20 @@ export class GameApp {
     } else if (this.isScrapTry()) {
       sessionStorage.setItem('oua.scrap-boss', 'thousand-maws');
       this.run = this.scrapTryRun();
+      this.screen = 'battle';
+    } else if (tryId === 'monster-hunt') {
+      this.armTry(tryId);
+      this.run = resolveHuntFight({
+        ...this.huntLoopRun(),
+        phase: 'event',
+        eventStep: 'preview',
+        team: [
+          { instanceId: 'u1', defId: 'farm-boy', slot: 1, stickerIds: ['fur-armor', 'steel-sword', 'rusty-knife'], permanentMods: { atk: 8, hp: 12, speed: 2 } },
+          { instanceId: 'u2', defId: 'hunter', slot: 2, stickerIds: ['steel-sword', 'fur-armor'], permanentMods: { atk: 6, hp: 10, speed: 2 } },
+          { instanceId: 'u3', defId: 'royal-herald', slot: 3, stickerIds: ['fur-armor'], permanentMods: { atk: 4, hp: 8, speed: 1 } },
+          { instanceId: 'u4', defId: 'puss-in-boots', slot: 4, stickerIds: ['steel-sword'], permanentMods: { atk: 5, hp: 8, speed: 3 } },
+        ],
+      });
       this.screen = 'battle';
     } else if (tryId) {
       this.armTry(tryId);
@@ -207,9 +213,22 @@ export class GameApp {
       this.openDossier(card.dataset.def);
     });
     window.addEventListener('keydown', (e) => {
-      if (e.key !== 'Escape' || !this.dossierDefId) return;
+      if (e.key !== 'Escape') return;
+      const credits = document.getElementById('credits-panel');
+      if (credits && !credits.hidden) {
+        credits.hidden = true;
+        return;
+      }
+      if (!this.dossierDefId) return;
       e.preventDefault();
       this.closeDossier();
+    });
+    document.getElementById('credits-stamp')?.addEventListener('click', () => {
+      const panel = document.getElementById('credits-panel');
+      if (!panel) return;
+      const copy = document.getElementById('credits-copy');
+      if (copy) copy.textContent = this.L('audioNote');
+      panel.hidden = !panel.hidden;
     });
     bindTargetingTips(this.root, () => this.settings.locale);
   }
@@ -235,7 +254,7 @@ export class GameApp {
   }
 
   private recruitRoundHtml(round: number, points = 0): string {
-    return `<span class="recruit-round-line">${this.L('round')} <span class="recruit-round-count"><b>${round}</b><i>/</i><b>${RUN_ROUNDS}</b></span></span><span class="line-crown rule-tip" aria-expanded="false" aria-label="${this.L('victoryPoints')}"><img src="./art/ui/crown-wins.png?v=crown7" alt="" draggable="false" /><b>${points}</b><span class="targeting-tip" role="tooltip">${this.L('victoryPoints')}</span></span>`;
+    return `<span class="recruit-round-line">${this.L('round')} <span class="recruit-round-count"><b>${round}</b><i>/</i><b>${RUN_ROUNDS}</b></span></span><span class="line-crown rule-tip" aria-expanded="false" aria-label="${this.L('victoryPoints')}"><img src="./art/ui/crown-wins.png?v=crown7" alt="" draggable="false" /><b><span class="vp-max" aria-hidden="true">30</span><span class="vp-face">${points}</span></b><span class="targeting-tip" role="tooltip">${this.L('victoryPoints')}</span></span>`;
   }
 
   private shopPicksDone(): boolean {
@@ -293,11 +312,9 @@ export class GameApp {
     } else if (this.isGiftStickerAssign()) {
       this.run = settleStickerAssign(this.run);
       this.clearSpentOffers();
-      this.bagPick = null;
     } else if (this.run.phase === 'sticker') {
       this.run = settleStickerShop(this.run);
       this.clearSpentOffers();
-      this.bagPick = null;
     } else {
       return;
     }
@@ -378,6 +395,16 @@ export class GameApp {
   }
 
 
+  /** One id per screen. Picks inside the same shop do not count as a new screen. */
+  private viewKey(): string {
+    if (this.screen !== 'run' || !this.run) return this.screen;
+    const run = this.run;
+    if (run.phase === 'event' || run.phase === 'formation') {
+      return `run:${run.phase}:${run.eventId ?? ''}:${run.eventStep ?? ''}`;
+    }
+    return `run:${run.phase}`;
+  }
+
   private go(screen: Screen): void {
     this.dossierDefId = null;
     if (screen === 'battle') this.battleFieldUp = false;
@@ -385,7 +412,34 @@ export class GameApp {
     this.render();
   }
 
+  /** Cover the screen that is still up, then paint the next one and uncover it. */
+  private async crossfadeRender(): Promise<void> {
+    const ticket = ++this.fadeTicket;
+    if (this.screen !== 'battle') cancelAnimationFrame(this.raf);
+    await fadeOutScene();
+    if (ticket !== this.fadeTicket) return;
+    this.paintScreen();
+    const page = this.viewKey();
+    if (this.screen === 'battle' && !this.battleFieldUp) {
+      syncScene(page);
+      hideVeil();
+      return;
+    }
+    revealScene(page);
+  }
+
   private render(): void {
+    const page = this.viewKey();
+    const curtain = this.screen === 'battle' && !this.battleFieldUp;
+    if (!curtain && willChangeScene(page)) {
+      void this.crossfadeRender();
+      return;
+    }
+    this.paintScreen();
+    syncScene(page);
+  }
+
+  private paintScreen(): void {
     this.stopMenu?.();
     this.stopMenu = null;
     if (this.screen !== 'battle') cancelAnimationFrame(this.raf);
@@ -395,20 +449,19 @@ export class GameApp {
       this.recruitReplace = { defId: this.run.pendingGoldUnitId, gold: true };
     }
     const huntFight = this.screen === 'battle' && this.isHuntBattle();
-    const huntReward =
-      this.screen === 'run' &&
-      this.run?.eventId === 'monster-hunt' &&
-      (this.run.eventStep === 'hunt-result' || this.run.phase === 'stickerAssign');
-    document.documentElement.classList.toggle('is-menu', this.screen === 'menu' || this.screen === 'mode' || this.screen === 'settings' || this.screen === 'leaderboard');
+    document.documentElement.classList.toggle('is-menu', this.screen === 'menu');
     document.documentElement.classList.toggle('is-battle', this.screen === 'battle' && !huntFight);
-    document.documentElement.classList.toggle('is-hunt', huntFight || huntReward);
-    document.documentElement.classList.toggle('is-square', this.screen === 'run' && !huntReward);
+    document.documentElement.classList.toggle('is-hunt', huntFight);
+    document.documentElement.classList.toggle('is-square', this.screen === 'run');
     document.documentElement.classList.toggle('is-codex', this.screen === 'codex');
     document.documentElement.classList.toggle('is-preamble', this.screen === 'battle');
-    const huntEvent = this.screen === 'run' && this.run?.eventId === 'monster-hunt';
-    const pinup = this.screen === 'battle' && !this.battleFieldUp;
-    if (pinup) {
-      /* The waltz is already fading. The fight piece starts when the field appears. */
+    const huntEvent =
+      this.screen === 'run' &&
+      this.run?.eventId === 'monster-hunt' &&
+      this.run.phase !== 'stickerAssign';
+    const curtainHold = this.screen === 'battle' && !this.battleFieldUp;
+    if (curtainHold) {
+      /* Square music is already fading. Fight/hunt starts when the field appears. */
     } else if (huntEvent) audio.fadeOut();
     else audio.setCue(this.musicCue());
     switch (this.screen) {
@@ -416,10 +469,11 @@ export class GameApp {
         this.root.innerHTML = this.menuHtml();
         paintPortraits(this.root);
         break;
-      case 'mode':
-        this.root.innerHTML = this.modeHtml();
-        break;
       case 'run':
+        if (this.run?.eventId === 'monster-hunt' && this.run.eventStep === 'hunt-result') {
+          this.run = claimHunt(this.run);
+          void this.persist();
+        }
         if (this.run?.phase === 'result') {
           this.run = afterResult(this.run);
           if (this.run.phase === 'final') void this.finishRun();
@@ -437,25 +491,25 @@ export class GameApp {
         this.root.innerHTML = this.battleHtml();
         this.mountBattle();
         break;
-      case 'settings':
-        this.root.innerHTML = this.settingsHtml();
-        this.bindSettings();
-        break;
       case 'codex':
         this.root.innerHTML = this.codexHtml();
         paintPortraits(this.root);
-        break;
-      case 'leaderboard':
-        this.root.innerHTML = `<section class="screen"><div class="wood-bar"><span class="sign">${this.L('leaderboard')}</span></div></section>`;
-        void this.renderBoard();
         break;
     }
     this.mountDossier();
     syncFullscreenChrome(this.L('fullscreen'), this.L('fullscreenExit'));
     setLandscapeGateLabel(this.L('turnPhone'));
-    commitScene();
     const stamps = document.querySelector('.corner-stamps');
     if (stamps instanceof HTMLElement) stamps.hidden = this.screen === 'codex';
+    const creditsBtn = document.getElementById('credits-stamp');
+    const creditsPanel = document.getElementById('credits-panel');
+    const creditsCopy = document.getElementById('credits-copy');
+    if (creditsCopy) creditsCopy.textContent = this.L('audioNote');
+    if (creditsBtn) {
+      creditsBtn.hidden = this.screen !== 'menu';
+      creditsBtn.textContent = this.L('credits');
+    }
+    if (creditsPanel && this.screen !== 'menu') creditsPanel.hidden = true;
     const menuStamp = document.getElementById('menu-stamp');
     if (menuStamp) {
       menuStamp.textContent = this.L('quitToMenu');
@@ -515,35 +569,12 @@ export class GameApp {
         </div>
         <div class="col menu-actions">
           <label class="menu-alias">${this.L('playerName')}
-            <input class="name-field" id="alias" maxlength="24" value="${this.player.name.replace(/"/g, '')}" />
+            <input class="name-field" id="alias" maxlength="${PLAYER_NAME_MAX}" value="${this.esc(clampPlayerName(this.player.name))}" />
           </label>
           <button class="btn btn-play" data-act="new-run">${this.L('newRun')}</button>
           ${this.run && this.run.phase !== 'final' ? `<button class="btn ghost" data-act="continue">${this.L('continue')}</button>` : ''}
           <button class="btn ghost" data-act="codex">${this.L('codex')}</button>
           <button class="btn ghost" data-act="exit-game">${this.L('exit')}</button>
-        </div>
-      </section>`;
-  }
-
-  private modeHtml(): string {
-    return `
-      <section class="screen">
-        <div class="wood-bar"><span class="sign">${this.L('modes')}</span><div class="row"><button class="btn ghost" data-act="settings">${this.L('settings')}</button><button class="btn ghost" data-act="menu">${this.L('back')}</button></div></div>
-        <div class="paper panel" style="margin-top:20px">
-          <label>${this.L('playerName')}</label>
-          <input class="name-field" id="alias" value="${this.player.name}" maxlength="24" />
-        </div>
-        <div class="row" style="margin-top:20px">
-          <article class="paper panel" style="max-width:360px">
-            <h2>${this.L('modeAi')}</h2>
-            <p>${this.L('modeAiDesc')}</p>
-            <button class="btn" data-act="start-ai">${this.L('start')}</button>
-          </article>
-          <article class="paper panel" style="max-width:360px">
-            <h2>${this.L('modeAsync')}</h2>
-            <p>${this.L('modeAsyncDesc')}</p>
-            <button class="btn" data-act="start-async">${this.L('start')}</button>
-          </article>
         </div>
       </section>`;
   }
@@ -641,7 +672,7 @@ export class GameApp {
             <span class="recruit-round">${this.recruitRoundHtml(run.round, victoryPointsOf(run))}</span>
           </div>
           <div class="choice-table">
-            ${plate('recruit', './art/ui/plate-recruit.png?v=recruit7', this.L('alleyRecruit'), this.L('alleyRecruitD'), {
+            ${plate('recruit', './art/ui/plate-recruit.png?v=recruit9', this.L('alleyRecruit'), this.L('alleyRecruitD'), {
               extraClass: 'is-event-plain is-alley-full-plate',
             })}
             ${plate('sticker', './art/ui/plate-sticker.png?v=alley3', this.L('alleySticker'), this.L('alleyStickerD'), {
@@ -820,33 +851,13 @@ export class GameApp {
           <div class="line-heading">
             <span class="recruit-title">${this.L('formationTitle')}</span>
           </div>
-          <p class="hint sticker-shop-hint">${
-            this.replacePick?.from === 'bag'
-              ? this.L('replaceHint')
-              : run.stickerBag.length
-                ? this.L('bagHint')
-                : this.L('formationHint')
-          }</p>
+          <p class="hint sticker-shop-hint">${this.L('formationHint')}</p>
           <span class="recruit-round">${this.recruitRoundHtml(run.round, victoryPointsOf(run))}</span>
         </div>
-        ${
-          run.stickerBag.length
-            ? `<div class="sticker-bag">
-                <p class="tiny" style="color:var(--cream)">${this.L('bagTitle')}</p>
-                <div class="row">${run.stickerBag.map((id) => renderStickerCard(loc, id, this.bagPick === id, 'bag-sticker')).join('')}</div>
-              </div>`
-            : ''
-        }
         <div class="grid5 team-table" id="lineup">${renderTeamLane(loc, run.team, {
           ...stats,
           showEmpty: true,
           slotBadge: true,
-          cardOpts: (u) => ({
-            extraClass:
-              this.replacePick?.from === 'bag' && this.replacePick.instanceId === u.instanceId
-                ? 'is-replace-pick'
-                : '',
-          }),
         })}</div>
         <div class="team-actions">
           <button class="btn-fight-art" data-act="fight" draggable="false" aria-label="${this.L('fight')}">
@@ -1103,9 +1114,7 @@ export class GameApp {
       : run.eventStep === 'oven-apply' ? this.L('ovenApply')
       : run.eventId === 'cloning-chamber' && run.eventStep === 'preview' ? this.L('clonePick')
       : run.eventStep === 'roster-cut' ? this.L(run.eventId === 'cloning-chamber' ? 'cloneCut' : 'bookCut')
-      : run.eventStep === 'hunt-result'
-        ? (run.lastBonusBattle?.winner === 'player' ? this.L('huntWin') : this.L('huntLose'))
-        : ev ? this.L(ev.descKey) : '';
+      : ev ? this.L(ev.descKey) : '';
 
     if (run.eventStep === 'reward-unit' && unitReward) {
       return `
@@ -1113,6 +1122,7 @@ export class GameApp {
           <div class="hud">
             <span>${ev ? this.L(ev.nameKey) : this.L('alleyEvent')}</span>
             <span class="event-cat ${ev?.category ?? ''}">${cat}</span>
+            <span class="recruit-round">${this.recruitRoundHtml(run.round, victoryPointsOf(run))}</span>
           </div>
           <p class="hint sticker-shop-hint" style="color:var(--cream)">${hint}</p>
           <div class="recruit-shop-offers grid5 event-reward-offer">
@@ -1147,10 +1157,6 @@ export class GameApp {
         </section>`;
     }
 
-    const huntRewardId =
-      run.eventStep === 'hunt-result' && run.lastBonusBattle?.winner === 'player' && huntId
-        ? huntStickerFor(huntId)
-        : null;
     const showBoss = Boolean(huntId) && run.eventId === 'monster-hunt' && run.eventStep === 'preview';
     const showKind = run.eventStep === 'well-kind' || run.eventStep === 'book-kind';
     const showOvenSticker = run.eventStep === 'oven-apply' && run.pendingStickerIds[0];
@@ -1162,18 +1168,18 @@ export class GameApp {
         run.eventStep === 'roster-cut' ||
         run.eventStep === 'oven-apply');
     const canSkip =
-      run.eventStep !== 'hunt-result' &&
       run.eventStep !== 'oven-apply' &&
       run.eventStep !== 'reward-unit' &&
       run.eventStep !== 'roster-cut';
 
     return `
-      <section class="screen screen-sticker screen-event-inside${run.eventId === 'monster-hunt' && run.eventStep === 'hunt-result' ? ' is-hunt-result' : ''}">
+      <section class="screen screen-sticker screen-event-inside">
         <div class="hud">
           <span>${ev ? this.L(ev.nameKey) : this.L('alleyEvent')}</span>
           <span class="event-cat ${ev?.category ?? ''}">${cat}${
             run.eventId === 'book-of-lost-tales' ? ` · ${this.L(rewardRarity)}` : ''
           }</span>
+          <span class="recruit-round">${this.recruitRoundHtml(run.round, victoryPointsOf(run))}</span>
         </div>
         <p class="hint" style="color:var(--cream)">${hint}</p>
         ${
@@ -1185,7 +1191,6 @@ export class GameApp {
             : ''
         }
         ${showBoss ? `<div class="grid5 event-boss">${renderUnitCard(loc, { instanceId: huntId!, defId: huntId!, slot: 1, stickerIds: [huntStickerFor(huntId!)].filter((id): id is string => Boolean(id)), permanentMods: { atk: 0, hp: 0, speed: 0 } }, { extraClass: 'offer is-hunt-plate', ...stats })}</div>` : ''}
-        ${huntRewardId ? `<div class="row event-hunt-reward">${renderStickerCard(loc, huntRewardId, false, 'hunt-reward')}</div>` : ''}
         ${
           showOvenSticker
             ? `<div class="row event-oven-tray">${renderStickerCard(loc, run.pendingStickerIds[0]!, false)}</div>`
@@ -1203,7 +1208,6 @@ export class GameApp {
         }
         <div class="row recruit-actions event-actions">
           ${run.eventId === 'monster-hunt' && run.eventStep === 'preview' && !empty ? `<button class="btn" data-act="start-hunt">${this.L('huntEnter')}</button>` : ''}
-          ${run.eventStep === 'hunt-result' ? `<button class="btn" data-act="claim-hunt">${this.L('next')}</button>` : ''}
           ${run.eventStep === 'oven-apply' ? `<button class="btn ghost" data-act="oven-discard">${this.L('ovenDiscard')}</button>` : ''}
           ${canSkip ? `<button class="btn ghost" data-act="skip-event">${empty ? this.L('eventContinue') : this.L('skipRecruit')}</button>` : ''}
         </div>
@@ -1218,7 +1222,7 @@ export class GameApp {
     if (this.screen === 'battle' && this.battleFieldUp && this.isHuntBattle()) return 'hunt';
     if (this.screen === 'battle' && this.battleFieldUp) return 'fight';
     if (this.screen === 'run' && this.run?.phase === 'final') return 'final';
-    if (this.screen === 'menu' || this.screen === 'mode' || this.screen === 'settings' || this.screen === 'leaderboard' || this.screen === 'codex') return 'menu';
+    if (this.screen === 'menu' || this.screen === 'codex') return 'menu';
     if (this.screen === 'run') return 'square';
     return 'menu';
   }
@@ -1247,6 +1251,17 @@ export class GameApp {
     return this.L('house');
   }
 
+  /** Score beside the crown while the scrap is playing: before this fight's points. */
+  private crownPointsDuringBattle(): number {
+    const run = this.run!;
+    const total = victoryPointsOf(run);
+    if (run.eventId === 'monster-hunt') return total;
+    const winner = run.lastBattle?.winner;
+    if (winner === 'player') return Math.max(0, total - 3);
+    if (winner === 'draw') return Math.max(0, total - 1);
+    return total;
+  }
+
   private battleHtml(): string {
     const run = this.run!;
     const foeName = this.battleFoeName();
@@ -1254,6 +1269,9 @@ export class GameApp {
     return `
       <section class="screen screen-battle is-preamble${hunt}">
         <div class="battle-wrap is-intro is-preamble${hunt}" id="battlefield">
+          <div class="battle-hud" aria-hidden="true">
+            <span class="recruit-round">${this.recruitRoundHtml(run.round, this.crownPointsDuringBattle())}</span>
+          </div>
           <div class="battle-line">
             <div class="battle-fit">
               <div class="battle-board">
@@ -1263,24 +1281,10 @@ export class GameApp {
             </div>
           </div>
           <div class="battle-fx" aria-hidden="true"></div>
-          <div class="battle-intro" aria-hidden="true">
-            <div class="vs-flourish">
-              <div class="vs-banner-wrap is-pinup">
-                <div class="pinup-mover">
-                  <div class="pinup-stage">
-                    <img class="pinup-cel" src="./art/ui/vs-pinup-1.png?v=pinup14" alt="" />
-                    <img class="pinup-cel" src="./art/ui/vs-pinup-2.png?v=pinup14" alt="" />
-                    <img class="pinup-cel" src="./art/ui/vs-pinup-3.png?v=pinup14" alt="" />
-                    <img class="pinup-cel" src="./art/ui/vs-pinup-4.png?v=pinup14" alt="" />
-                  </div>
-                  <div class="round-sign">
-                    <span class="round-sign-head"><span class="round-sign-kicker">${this.L('round')}</span><span class="round-sign-num">${run.round}</span></span>
-                    ${this.isHuntBattle() ? '' : `<span class="round-sign-line">${run.playerName}</span>`}
-                    <span class="round-sign-vs">${this.L('battleVs')}</span>
-                    <span class="round-sign-line is-foe">${foeName}</span>
-                  </div>
-                </div>
-              </div>
+          <div class="battle-intro" data-curtain="black" aria-hidden="true">
+            <div class="curtain-veil"></div>
+            <div class="curtain-house" aria-hidden="true">
+              <canvas class="curtain-cloth" aria-hidden="true"></canvas>
             </div>
           </div>
           <div class="battle-ui">
@@ -1295,37 +1299,6 @@ export class GameApp {
           </div>
         </div>
         ${this.settings.showCombatLog ? `<div class="log-box" id="clog"></div>` : ''}
-      </section>`;
-  }
-
-  private settingsHtml(): string {
-    const s = this.settings;
-    return `
-      <section class="screen">
-        <div class="wood-bar"><span class="sign">${this.L('settings')}</span><button class="btn ghost" data-act="menu">${this.L('back')}</button></div>
-        <div class="paper panel settings-grid" style="margin-top:18px">
-          <p class="tiny">${this.L('audioNote')}</p>
-          <label>${this.L('music')}<input type="range" min="0" max="1" step="0.01" data-set="music" value="${s.music}"></label>
-          <label>${this.L('sfx')}<input type="range" min="0" max="1" step="0.01" data-set="sfx" value="${s.sfx}"></label>
-          <label>${this.L('uiVol')}<input type="range" min="0" max="1" step="0.01" data-set="ui" value="${s.ui}"></label>
-          <label>${this.L('language')}
-            <select data-set="locale">
-              <option value="en" ${s.locale === 'en' ? 'selected' : ''}>English</option>
-              <option value="it" ${s.locale === 'it' ? 'selected' : ''}>Italiano</option>
-            </select>
-          </label>
-          <label>${this.L('battleSpeed')}
-            <select data-set="battleSpeed">
-              <option value="1" ${s.battleSpeed === 1 ? 'selected' : ''}>1×</option>
-              <option value="2" ${s.battleSpeed === 2 ? 'selected' : ''}>2×</option>
-            </select>
-          </label>
-          <label><input type="checkbox" data-set="reduceShake" ${s.reduceShake ? 'checked' : ''}> ${this.L('reduceShake')}</label>
-          <label><input type="checkbox" data-set="reduceFlash" ${s.reduceFlash ? 'checked' : ''}> ${this.L('reduceFlash')}</label>
-          <label><input type="checkbox" data-set="showCombatLog" ${s.showCombatLog ? 'checked' : ''}> ${this.L('combatLog')}</label>
-          <label><input type="checkbox" data-set="preferFullscreen" ${s.preferFullscreen ? 'checked' : ''}> ${this.L('preferFullscreen')}</label>
-          <p class="tiny">${this.L('fullscreenHint')}</p>
-        </div>
       </section>`;
   }
 
@@ -1383,43 +1356,6 @@ export class GameApp {
           ${stickerIds.map((id) => `<div class="codex-item">${renderStickerCard(loc, id, false)}</div>`).join('')}
         </div>
       </section>`;
-  }
-
-  private async renderBoard(): Promise<void> {
-    const list = await this.services.leaderboard.list();
-    const rows = list
-      .map((r, i, arr) => {
-        const prev = arr[i - 1];
-        const tied = prev && compareRuns(r, prev) === 0;
-        return `<tr><td>${tied ? this.L('shared') : i + 1}</td><td>${r.playerName}</td><td>${r.wins}/10</td><td>${r.survivorDiff}</td><td>${(r.hpPctTotal * 100).toFixed(0)}</td><td>${r.mode}</td></tr>`;
-      })
-      .join('');
-    this.root.innerHTML = `
-      <section class="screen">
-        <div class="wood-bar"><span class="sign">${this.L('leaderboard')}</span><button class="btn ghost" data-act="menu">${this.L('back')}</button></div>
-        <div class="paper panel board" style="margin-top:16px">
-          ${
-            rows
-              ? `<table><thead><tr><th>${this.L('rank')}</th><th>${this.L('playerName')}</th><th>${this.L('wins')}</th><th>${this.L('diff')}</th><th>${this.L('hpScore')}</th><th>${this.L('mode')}</th></tr></thead><tbody>${rows}</tbody></table>`
-              : `<p>${this.L('noRuns')}</p>`
-          }
-        </div>
-      </section>`;
-  }
-
-  private bindSettings(): void {
-    this.root.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-set]').forEach((el) => {
-      el.addEventListener('change', () => {
-        const key = el.dataset.set as keyof Settings;
-        if (el instanceof HTMLInputElement && el.type === 'checkbox') (this.settings as unknown as Record<string, unknown>)[key] = el.checked;
-        else if (el instanceof HTMLInputElement && el.type === 'range') (this.settings as unknown as Record<string, unknown>)[key] = Number(el.value);
-        else if (key === 'locale') this.settings.locale = el.value as Locale;
-        else if (key === 'battleSpeed') this.settings.battleSpeed = Number(el.value) as 1 | 2;
-        audio.setVolumes(this.settings.music, this.settings.sfx, this.settings.ui);
-        saveSettings(this.settings);
-        if (key === 'locale') this.render();
-      });
-    });
   }
 
   private bindRunGestures(): void {
@@ -1488,47 +1424,7 @@ export class GameApp {
         });
       });
     }
-    if (run.phase === 'formation' || this.isHuntLineup()) {
-      this.root.querySelectorAll<HTMLElement>('.sticker-card.bag-sticker').forEach((el) => {
-        el.addEventListener('click', () => {
-          const id = el.dataset.sticker!;
-          this.bagPick = this.bagPick === id ? null : id;
-          this.replacePick = null;
-          this.render();
-        });
-      });
-      if (this.bagPick || this.replacePick?.from === 'bag') {
-        this.root.querySelectorAll<HTMLElement>('#lineup .unit-card').forEach((el) => {
-          el.addEventListener('click', (e) => {
-            if (!this.run || !this.bagPick) return;
-            const inst = this.run.team.find((u) => u.instanceId === el.dataset.instance);
-            if (!inst) return;
-            const slotEl = (e.target as HTMLElement).closest<HTMLElement>('.sticker-slot.filled');
-
-            if (this.replacePick?.from === 'bag' && this.replacePick.instanceId === inst.instanceId) {
-              if (!slotEl) return;
-              const idx = Number(slotEl.dataset.stickerSlot);
-              if (!Number.isInteger(idx) || idx < 0 || idx >= MAX_STICKERS) return;
-              e.preventDefault();
-              e.stopPropagation();
-              this.commitStickerApply(inst.instanceId, idx);
-              return;
-            }
-
-            if (inst.stickerIds.length >= MAX_STICKERS) {
-              this.replacePick = { instanceId: inst.instanceId, from: 'bag' };
-              audio.play('paper', 'ui');
-              this.render();
-              return;
-            }
-
-            this.commitStickerApply(inst.instanceId);
-          });
-        });
-      } else {
-        this.setupFormationDrag();
-      }
-    }
+    if (run.phase === 'formation' || this.isHuntLineup()) this.setupFormationDrag();
   }
 
   private clearGhost(): void {
@@ -1653,19 +1549,6 @@ export class GameApp {
       stickerId = shopStickerId ?? this.run.pendingStickerIds[0] ?? null;
       if (!stickerId) return;
       next = assignPendingSticker(this.run, instanceId, replaceIndex, stickerId, { settle: false });
-    } else if ((this.run.phase === 'formation' || this.isHuntLineup()) && this.bagPick) {
-      stickerId = this.bagPick;
-      next = applyBagSticker(this.run, this.bagPick, instanceId, replaceIndex);
-      this.bagPick = null;
-      this.replacePick = null;
-      this.run = next;
-      this.noteTeam();
-      audio.play('peel', 'ui');
-      this.applyFx = { instanceId, stickerId };
-      void this.persist();
-      this.renderPreservingScroll();
-      this.playApplyFx();
-      return;
     } else {
       return;
     }
@@ -2713,7 +2596,7 @@ export class GameApp {
     this.codex = discover(
       this.codex,
       this.run.team.map((u) => u.defId),
-      [...this.run.team.flatMap((u) => u.stickerIds), ...this.run.stickerBag],
+      this.run.team.flatMap((u) => u.stickerIds),
     );
     saveCodex(this.codex);
   }
@@ -2978,7 +2861,6 @@ export class GameApp {
       offerCounter: 4,
       dataVersion: DATA_VERSION,
       startedAt: Date.now(),
-      stickerBag: [],
       eventId: 'witch-oven',
       eventStep: 'preview',
       eventOffers: [],
@@ -3205,20 +3087,7 @@ export class GameApp {
       await this.maybeFullscreen();
       return this.go('run');
     }
-    if (act === 'settings') return this.go('settings');
     if (act === 'codex') return this.go('codex');
-    if (act === 'board') return this.go('leaderboard');
-    if (act === 'start-ai' || act === 'start-async') {
-      const alias = this.root.querySelector<HTMLInputElement>('#alias')?.value.trim() || this.player.name;
-      this.player = { ...this.player, name: alias };
-      savePlayer(this.player.id, alias);
-      this.run = createRun(act === 'start-ai' ? 'ai' : 'async', this.player.id, alias);
-      this.cuts = [];
-      this.noteDraft();
-      await this.maybeFullscreen();
-      await this.persist();
-      return this.go('run');
-    }
     if (act === 'confirm-draft' && this.run) {
       this.run = confirmDraft(this.run);
       this.noteTeam();
@@ -3268,16 +3137,6 @@ export class GameApp {
     if (act === 'pass-alley' && this.run) {
       this.run = passAlley(this.run);
       this.cuts = [];
-      this.bagPick = null;
-      await this.persist();
-      return this.render();
-    }
-    if (act === 'keep-sticker' && this.run) {
-      const kept = this.run.pendingStickerIds;
-      this.replacePick = null;
-      this.run = storePendingStickers(this.run);
-      this.codex = discover(this.codex, [], kept);
-      this.bagPick = null;
       await this.persist();
       return this.render();
     }
@@ -3291,7 +3150,6 @@ export class GameApp {
       else if (shopDone) this.run = settleStickerShop(this.run);
       else this.run = skipStickers(this.run);
       this.clearSpentOffers();
-      this.bagPick = null;
       await this.persist();
       this.render();
       this.maybeLoopEvents();
@@ -3300,17 +3158,8 @@ export class GameApp {
     if (act === 'start-hunt' && this.run) {
       return this.launchHuntFight();
     }
-    if (act === 'claim-hunt' && this.run) {
-      this.run = claimHunt(this.run);
-      this.codex = discover(this.codex, [], this.run.pendingStickerIds);
-      this.bagPick = null;
-      this.noteTeam();
-      await this.persist();
-      return this.render();
-    }
     if (act === 'skip-event' && this.run) {
       this.run = skipEmptyEvent(this.run);
-      this.bagPick = null;
       await this.persist();
       this.render();
       this.maybeLoopEvents();
@@ -3423,7 +3272,7 @@ export class GameApp {
   }
 
   private async startNewRun(): Promise<void> {
-    const alias = this.root.querySelector<HTMLInputElement>('#alias')?.value.trim() || this.player.name;
+    const alias = clampPlayerName(this.root.querySelector<HTMLInputElement>('#alias')?.value || this.player.name);
     this.player = { ...this.player, name: alias };
     savePlayer(this.player.id, alias);
     this.run = null;
@@ -3465,8 +3314,8 @@ export class GameApp {
     const run = this.run!;
     if (run.circuit?.length) {
       const seated = [
-        { name: run.playerName, points: victoryPointsOf(run), you: true },
-        ...run.circuit.map((rival) => ({ name: rival.playerName, points: rival.victoryPoints, you: false })),
+        { name: clampPlayerName(run.playerName), points: victoryPointsOf(run), you: true },
+        ...run.circuit.map((rival) => ({ name: clampPlayerName(rival.playerName), points: rival.victoryPoints, you: false })),
       ].sort((a, b) => b.points - a.points || a.name.localeCompare(b.name));
       let place = 0;
       let last = Number.POSITIVE_INFINITY;
@@ -3481,11 +3330,11 @@ export class GameApp {
     const foes = new Map<string, number>();
     for (const h of run.history) {
       const gain = h.winner === 'draw' ? 1 : h.winner === 'enemy' || (h.winner == null && !h.win) ? 3 : 0;
-      const name = h.opponentName?.trim() || this.L('house');
+      const name = clampPlayerName(h.opponentName?.trim() || this.L('house'));
       foes.set(name, (foes.get(name) ?? 0) + gain);
     }
     const rows = [
-      { name: run.playerName, points: victoryPointsOf(run), you: true },
+      { name: clampPlayerName(run.playerName), points: victoryPointsOf(run), you: true },
       ...[...foes].map(([name, points]) => ({ name, points, you: false })),
     ].sort((a, b) => b.points - a.points || a.name.localeCompare(b.name));
     let place = 0;
@@ -3506,7 +3355,8 @@ export class GameApp {
     if (!run || !field || !battle || field.querySelector('.battle-end')) return;
     const waitMs = Math.round(audio.beginEnding() * 1000);
     window.setTimeout(() => {
-      if (this.screen !== 'battle' || this.run?.phase !== 'result') return;
+      if (this.screen !== 'battle') return;
+      if (this.run?.phase !== 'result' && !this.isHuntEndPending()) return;
       const live = this.root.querySelector<HTMLElement>('#battlefield');
       const still = this.run?.lastBattle;
       if (!live || !still || live.querySelector('.battle-end')) return;
@@ -3514,24 +3364,26 @@ export class GameApp {
     }, waitMs);
   }
 
+  private isHuntEndPending(): boolean {
+    return this.run?.eventId === 'monster-hunt' && this.run.eventStep === 'hunt-result';
+  }
+
   private revealBattleEnd(field: HTMLElement, battle: NonNullable<NonNullable<typeof this.run>['lastBattle']>): void {
     const run = this.run;
     if (!run) return;
     field.classList.add('is-ended');
     const winner = battle.winner;
-    const gained = winner === 'player' ? 3 : winner === 'draw' ? 1 : 0;
+    const hunt = this.isHuntEndPending();
+    const gained = hunt ? 0 : winner === 'player' ? 3 : winner === 'draw' ? 1 : 0;
     const to = victoryPointsOf(run);
     const from = Math.max(0, to - gained);
     const wordKey = winner === 'player' ? 'resultWin' : winner === 'draw' ? 'resultDraw' : 'resultLose';
     const wordClass = winner === 'player' ? 'is-win' : winner === 'draw' ? 'is-draw' : 'is-lose';
-    const cells: string[] = [];
-    for (let n = from; n <= to; n++) cells.push(`<b>${n}</b>`);
     field.insertAdjacentHTML(
       'beforeend',
       `<div class="battle-end">
         <div class="battle-end-row">
           <h2 class="battle-end-word ${wordClass}">${this.L(wordKey)}</h2>
-          <span class="line-crown" aria-label="${this.L('victoryPoints')}"><img src="./art/ui/crown-wins.png?v=crown7" alt="" draggable="false" /><span class="vp-roll"><span class="vp-roll-strip">${cells.join('')}</span></span></span>
         </div>
       </div>`,
     );
@@ -3546,32 +3398,67 @@ export class GameApp {
       }
       row.style.top = `${Math.max(0, y - 86)}px`;
     }
-    const strip = field.querySelector<HTMLElement>('.vp-roll-strip');
-    const stepH = strip?.querySelector<HTMLElement>('b')?.offsetHeight || 128;
-    let step = 0;
-    const tick = () => {
-      step += 1;
-      if (!strip || step > to - from) {
-        window.setTimeout(() => void this.leaveBattleEnd(), 2000);
-        return;
+
+    if (hunt || to <= from) {
+      window.setTimeout(() => void this.leaveBattleEnd(), 2000);
+      return;
+    }
+
+    const crown = field.querySelector<HTMLElement>('.battle-hud .line-crown');
+    const score = crown?.querySelector(':scope > b');
+    if (crown && score && to > from) {
+      const roll = document.createElement('span');
+      roll.className = 'vp-roll';
+      const sizer = document.createElement('span');
+      sizer.className = 'vp-max';
+      sizer.setAttribute('aria-hidden', 'true');
+      sizer.textContent = '30';
+      const strip = document.createElement('span');
+      strip.className = 'vp-roll-strip';
+      for (let n = from; n <= to; n++) {
+        const cell = document.createElement('b');
+        cell.textContent = String(n);
+        strip.appendChild(cell);
       }
-      strip.style.transform = `translateY(${-step * stepH}px)`;
-      if (step === to - from) {
-        window.setTimeout(() => void this.leaveBattleEnd(), 2340);
-        return;
-      }
-      window.setTimeout(tick, 420);
-    };
-    if (to > from) window.setTimeout(tick, 700);
-    else window.setTimeout(() => void this.leaveBattleEnd(), 2000);
+      roll.append(sizer, strip);
+      score.replaceWith(roll);
+      const tick = (step: number, stepH: number) => {
+        if (step > to - from) return;
+        strip.style.transform = `translateY(${-step * stepH}px)`;
+        if (step === to - from) {
+          window.setTimeout(() => void this.leaveBattleEnd(), 1400);
+          return;
+        }
+        window.setTimeout(() => tick(step + 1, stepH), 420);
+      };
+      window.requestAnimationFrame(() => {
+        const stepH = strip.querySelector('b')?.getBoundingClientRect().height || 78;
+        window.setTimeout(() => tick(1, stepH), 480);
+      });
+      return;
+    }
+    window.setTimeout(() => void this.leaveBattleEnd(), 2000);
   }
 
   private async leaveBattleEnd(): Promise<void> {
-    if (!this.run || this.run.phase !== 'result') return;
+    if (!this.run) return;
     cancelAnimationFrame(this.raf);
+    if (this.isHuntEndPending()) {
+      this.run = claimHunt(this.run);
+      this.codex = discover(this.codex, [], this.run.pendingStickerIds);
+      this.noteTeam();
+      this.battleFieldUp = false;
+      this.screen = 'run';
+      await this.persist();
+      this.render();
+      this.maybeLoopHunt();
+      return;
+    }
+    if (this.run.phase !== 'result') return;
     this.run = afterResult(this.run);
     if (this.run.phase === 'final') await this.finishRun();
     await this.persist();
+    this.battleFieldUp = false;
     this.screen = 'run';
     this.render();
   }
@@ -3590,9 +3477,12 @@ export class GameApp {
     view.onDone = () => {
       const winner = this.run?.lastBattle?.winner;
       if (winner) view.beginVictory(winner);
+      if (this.isHuntEndPending()) {
+        this.playBattleEnd();
+        return;
+      }
       if (this.run?.phase !== 'result') {
-        // Hunt (and scrap try): soft music end + victory dance, then leave the arena.
-        // Do not claimHunt here — that was jumping straight to the sticker on the scrap court.
+        // Scrap try: soft music end + victory dance, then next boss.
         const ending = this.isScrapTry() ? 0 : audio.beginEnding();
         const waitMs = Math.max(2600, Math.round(ending * 1000) + 1800);
         window.setTimeout(() => {

@@ -5,7 +5,6 @@ import type { BattleEvent, DeathStyle, PublicUnitView, Settings, TeamId } from '
 import { MAX_TEAM } from '../core/types';
 import { renderBattleCard, renderCocoonBattleAbility, renderStickerRail, fitCardSlabs } from '../ui/cards';
 import { cardMotion, clipDuration, type AnimClip } from './character';
-import { commitScene } from '../ui/sceneFade';
 
 const SLIDE_DUR = 0.38;
 const SIDE_FLIP_DUR = 0.34;
@@ -13,6 +12,16 @@ const SIDE_SWITCH_TOTAL = SLIDE_DUR + SIDE_FLIP_DUR;
 /** Fool laugh: shake, then a full second of stillness before the card goes. */
 const LAUGH_SHAKE = 0.75;
 const LAUGH_HOLD = 1;
+/** Curtain intro: black → closed hold → our panels travel fully off → music → cards. */
+const CURTAIN_BLACK = 0.3;
+/** Closed cloth, before it parts. */
+const CURTAIN_CLOSED_HOLD = 2;
+/** Must match the wing transition in CSS. */
+const CURTAIN_OPEN_DUR = 2.8;
+const CURTAIN_ARENA_AT = CURTAIN_BLACK + CURTAIN_CLOSED_HOLD;
+const CURTAIN_FIELD_AT = CURTAIN_ARENA_AT + CURTAIN_OPEN_DUR;
+const CURTAIN_CARDS = 0.55;
+const CURTAIN_MAX = CURTAIN_FIELD_AT + CURTAIN_CARDS;
 /** Banf smoke: dense cover first, then open; phase-2 card is already under before clear. */
 const SMOKE_HOLD_MS = [340, 170, 150, 160] as const;
 const SMOKE_FADE_MS = 280;
@@ -70,6 +79,12 @@ export class BattleView {
   private wait = 0;
   private intro = 3;
   private curtain = 2.55;
+  private introElapsed = 0;
+  private curtainPhase: 'black' | 'closed' | 'opening' | 'open' | 'gone' = 'black';
+  private arenaUnder = false;
+  private cardsArmed = false;
+  private curtainOpening = false;
+  private reduceMotion = false;
   private ended = false;
   private paused = false;
   private speed = 1;
@@ -81,7 +96,7 @@ export class BattleView {
   /** Game-time when the Banf smoke veil is gone. Next beat waits for this. */
   private smokeUntil = 0;
   onDone: (() => void) | null = null;
-  /** The round sign is gone and the board can be seen. */
+  /** Curtains are open on the scrap field — fight music may start. */
   onField: (() => void) | null = null;
   private fieldShown = false;
 
@@ -94,11 +109,20 @@ export class BattleView {
     this.events = events;
     this.i = 0;
     this.wait = 0;
-    this.intro = 3.8;
-    this.curtain = 2.7;
+    this.intro = CURTAIN_MAX;
+    this.curtain = CURTAIN_MAX;
+    this.introElapsed = 0;
+    this.curtainPhase = 'black';
+    this.arenaUnder = false;
+    this.cardsArmed = false;
+    this.curtainOpening = false;
+    this.reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.host.classList.add('is-intro', 'is-preamble');
+    this.host.classList.remove('is-field-up');
     this.host.closest('.screen-battle')?.classList.add('is-preamble');
-    this.host.querySelector('.battle-intro')?.classList.remove('is-gone');
+    const introEl = this.host.querySelector('.battle-intro');
+    introEl?.classList.remove('is-gone');
+    introEl?.setAttribute('data-curtain', 'black');
     this.ended = false;
     this.fxRemain = 0;
     this.smokeUntil = 0;
@@ -145,6 +169,7 @@ export class BattleView {
       this.ambushFx = null;
     }
     while (this.i < this.events.length) this.apply(this.events[this.i++]!, true);
+    this.cardsArmed = true;
     this.endIntro();
     if (this.ended) return;
     this.ended = true;
@@ -155,22 +180,169 @@ export class BattleView {
     return this.logLines;
   }
 
-  private endCurtain(): void {
-    this.curtain = 0;
+  private setCurtainPhase(phase: 'black' | 'closed' | 'opening' | 'open' | 'gone'): void {
+    if (this.curtainPhase === phase) return;
+    this.curtainPhase = phase;
+    this.host.querySelector('.battle-intro')?.setAttribute('data-curtain', phase);
+  }
+
+  /** Bottom and the outer folds start later, and still finish with the rest of the cloth. */
+  private clothTravel(t: number, yN: number, u: number): number {
+    const delay = 0.36 * Math.pow(yN, 1.4) + 0.2 * (1 - u);
+    const span = 1 - delay;
+    const local = span <= 0 ? 1 : Math.min(1, Math.max(0, (t - delay) / span));
+    return local * local * (3 - 2 * local);
+  }
+
+  /** Inner hem. Wider at the top, the bottom catches up, a small symmetric ripple along the edge. */
+  private velvetHemX(w: number, t: number, yN: number, side: 'left' | 'right'): number {
+    const half = w * 0.5;
+    const lead = this.clothTravel(t, yN, 1);
+    const rest = side === 'left' ? half : w - half;
+    const dest = side === 'left' ? -w * 0.18 : w + w * 0.18;
+    const ripple = Math.sin(yN * Math.PI * 2.4 + t * 2.2) * Math.sin(Math.PI * Math.min(1, t)) * w * 0.012;
+    return rest + (dest - rest) * lead + (side === 'left' ? -ripple : ripple);
+  }
+
+  private velvetWash(ctx: CanvasRenderingContext2D, h: number): CanvasGradient {
+    const wash = ctx.createLinearGradient(0, 0, 0, h);
+    wash.addColorStop(0, '#7a1c22');
+    wash.addColorStop(0.42, '#5c1418');
+    wash.addColorStop(1, '#2c080c');
+    return wash;
+  }
+
+  private velvetFold(ctx: CanvasRenderingContext2D, x: number, width: number): CanvasGradient {
+    const fold = ctx.createLinearGradient(x, 0, x + width, 0);
+    fold.addColorStop(0, 'rgba(42, 8, 12, 0.36)');
+    fold.addColorStop(0.3, 'rgba(120, 28, 34, 0.06)');
+    fold.addColorStop(0.58, 'rgba(210, 150, 140, 0.1)');
+    fold.addColorStop(1, 'rgba(28, 6, 10, 0.4)');
+    return fold;
+  }
+
+  private paintVelvetSheet(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+    ctx.fillStyle = this.velvetWash(ctx, h);
+    ctx.fillRect(0, 0, w, h);
+    const pleatW = w / 24;
+    for (let x = 0; x < w; x += pleatW) {
+      ctx.fillStyle = this.velvetFold(ctx, x, pleatW);
+      ctx.fillRect(x, 0, pleatW, h);
+    }
+  }
+
+  private paintVelvetWing(
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    t: number,
+    side: 'left' | 'right',
+  ): void {
+    const segs = 24;
+    let onStage = false;
+    const hem: number[] = [];
+    for (let s = 0; s <= segs; s++) {
+      const x = this.velvetHemX(w, t, s / segs, side);
+      hem.push(x);
+      if (side === 'left' ? x > 0 : x < w) onStage = true;
+    }
+    if (!onStage) return;
+    const exit = Math.min(1, Math.max(0, (t - 0.72) / 0.28));
+    const outer = (side === 'left' ? -w * 0.16 : w + w * 0.16) * exit + (side === 'left' ? 0 : w) * (1 - exit);
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(side === 'left' ? Math.min(outer, 0) : Math.max(outer, w), 0);
+    ctx.lineTo(side === 'left' ? Math.min(outer, 0) : Math.max(outer, w), h);
+    for (let s = segs; s >= 0; s--) ctx.lineTo(hem[s]!, (h * s) / segs);
+    ctx.closePath();
+    ctx.clip();
+    ctx.fillStyle = this.velvetWash(ctx, h);
+    ctx.fillRect(0, 0, w, h);
+    const g = this.clothTravel(t, 0, 1);
+    const pleatW = Math.max(6, (w / 24) * (1 - g * 0.7));
+    const shift = (side === 'left' ? -1 : 1) * g * w * 0.5;
+    const bow = (yN: number) => {
+      const drape = Math.sin(yN * Math.PI) * g * w * 0.06;
+      const lean = yN * yN * g * w * 0.045;
+      return drape + (side === 'left' ? -lean : lean);
+    };
+    for (let i = -6; i < 36; i++) {
+      const x0 = i * pleatW + shift;
+      ctx.beginPath();
+      for (let s = 0; s <= segs; s++) {
+        const yN = s / segs;
+        const x = x0 + bow(yN);
+        if (s === 0) ctx.moveTo(x, 0);
+        else ctx.lineTo(x, (h * s) / segs);
+      }
+      for (let s = segs; s >= 0; s--) ctx.lineTo(x0 + pleatW + bow(s / segs), (h * s) / segs);
+      ctx.closePath();
+      ctx.fillStyle = this.velvetFold(ctx, x0, pleatW);
+      ctx.fill();
+    }
+    ctx.restore();
+    ctx.beginPath();
+    ctx.moveTo(hem[0]!, 0);
+    for (let s = 1; s <= segs; s++) ctx.lineTo(hem[s]!, (h * s) / segs);
+    ctx.lineWidth = Math.max(2, w * 0.003);
+    ctx.strokeStyle = 'rgba(40, 10, 14, 0.55)';
+    ctx.stroke();
+    ctx.lineWidth = Math.max(1, w * 0.0012);
+    ctx.strokeStyle = 'rgba(190, 140, 130, 0.18)';
+    ctx.stroke();
+  }
+
+  /** Painted theatre cloth. Pleats gather to the wings and the hem swings behind. */
+  private paintCurtain(open: number): void {
+    const canvas = this.host.querySelector<HTMLCanvasElement>('.curtain-cloth');
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const w = Math.max(2, Math.round(rect.width * dpr));
+    const h = Math.max(2, Math.round(rect.height * dpr));
+    if (rect.width < 2 || rect.height < 2) return;
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+    }
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const t = open <= 0 ? 0 : open >= 1 ? 1 : open * open * (3 - 2 * open);
+    ctx.clearRect(0, 0, w, h);
+    if (t < 0.02) {
+      this.paintVelvetSheet(ctx, w, h);
+      return;
+    }
+    this.paintVelvetWing(ctx, w, h, t, 'left');
+    this.paintVelvetWing(ctx, w, h, t, 'right');
+  }
+
+  /** Arena swaps in under the parting curtains — no scene-fade flash. */
+  private revealArenaUnderCurtain(): void {
+    if (this.arenaUnder) return;
+    this.arenaUnder = true;
     this.host.classList.remove('is-preamble');
     this.host.closest('.screen-battle')?.classList.remove('is-preamble');
     document.documentElement.classList.remove('is-preamble');
-    commitScene();
-    // Keep the scrap bed quiet while the round girl is still holding the board.
+  }
+
+  private endCurtain(): void {
+    this.curtain = 0;
+    this.revealArenaUnderCurtain();
+    this.setCurtainPhase('open');
+    this.host.classList.add('is-field-up');
+    this.showField();
   }
 
   private endIntro(): void {
     this.intro = 0;
     this.curtain = 0;
+    this.revealArenaUnderCurtain();
     this.host.classList.remove('is-intro', 'is-preamble');
+    this.host.classList.add('is-field-up');
     this.host.closest('.screen-battle')?.classList.remove('is-preamble');
     document.documentElement.classList.remove('is-preamble');
-    commitScene();
+    this.setCurtainPhase('gone');
     this.host.querySelector('.battle-intro')?.classList.add('is-gone');
     this.showField();
   }
@@ -181,15 +353,44 @@ export class BattleView {
     this.onField?.();
   }
 
+  private advanceCurtain(dt: number): void {
+    this.introElapsed += dt;
+    const e = this.introElapsed;
+    const closed = this.reduceMotion ? 0.15 : CURTAIN_CLOSED_HOLD;
+    const openDur = this.reduceMotion ? 0.05 : CURTAIN_OPEN_DUR;
+    const arenaAt = CURTAIN_BLACK + closed;
+    const fieldAt = arenaAt + openDur;
+    if (e < CURTAIN_BLACK) {
+      this.setCurtainPhase('black');
+      return;
+    }
+    const open = e < arenaAt ? 0 : Math.min(1, (e - arenaAt) / openDur);
+    this.paintCurtain(open);
+    if (e < arenaAt) {
+      this.setCurtainPhase('closed');
+      return;
+    }
+    if (!this.curtainOpening) {
+      this.curtainOpening = true;
+      this.revealArenaUnderCurtain();
+      this.setCurtainPhase('opening');
+    }
+    if (e < fieldAt) return;
+    if (!this.cardsArmed) {
+      this.paintCurtain(1);
+      this.endCurtain();
+      this.cardsArmed = true;
+      this.intro = CURTAIN_CARDS;
+      return;
+    }
+    this.intro -= dt;
+    if (this.intro <= 0) this.endIntro();
+  }
+
   tick(dt: number): void {
     if (this.paused) return;
     if (this.intro > 0) {
-      this.intro -= dt;
-      if (this.curtain > 0) {
-        this.curtain -= dt;
-        if (this.curtain <= 0) this.endCurtain();
-      }
-      if (this.intro <= 0) this.endIntro();
+      this.advanceCurtain(dt);
       for (const a of this.actors.values()) this.advanceActor(a, dt);
       return;
     }
@@ -390,7 +591,12 @@ export class BattleView {
       foldY = Math.sin(t * Math.PI) * 82;
     }
     el.style.transform = `translate(${m.x + a.slideDx * slide + laugh * 10}px, ${m.y + a.slideDy * slide}px) rotate(${m.rot + laugh * 7}deg) rotateX(${m.foldX}deg) rotateY(${foldY}deg) scale(${m.sx}, ${m.sy})`;
-    el.style.opacity = this.intro > 0 ? '0' : String(m.opacity);
+    el.style.opacity = (() => {
+      if (this.intro <= 0) return String(m.opacity);
+      if (!this.fieldShown) return '0';
+      const fade = 1 - Math.max(0, this.intro) / CURTAIN_CARDS;
+      return String(Math.max(0, Math.min(1, fade)) * m.opacity);
+    })();
     const flying = a.slideLeft > 0 || a.flipLeft > 0 || a.pendingFlip;
     el.style.zIndex = a.clip === 'attack' ? '6' : flying ? '7' : a.dead ? '0' : '1';
     el.dataset.death = a.death;
@@ -753,6 +959,8 @@ export class BattleView {
           tgt.death = ev.death;
           this.beginDeathRewind(tgt, ev.hp, translate(this.settings.locale, 'fx.rewind'), 'is-rewind', silent);
         }
+        const count = this.cardEl(ev.masterId)?.querySelector('[data-rewind-left]');
+        if (count) count.textContent = String(ev.rewindLeft);
         return silent ? 0 : clipDuration('death') * 2;
       }
       case 'Revived': {

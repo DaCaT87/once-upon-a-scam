@@ -78,6 +78,8 @@ interface Combatant {
   halfHpTriggered: boolean;
   cheatDeathUsed: boolean;
   cooldownLeft: number;
+  /** Rewinds still left. Counts down on each use, not on turns. */
+  rewindLeft: number;
   /** Set when Cooldown starts during this figure’s own turn, so that turn does not count. */
   cooldownDefer: boolean;
   /** Poison gained this scrap, so End of Scrap can put the covered sticker back. */
@@ -161,6 +163,7 @@ function viewOf(u: Combatant): PublicUnitView {
     summoned: u.summoned,
     silenced: u.silenced,
     provoke: u.passives.provoke || undefined,
+    rewindLeft: u.passives.rewind ? u.rewindLeft : undefined,
   };
 }
 
@@ -221,6 +224,7 @@ function hydrate(snap: TeamSnapshot, team: TeamId): Combatant[] {
       halfHpTriggered: false,
       cheatDeathUsed: false,
       cooldownLeft: 0,
+      rewindLeft: passives.rewindUses ?? 0,
       cooldownDefer: false,
       poisonUndo: [],
     };
@@ -1571,6 +1575,7 @@ function trySummon(state: SimState, source: Combatant, unitId: string): void {
     halfHpTriggered: false,
     cheatDeathUsed: false,
     cooldownLeft: 0,
+    rewindLeft: def.passives?.rewindUses ?? 0,
     cooldownDefer: false,
     poisonUndo: [],
   };
@@ -1638,6 +1643,7 @@ function trySummonFallen(state: SimState, source: Combatant): void {
     halfHpTriggered: false,
     cheatDeathUsed: false,
     cooldownLeft: 0,
+    rewindLeft: passives.rewindUses ?? 0,
     cooldownDefer: false,
     poisonUndo: [],
   };
@@ -1860,7 +1866,7 @@ function rewindMaster(state: SimState, victim: Combatant): Combatant | undefined
       u.team === victim.team &&
       u.passives.rewind &&
       !u.silenced &&
-      u.cooldownLeft <= 0 &&
+      (u.passives.rewindUses != null ? u.rewindLeft > 0 : u.cooldownLeft <= 0) &&
       !u.dead &&
       (u.uid === victim.uid || (!u.dying && u.hp > 0)),
   );
@@ -1892,8 +1898,11 @@ function flushDeaths(state: SimState): void {
     }
     const master = rewindMaster(state, victim);
     if (master) {
-      master.cooldownLeft = Math.max(1, master.passives.cooldown ?? 1);
-      if (state.actingId === master.uid) master.cooldownDefer = true;
+      if (master.passives.rewindUses != null) master.rewindLeft = Math.max(0, master.rewindLeft - 1);
+      else {
+        master.cooldownLeft = Math.max(1, master.passives.cooldown ?? 1);
+        if (state.actingId === master.uid) master.cooldownDefer = true;
+      }
       state.pendingSideSwitches = state.pendingSideSwitches.filter((p) => p.sourceId !== victim.uid);
       victim.dying = false;
       victim.hp = victim.maxHp;
@@ -1902,6 +1911,8 @@ function flushDeaths(state: SimState): void {
         unitId: victim.uid,
         death: getUnit(printedCombatDefId(victim)).art.death,
         hp: victim.hp,
+        masterId: master.uid,
+        rewindLeft: master.rewindLeft,
       });
       continue;
     }

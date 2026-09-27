@@ -22,7 +22,7 @@ import { STICKER_BY_ID } from '../data/stickers';
 import { EVENT_BY_ID, huntLevelForRound, huntMonstersFor, huntPower, huntRarityForRound, huntStickerFor, lossRewardRarity } from '../data/events';
 import { nextWellRarity } from '../data/rarity';
 import { STARTING_BRONZE_IDS, unitsByRarity } from '../data/units';
-import { makeId } from '../core/ids';
+import { clampPlayerName, makeId } from '../core/ids';
 import { mixSeed } from '../core/rng';
 import { SeededRng } from '../core/rng';
 import { simulateBattle } from '../sim/simulation';
@@ -53,6 +53,16 @@ function remapUnitId(id: string): string {
 
 export function migrateRun(run: RunState): RunState {
   const known = (id: string) => STICKER_BY_ID.has(id);
+  const saved = run as RunState & { stickerBag?: string[] };
+  const legacyBag = (Array.isArray(saved.stickerBag) ? saved.stickerBag : []).filter(known);
+  delete saved.stickerBag;
+  if (saved.circuit) {
+    saved.circuit = saved.circuit.map((rival) => {
+      const copy = { ...rival } as typeof rival & { stickerBag?: string[] };
+      delete copy.stickerBag;
+      return copy;
+    });
+  }
   const team = capTeam(run.team).map((u) => ({
     ...u,
     defId: remapUnitId(u.defId),
@@ -60,11 +70,10 @@ export function migrateRun(run: RunState): RunState {
   }));
   const recruitPicks = Array.isArray(run.recruitPicks) ? run.recruitPicks : [];
   return {
-    ...run,
+    ...saved,
     team,
     draftPicks: run.draftPicks.slice(0, DRAFT_PICK),
     recruitPicks: recruitPicks.slice(0, recruitPickLimit(recruitPicks)),
-    stickerBag: (Array.isArray(run.stickerBag) ? run.stickerBag : []).filter(known),
     pendingStickerIds: (Array.isArray(run.pendingStickerIds) ? run.pendingStickerIds : []).filter(known),
     stickerOffers: (Array.isArray(run.stickerOffers) ? run.stickerOffers : []).filter(known),
     eventId: run.eventId && EVENT_BY_ID.has(run.eventId) ? run.eventId : null,
@@ -81,7 +90,7 @@ export function migrateRun(run: RunState): RunState {
     alleyDone: Array.isArray(run.alleyDone) ? run.alleyDone : [],
     stickersGained:
       run.stickersGained ??
-      team.reduce((n, u) => n + u.stickerIds.length, 0) + (Array.isArray(run.stickerBag) ? run.stickerBag.length : 0),
+      team.reduce((n, u) => n + u.stickerIds.length, 0) + legacyBag.length,
     deathsThisRun: run.deathsThisRun ?? 0,
     victoryPoints: victoryPointsOf(run),
     lostTales: (Array.isArray(run.lostTales) ? run.lostTales : []).map((tale) => ({
@@ -104,7 +113,7 @@ export function bareRun(mode: RunMode, playerId: string, playerName: string, see
     runId: makeId('run'),
     mode,
     playerId,
-    playerName,
+    playerName: clampPlayerName(playerName),
     round: 1,
     wins: 0,
     losses: 0,
@@ -124,7 +133,6 @@ export function bareRun(mode: RunMode, playerId: string, playerName: string, see
     offerCounter: 1,
     dataVersion: DATA_VERSION,
     startedAt: Date.now(),
-    stickerBag: [],
     eventId: null,
     eventStep: null,
     eventOffers: [],
@@ -290,7 +298,7 @@ function stripSticker(u: UnitInstance, stickerId: string): UnitInstance {
 function persistBattleTeam(
   run: RunState,
   side: 'player' | 'enemy' = 'player',
-): { team: UnitInstance[]; stickerBag: string[]; deathsThisRun: number; stickersGained: number } {
+): { team: UnitInstance[]; deathsThisRun: number; stickersGained: number } {
   const sideOf = (uid: string) => instanceOnSide(uid, side);
   const events = run.lastBattle?.events ?? [];
   let team = cloneTeam(run.team);
@@ -299,7 +307,6 @@ function persistBattleTeam(
   const deathGrown = new Set<string>();
   const deadPlayer = new Set<string>();
   const poisonUndo = new Map<string, { slot: number; restore: string | null }[]>();
-  const stickerBag = [...run.stickerBag];
   let deathsThisRun = run.deathsThisRun ?? 0;
   let stickersGained = run.stickersGained ?? 0;
   for (const ev of events) {
@@ -483,7 +490,7 @@ function persistBattleTeam(
   team = team.map((u) =>
     getUnit(u.defId).passives?.forgetStickersAfterScrap && u.stickerIds.length ? { ...u, stickerIds: [] } : u,
   );
-  return { team, stickerBag, deathsThisRun, stickersGained };
+  return { team, deathsThisRun, stickersGained };
 }
 
 /** Write one side of a finished scrap back onto that side's lineup. */
@@ -491,10 +498,9 @@ export function applyBattleSide(
   team: UnitInstance[],
   result: BattleResult,
   side: 'player' | 'enemy',
-  meta: { stickerBag: string[]; deathsThisRun: number; stickersGained: number },
+  meta: { deathsThisRun: number; stickersGained: number },
 ): {
   team: UnitInstance[];
-  stickerBag: string[];
   deathsThisRun: number;
   stickersGained: number;
   pendingStickerIds: string[];
@@ -504,7 +510,6 @@ export function applyBattleSide(
 } {
   const ghost = {
     team: cloneTeam(team),
-    stickerBag: [...meta.stickerBag],
     deathsThisRun: meta.deathsThisRun,
     stickersGained: meta.stickersGained,
     lastBattle: result,
@@ -518,7 +523,6 @@ export function applyBattleSide(
   );
   return {
     team: applyLossGrowth(persisted.team, view),
-    stickerBag: persisted.stickerBag,
     deathsThisRun: persisted.deathsThisRun,
     stickersGained: persisted.stickersGained,
     pendingStickerIds,
@@ -667,7 +671,6 @@ export function resolveFight(run: RunState, enemy: TeamSnapshot): RunState {
   const settled: RunState = {
     ...next,
     team: applyLossGrowth(persisted.team, result.winner),
-    stickerBag: persisted.stickerBag,
     deathsThisRun: persisted.deathsThisRun,
     stickersGained: persisted.stickersGained,
   };
@@ -905,16 +908,6 @@ export function confirmStickerPicks(run: RunState): RunState {
   return { ...run, phase: 'stickerAssign' };
 }
 
-export function storePendingStickers(run: RunState): RunState {
-  if (run.pendingStickerIds.length !== run.stickerPickCount) return run;
-  return finishAlley({
-    ...run,
-    stickerBag: [...run.stickerBag, ...run.pendingStickerIds],
-    pendingStickerIds: [],
-    stickersGained: (run.stickersGained ?? 0) + run.pendingStickerIds.length,
-  });
-}
-
 export function skipStickers(run: RunState): RunState {
   if (run.phase !== 'sticker' && run.phase !== 'stickerAssign') return run;
   if (isOpeningStickerGift(run)) return { ...run, phase: 'formation', pendingStickerIds: [] };
@@ -994,29 +987,6 @@ export function settleStickerAssign(run: RunState): RunState {
   if (isOpeningStickerGift(run)) return { ...run, phase: 'formation', pendingStickerIds: [] };
   if (isScrapStickerLoot(run)) return beginPostFight({ ...run, pendingStickerIds: [] });
   return finishAlley({ ...run, pendingStickerIds: [] });
-}
-
-export function applyBagSticker(run: RunState, stickerId: string, instanceId: string, replaceIndex?: number): RunState {
-  const bagIdx = run.stickerBag.indexOf(stickerId);
-  if (bagIdx < 0) return run;
-  const inst = run.team.find((u) => u.instanceId === instanceId);
-  if (!inst) return run;
-  if (!canAcceptSticker(inst) && replaceIndex == null) return run;
-  const plateRng = rngFor(run, 0x51a8);
-  const fromId = inst.defId;
-  const team = spreadIfMythic(
-    shareStickerOnApply(
-      cloneTeam(run.team).map((u) => (u.instanceId === instanceId ? applySticker(u, stickerId, replaceIndex, plateRng) : u)),
-      instanceId,
-      stickerId,
-      fromId,
-    ),
-    stickerId,
-    plateRng,
-  );
-  const stickerBag = run.stickerBag.slice();
-  stickerBag.splice(bagIdx, 1);
-  return { ...run, team, stickerBag };
 }
 
 export function beginRecruit(run: RunState): RunState {
@@ -1245,7 +1215,6 @@ export function resolveHuntFight(run: RunState): RunState {
   return {
     ...next,
     team: applyLossGrowth(persisted.team, result.winner),
-    stickerBag: persisted.stickerBag,
     deathsThisRun: persisted.deathsThisRun,
     stickersGained: persisted.stickersGained,
   };
@@ -1477,22 +1446,13 @@ function sacrificeWellUnit(run: RunState, instanceId: string): RunState {
 function sacrificeWellSticker(run: RunState, instanceId: string, stickerId: string): RunState {
   const rarity = nextWellRarity(getSticker(stickerId).rarity);
   const rng = rngFor(run, 0x111);
-  const team = cloneTeam(run.team).map((u) => {
-    if (u.instanceId !== instanceId) return u;
-    return { ...u, stickerIds: u.stickerIds.filter((id) => id !== stickerId) };
-  });
+  const team = cloneTeam(run.team).map((u) => (u.instanceId === instanceId ? stripSticker(u, stickerId) : u));
   const reward = offerStickersOfRarity(rarity, 1, rng)[0];
   if (!reward) return finishAlley({ ...run, team, eventPicks: [], eventOffers: [] });
   return grantEventStickers(
     { ...run, team, eventStep: 'well-pick', eventPicks: [], eventOffers: [reward], offerCounter: run.offerCounter + 1 },
     [reward],
   );
-}
-
-/** Legacy: auto-claim if UI still calls it; reward is already a single sticker. */
-export function pickWellSticker(run: RunState, stickerId: string): RunState {
-  if (run.eventStep !== 'well-pick' || !run.eventOffers.includes(stickerId)) return run;
-  return grantEventStickers(run, [stickerId]);
 }
 
 function resolveOven(run: RunState, instanceId: string): RunState {

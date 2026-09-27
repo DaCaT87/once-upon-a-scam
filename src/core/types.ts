@@ -210,6 +210,8 @@ export interface Passives {
   teamActsFirst?: boolean;
   /** When a figure on this team is knocked out, that figure returns at full HP. */
   rewind?: boolean;
+  /** Rewinds this figure can spend. The number on the card counts down with each use. */
+  rewindUses?: number;
   /** After Rewind, this many of this figure’s own turn-ends must pass before it can happen again. */
   cooldown?: number;
 }
@@ -368,6 +370,8 @@ export interface PublicUnitView {
   silenced?: boolean;
   /** Set when a boss ability has given this figure Taunt. A plain Cocoon does not have it. */
   provoke?: boolean;
+  /** Rewinds still left on this figure. Counts down from rewindUses. */
+  rewindLeft?: number;
 }
 
 export type BattleEvent =
@@ -409,7 +413,7 @@ export type BattleEvent =
   | { type: 'ExhaustedUnit'; unitId: string; recipientId?: string | null; atk: number; hp: number }
   | { type: 'GiftedStat'; unitId: string; recipientId: string; stat: 'atk' | 'hp' | 'speed'; amount: number }
   | { type: 'Revived'; unitId: string; hp: number }
-  | { type: 'Rewound'; unitId: string; death: DeathStyle; hp: number }
+  | { type: 'Rewound'; unitId: string; death: DeathStyle; hp: number; masterId: string; rewindLeft: number }
   | { type: 'ConfusedSkip'; unitId: string }
   | { type: 'Evaded'; unitId: string; sourceId: string | null; reflected: boolean }
   | { type: 'BattleStartAct'; unitId: string }
@@ -488,7 +492,6 @@ export interface RunState {
   offerCounter: number;
   dataVersion: string;
   startedAt: number;
-  stickerBag: string[];
   eventId: EventId | null;
   eventStep: EventStep | null;
   eventOffers: string[];
@@ -532,7 +535,6 @@ export interface CircuitRival {
   victoryPoints: number;
   team: UnitInstance[];
   offerCounter: number;
-  stickerBag: string[];
   stickersGained: number;
   deathsThisRun: number;
   lostTales: LostTale[];

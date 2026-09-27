@@ -1,5 +1,12 @@
 let n = 0;
 
+/** Alias length kept short so standings stay on one line. */
+export const PLAYER_NAME_MAX = 10;
+
+export function clampPlayerName(name: string): string {
+  return name.trim().slice(0, PLAYER_NAME_MAX);
+}
+
 export function makeId(prefix: string): string {
   n += 1;
   return `${prefix}_${Date.now().toString(36)}_${n.toString(36)}_${Math.floor(Math.random() * 1e9).toString(36)}`;

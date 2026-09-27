@@ -7,7 +7,7 @@ import { STICKERS, grantableStickers, libraryHuntStickers, shopStickers } from '
 import { mixSeed, SeededRng } from './core/rng';
 import {
   afterResult,
-  applyBagSticker,
+  applyShopSticker,
   assignPendingSticker,
   chooseAlley,
   beginEvent,
@@ -899,7 +899,21 @@ assertShopCurve();
   let run = createRun('ai', 'tester', 'Goose', 0x71);
   run = {
     ...run,
-    team: [instanceFromDef('golden-goose', 1, 'gg1'), instanceFromDef('village-fool', 2, 'vf1')],
+    phase: 'recruit',
+    recruitOffers: ['golden-goose', 'village-fool', 'hunter'],
+    recruitPicks: [],
+  };
+  run = placeRecruit(run, 'golden-goose', 1);
+  run = finishRecruit(run);
+  const gift = run.pendingStickerIds[0];
+  if (run.phase !== 'stickerAssign' || !gift || getSticker(gift).rarity !== 'gold') {
+    throw new Error(`golden goose recruit gift failed phase=${run.phase} pending=${run.pendingStickerIds.join(',')}`);
+  }
+  run = {
+    ...run,
+    phase: 'battle',
+    team: [instanceFromDef('golden-goose', 1, 'gg1')],
+    pendingStickerIds: [],
   };
   const prey = makeSnapshot({
     playerId: 'e',
@@ -909,23 +923,8 @@ assertShopCurve();
     team: [instanceFromDef('paper-dove', 1, 'pd1')],
   });
   run = resolveFight(run, prey);
-  const gift = run.lastBattle?.events.find((e) => e.type === 'EarnedSticker');
-  if (
-    !gift ||
-    gift.type !== 'EarnedSticker' ||
-    gift.unitId !== 'player:gg1' ||
-    getSticker(gift.stickerId).rarity !== 'gold' ||
-    run.team.some((u) => u.permanentMods.atk || u.permanentMods.hp)
-  ) {
-    throw new Error(`golden goose gift failed ${gift && gift.type === 'EarnedSticker' ? gift.stickerId : 'none'}`);
-  }
-  run = afterResult(run);
-  if (run.phase !== 'stickerAssign' || run.pendingStickerIds[0] !== gift.stickerId) {
-    throw new Error(`golden goose assign phase=${run.phase} pending=${run.pendingStickerIds.join(',')}`);
-  }
-  run = skipStickers(run);
-  if (run.phase !== 'postFight' || run.alleyDone.length) {
-    throw new Error(`golden goose loot closed phase=${run.phase} alley=${run.alleyDone.join(',')}`);
+  if (run.lastBattle?.events.some((e) => e.type === 'EarnedSticker')) {
+    throw new Error('golden goose should not lay a sticker after the scrap');
   }
 }
 {
@@ -2068,61 +2067,12 @@ assertShopCurve();
     }),
     34,
   );
-  const firstRewind = burst.events.findIndex((e) => e.type === 'Rewound' && e.unitId === 'player:doveCd');
-  const deathAfter = burst.events.findIndex(
-    (e, i) => i > firstRewind && e.type === 'UnitDied' && e.unitId === 'player:doveCd',
-  );
-  const turnBetween = burst.events.findIndex(
-    (e, i) => i > firstRewind && i < deathAfter && e.type === 'TurnEnded' && e.unitId === 'player:tmCd',
-  );
-  const burstRewind = burst.events[firstRewind];
-  if (
-    firstRewind < 0 ||
-    !burstRewind ||
-    burstRewind.type !== 'Rewound' ||
-    burstRewind.hp !== 2 ||
-    deathAfter < 0 ||
-    turnBetween >= 0
-  ) {
-    throw new Error('cooldown should block a second rewind before Time Master ends a turn');
-  }
-  const waited = simulateBattle(
-    makeSnapshot({
-      playerId: 'p',
-      playerName: 'p',
-      runId: 'r',
-      round: 1,
-      team: [
-        instanceFromDef('paper-dove', 1, 'doveA'),
-        instanceFromDef('paper-dove', 2, 'doveB'),
-        instanceFromDef('time-master', 3, 'tmWait'),
-      ],
-    }),
-    makeSnapshot({
-      playerId: 'e',
-      playerName: 'e',
-      runId: 'r',
-      round: 1,
-      team: [instanceFromDef('tiny-brave-mouse', 1, 'mouseWait')],
-    }),
-    41,
-  );
-  const firstWait = waited.events.findIndex((e) => e.type === 'Rewound' && e.unitId === 'player:doveA');
-  const doveDies = waited.events.findIndex(
-    (e, i) => i > firstWait && e.type === 'UnitDied' && e.unitId === 'player:doveA',
-  );
-  const secondWait = waited.events.findIndex((e, i) => i > doveDies && e.type === 'Rewound' && e.unitId === 'player:doveB');
-  const turnsBeforeDeath = waited.events.filter(
-    (e, i) => i > firstWait && i < doveDies && e.type === 'TurnEnded' && e.unitId === 'player:tmWait',
-  ).length;
-  const turnsBeforeSecond = waited.events.filter(
-    (e, i) => i > firstWait && i < secondWait && e.type === 'TurnEnded' && e.unitId === 'player:tmWait',
-  ).length;
-  if (firstWait < 0 || doveDies < 0 || turnsBeforeDeath !== 1) {
-    throw new Error('cooldown 2 should still be down after one Time Master turn');
-  }
-  if (secondWait < 0 || turnsBeforeSecond !== 2) {
-    throw new Error('cooldown 2 should allow Rewind after two Time Master turns');
+  const charges = burst.events.filter((e) => e.type === 'Rewound' && e.unitId === 'player:doveCd');
+  const spent = charges.map((e) => (e.type === 'Rewound' ? e.rewindLeft : -1)).join(',');
+  const lastCharge = burst.events.findIndex((e) => e.type === 'Rewound' && e.unitId === 'player:doveCd' && e.rewindLeft === 0);
+  const diedAfter = burst.events.findIndex((e, i) => i > lastCharge && e.type === 'UnitDied' && e.unitId === 'player:doveCd');
+  if (charges.length !== 3 || spent !== '2,1,0' || diedAfter < 0) {
+    throw new Error(`time master should rewind three times then stop spent=${spent} died=${diedAfter}`);
   }
   const self = simulateBattle(
     makeSnapshot({
@@ -2177,13 +2127,13 @@ assertShopCurve();
   }
   if (
     abilityRule('en', 'time-master') !==
-    'When a figure on your side is knocked out, including this one, Rewind. Cooldown 2.'
+    'The first {n} times an allied figure is knocked out, Rewind.'
   ) {
     throw new Error('time master en');
   }
   if (
     abilityRule('it', 'time-master') !==
-    'Quando una figura dalla tua parte viene messa KO, anche questa, Rewind. Cooldown 2.'
+    'Le prime {n} volte che una figura alleata viene messa KO, Rewind.'
   ) {
     throw new Error('time master it');
   }
@@ -2530,8 +2480,8 @@ assertShopCurve();
     }
   }
   let platedRun = createRun('ai', 'tester', 'Plate', 0x91);
-  platedRun = { ...platedRun, team: [instanceFromDef('farm-boy', 1, 'fb12')] };
-  platedRun = applyBagSticker({ ...platedRun, stickerBag: ['silver-plated'] }, 'silver-plated', 'fb12');
+  platedRun = { ...platedRun, phase: 'sticker', stickerOffers: ['silver-plated'], team: [instanceFromDef('farm-boy', 1, 'fb12')] };
+  platedRun = applyShopSticker(platedRun, 'silver-plated', 'fb12');
   const changed = platedRun.team.find((u) => u.instanceId === 'fb12');
   if (
     !changed ||
@@ -4204,7 +4154,7 @@ if (!assertDeterministic(a, b, 12345)) throw new Error('determinism failed');
 }
 {
   const fang = getUnit('greed-fang');
-  if (fang.hp !== 30 || fang.atk !== 10 || fang.speed !== 3) throw new Error('greed fang stats');
+  if (fang.hp !== 40 || fang.atk !== 10 || fang.speed !== 3) throw new Error('greed fang stats');
   const fangCard = renderUnitCard('en', instanceFromDef('greed-fang', 1, 'gfCard'));
   if (!fangCard.includes('ON MY TURN') || !fangCard.includes('Deal 3 damage to all enemy figures.')) {
     throw new Error('greed fang should burn every enemy on its turn');
@@ -4715,6 +4665,23 @@ if (ev.lastBonusBattle?.winner === 'player') {
   wellUnit = skipRecruit(wellUnit);
   if (wellUnit.phase === 'event' || wellUnit.phase === 'recruit' || wellUnit.team.length !== 1) {
     throw new Error(`well skip phase=${wellUnit.phase} n=${wellUnit.team.length}`);
+  }
+}
+
+{
+  const twins = applySticker(applySticker(instanceFromDef('farm-boy', 1, 'ws1'), 'fur-armor'), 'fur-armor');
+  let wellTwins: RunState = {
+    ...base,
+    phase: 'event',
+    eventId: 'wishing-well',
+    eventStep: 'preview',
+    eventOffers: ['kind:sticker'],
+    team: [twins],
+  };
+  wellTwins = eventSelectSticker(wellTwins, 'ws1', 'fur-armor');
+  const kept = wellTwins.team.find((u) => u.instanceId === 'ws1');
+  if (!kept || kept.stickerIds.length !== 1 || kept.stickerIds[0] !== 'fur-armor') {
+    throw new Error(`well twin sticker left=${kept?.stickerIds.join(',')}`);
   }
 }
 

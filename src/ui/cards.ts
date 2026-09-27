@@ -163,9 +163,11 @@ export function renderRuleRow(locale: Locale, targeting: TargetingType, defId: s
   return `<div class="rule-row">${renderTargetingLabel(locale, targeting)}${timing ? renderTimingLabel(locale, timing) : ''}</div>`;
 }
 
-function renderAbilityText(locale: Locale, rule: string): string {
+function renderAbilityText(locale: Locale, rule: string, rewindLeft?: number): string {
   if (!rule.trim()) return '';
-  return `<div class="ability"><p class="ability-rule">${linkKeywords(locale, rule)}</p></div>`;
+  let html = linkKeywords(locale, rule);
+  if (rewindLeft != null) html = html.replace('{n}', `<b data-rewind-left>${rewindLeft}</b>`);
+  return `<div class="ability"><p class="ability-rule">${html}</p></div>`;
 }
 
 /** Scrap cocoon line. Taunt is only on the sentence when a boss ability granted it. */
@@ -175,8 +177,9 @@ export function renderCocoonBattleAbility(locale: Locale, provoke: boolean): str
   return renderAbilityText(locale, text);
 }
 
-export function renderAbility(locale: Locale, defId: string): string {
-  return renderAbilityText(locale, abilityRule(locale, defId));
+export function renderAbility(locale: Locale, defId: string, rewindLeft?: number): string {
+  const left = defId === 'time-master' ? (rewindLeft ?? 3) : undefined;
+  return renderAbilityText(locale, abilityRule(locale, defId), left);
 }
 
 export function renderTargetingLabel(locale: Locale, type: TargetingType): string {
@@ -574,10 +577,6 @@ export function renderTeamLane(
     .join('');
 }
 
-export function renderLineup(locale: Locale, team: UnitInstance[], ctx?: StatContext): string {
-  return renderTeamLane(locale, team, ctx);
-}
-
 export function renderOfferCard(
   locale: Locale,
   defId: string,
@@ -671,16 +670,21 @@ export function renderStickerRail(locale: Locale, stickerIds: string[], opts?: {
   return stickerSlots(locale, stickerIds, opts);
 }
 
+/** Ability text leaves the scrap face. Timing and the rule sit in the hover box. */
+function scrapReadout(locale: Locale, unit: PublicUnitView, defId: string): string {
+  if (unit.silenced) return '';
+  const timing = resolveAbilityTiming(getUnit(defId));
+  const when = timing ? `<div class="rule-row">${renderTimingLabel(locale, timing)}</div>` : '';
+  const rule = defId === 'silk-cocoon'
+    ? renderCocoonBattleAbility(locale, Boolean(unit.provoke))
+    : renderAbility(locale, defId, unit.rewindLeft);
+  if (!when && !rule) return '';
+  return `<div class="scrap-readout">${when}${rule}</div>`;
+}
+
 export function renderBattleCard(locale: Locale, unit: PublicUnitView): string {
   const def = getUnit(unit.defId);
   const silenced = Boolean(unit.silenced);
-  const rules = silenced
-    ? `<div class="rule-row">${renderTargetingLabel(locale, unit.targeting)}</div>`
-    : def.id === 'pig'
-      ? renderRuleRow(locale, unit.targeting, def.id)
-      : def.id === 'silk-cocoon'
-        ? `${renderRuleRow(locale, unit.targeting, def.id)}${renderCocoonBattleAbility(locale, Boolean(unit.provoke))}`
-        : `${renderRuleRow(locale, unit.targeting, def.id)}${renderAbility(locale, def.id)}`;
   const huntCard = def.tags.includes('hunt');
   const printed = usesPrintedCardFace(def.id);
   const rarity = def.id === 'pig' ? unit.rarity : def.rarity;
@@ -696,9 +700,10 @@ export function renderBattleCard(locale: Locale, unit: PublicUnitView): string {
           <div class="stat">${statIcon(locale, 'atk')}<b data-stat="atk">${unit.atk}</b></div>
           <div class="stat">${statIcon(locale, 'spd')}<b data-stat="spd">${unit.speed}</b></div>
         </div>
-        ${rules}
+        <div class="rule-row">${renderTargetingLabel(locale, unit.targeting)}</div>
       </div>
       <div class="sticker-rail">${stickerSlots(locale, unit.stickers, { spent: silenced })}</div>
+      ${scrapReadout(locale, unit, def.id)}
     </article>`;
 }
 

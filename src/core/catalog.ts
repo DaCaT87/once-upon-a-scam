@@ -157,6 +157,7 @@ export function mergePassives(inst: UnitInstance | SnapshotUnit): Passives {
 }
 
 function timingFromAbility(ability: AbilityDef): AbilityTiming | null {
+  if (ability.id === 'purple-widows.cocoon') return 'onHit';
   if (ability.trigger === 'afterAttack' && (ability.once || ability.condition?.kind === 'firstAttack')) {
     return 'firstAttack';
   }
@@ -262,7 +263,7 @@ export function assertAbilityTiming(): void {
     ['wish-pinata', 'onDeath'],
     ['aladdin', 'onAttack'],
     ['patchwork-monster', 'anyDied'],
-    ['golden-goose', 'battleEnd'],
+    ['golden-goose', 'onRecruit'],
     ['giving-tree', 'turnStart'],
     ['ice-king', 'battleStart'],
     ['sandman', 'turnStart'],
@@ -290,7 +291,7 @@ export function assertAbilityTiming(): void {
     ['mad-woodsman', 'onKill'],
     ['sewer-lord', 'battleStart'],
     ['garbage-pile', null],
-    ['purple-widows', 'afterAttack'],
+    ['purple-widows', 'onHit'],
     ['greed-fang', 'turnStart'],
     ['ogre-king', null],
   ];

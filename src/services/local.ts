@@ -91,18 +91,18 @@ export function seedWorldIfNeeded(): void {
   const snaps: TeamSnapshot[] = [];
   const board: CompletedRun[] = [];
   const aliases = [
-    'Dolly Two-Time',
-    'Ink-Stained Pete',
+    'Dolly Two',
+    'Ink Pete',
     'Velvet Mae',
-    'Lefty Calhoun',
-    'Miss Ribbon',
-    'Porkpie Joe',
-    'The Midnight Clerk',
-    'Hattie No-Last-Name',
+    'Lefty Cal',
+    'MissRibbon',
+    'Porkpie Jo',
+    'Mid Clerk',
+    'Hattie',
     'Cinder Sid',
     'Brass Nell',
-    'Quiet Irving',
-    'Marquee Bess',
+    'Quiet Irv',
+    'Marq Bess',
   ];
   for (let i = 0; i < 12; i++) {
     const seed = hashString(`world:${i}:v1`);

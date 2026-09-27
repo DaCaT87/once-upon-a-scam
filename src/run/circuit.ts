@@ -38,18 +38,18 @@ import {
 } from './runEngine';
 
 const NAMES = [
-  'Dolly Two-Time',
-  'Ink-Stained Pete',
+  'Dolly Two',
+  'Ink Pete',
   'Velvet Mae',
-  'Lefty Calhoun',
-  'Miss Ribbon',
-  'Porkpie Joe',
-  'The Midnight Clerk',
-  'Hattie No-Last-Name',
+  'Lefty Cal',
+  'MissRibbon',
+  'Porkpie Jo',
+  'Mid Clerk',
+  'Hattie',
   'Cinder Sid',
   'Brass Nell',
-  'Quiet Irving',
-  'Marquee Bess',
+  'Quiet Irv',
+  'Marq Bess',
 ];
 
 function power(defId: string): number {
@@ -123,7 +123,6 @@ function takeRival(run: RunState, seed: number, name: string, id: string): Circu
     victoryPoints: 0,
     team: formLine(run.team),
     offerCounter: run.offerCounter,
-    stickerBag: [...run.stickerBag],
     stickersGained: run.stickersGained ?? 0,
     deathsThisRun: run.deathsThisRun ?? 0,
     lostTales: copyTales(run.lostTales ?? []),
@@ -327,7 +326,6 @@ function shellFromRival(rival: CircuitRival, round: number): RunState {
     phase: 'result',
     team: cloneTeam(rival.team),
     offerCounter: rival.offerCounter,
-    stickerBag: [...rival.stickerBag],
     stickersGained: rival.stickersGained,
     deathsThisRun: rival.deathsThisRun,
     lostTales: copyTales(rival.lostTales),
@@ -357,7 +355,6 @@ function writeBack(rival: CircuitRival, run: RunState): CircuitRival {
     ...rival,
     team: formLine(run.team),
     offerCounter: run.offerCounter,
-    stickerBag: [...run.stickerBag],
     stickersGained: run.stickersGained ?? rival.stickersGained,
     deathsThisRun: run.deathsThisRun ?? rival.deathsThisRun,
     lostTales: copyTales(run.lostTales ?? []),
@@ -397,7 +394,6 @@ function commit(rival: CircuitRival, out: ReturnType<typeof applyBattleSide>): C
   return {
     ...rival,
     team: out.team,
-    stickerBag: out.stickerBag,
     deathsThisRun: out.deathsThisRun,
     stickersGained: out.stickersGained,
     pendingStickerIds: out.pendingStickerIds,
