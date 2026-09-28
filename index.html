@@ -15,17 +15,26 @@
       href="https://fonts.googleapis.com/css2?family=Anton&family=Berkshire+Swash&family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,700;1,9..144,500&family=Limelight&family=Rye&family=Special+Elite&display=swap"
       rel="stylesheet"
     />
-    <script type="module" crossorigin src="./assets/index-DWzJnD5Z.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-D0ygfIMj.css">
+    <script type="module" crossorigin src="./assets/index-CD8qo6eq.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-DrkwK5FD.css">
   </head>
   <body>
     <div id="stage-fill" aria-hidden="true"></div>
     <div id="scene-fade" aria-hidden="true"></div>
     <div id="vignette" aria-hidden="true"></div>
     <div id="grain" aria-hidden="true"></div>
+    <button id="options-gear" class="gear-stamp" type="button" aria-label="Options">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path fill="currentColor" fill-rule="evenodd" d="M10.8 2.2h2.4l.35 2.15a7.6 7.6 0 0 1 1.84.76l1.86-1.16 1.7 1.7-1.16 1.86c.32.57.58 1.19.76 1.84l2.15.35v2.4l-2.15.35a7.6 7.6 0 0 1-.76 1.84l1.16 1.86-1.7 1.7-1.86-1.16a7.6 7.6 0 0 1-1.84.76l-.35 2.15h-2.4l-.35-2.15a7.6 7.6 0 0 1-1.84-.76l-1.86 1.16-1.7-1.7 1.16-1.86a7.6 7.6 0 0 1-.76-1.84l-2.15-.35v-2.4l2.15-.35c.18-.65.44-1.27.76-1.84L4.89 5.65l1.7-1.7 1.86 1.16c.57-.32 1.19-.58 1.84-.76L10.8 2.2zM12 9.1a2.9 2.9 0 1 0 0 5.8 2.9 2.9 0 0 0 0-5.8z" />
+      </svg>
+    </button>
     <div class="corner-stamps">
       <button id="menu-stamp" class="fs-btn" type="button" hidden>Main Menu</button>
-      <button id="fullscreen-btn" class="fs-btn" type="button" aria-pressed="false">Schermo intero</button>
+      <button id="fullscreen-btn" class="fs-btn" type="button" aria-pressed="false">Full screen</button>
+    </div>
+    <button id="credits-stamp" class="fs-btn credits-stamp" type="button" hidden>Crediti</button>
+    <div id="credits-panel" class="credits-panel" hidden>
+      <p id="credits-copy"></p>
     </div>
     <div id="app"></div>
     <div class="landscape-gate">
