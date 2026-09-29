@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="is-booting is-menu">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
@@ -15,8 +15,8 @@
       href="https://fonts.googleapis.com/css2?family=Anton&family=Berkshire+Swash&family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,700;1,9..144,500&family=Limelight&family=Rye&family=Special+Elite&display=swap"
       rel="stylesheet"
     />
-    <script type="module" crossorigin src="./assets/index-CpCUQkX0.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-DrkwK5FD.css">
+    <script type="module" crossorigin src="./assets/index-CvhC2nlD.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-Cd7SOe0M.css">
   </head>
   <body>
     <div id="stage-fill" aria-hidden="true"></div>
@@ -30,11 +30,14 @@
     </button>
     <div class="corner-stamps">
       <button id="menu-stamp" class="fs-btn" type="button" hidden>Main Menu</button>
-      <button id="fullscreen-btn" class="fs-btn" type="button" aria-pressed="false">Full screen</button>
+      <button id="fullscreen-btn" class="fs-btn" type="button" aria-pressed="false" hidden>Full screen</button>
     </div>
     <button id="credits-stamp" class="fs-btn credits-stamp" type="button" hidden>Crediti</button>
     <div id="credits-panel" class="credits-panel" hidden>
       <p id="credits-copy"></p>
+    </div>
+    <div id="boot" class="boot" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Loading">
+      <div class="boot-track"><div id="boot-fill" class="boot-fill"></div></div>
     </div>
     <div id="app"></div>
     <div class="landscape-gate">
