@@ -263,20 +263,31 @@ function applyLossGrowth(team: UnitInstance[], winner: 'player' | 'enemy' | 'dra
   });
 }
 
-function huntKoIds(run: RunState, side: 'player' | 'enemy'): string[] {
-  const events = run.lastBattle?.events ?? [];
-  const fallen = new Set<string>();
-  for (const ev of events) {
-    if (ev.type === 'UnitDied') {
-      const id = instanceOnSide(ev.unitId, side);
-      if (id) fallen.add(id);
-    }
-    if (ev.type === 'Revived') {
-      const id = instanceOnSide(ev.unitId, side);
-      if (id) fallen.delete(id);
-    }
+/** Starters of one side who are off the field at the end. Summons never count. */
+export function huntKnockedOutIds(run: RunState, side: 'player' | 'enemy'): string[] {
+  const battle = run.lastBattle;
+  if (!battle) return [];
+  const snap = side === 'player' ? battle.snapshots.a : battle.snapshots.b;
+  const starters = new Set((snap?.units ?? []).map((u) => u.instanceId));
+  const down = new Set<string>();
+  for (const ev of battle.events) {
+    if (ev.type !== 'UnitDied' && ev.type !== 'Revived') continue;
+    const id = battleInstanceId(ev.unitId);
+    if (!id || !starters.has(id)) continue;
+    if (ev.type === 'UnitDied') down.add(id);
+    else down.delete(id);
   }
-  return [...fallen];
+  return [...down];
+}
+
+function battleInstanceId(uid: string): string | null {
+  const rest = uid.startsWith('player:')
+    ? uid.slice('player:'.length)
+    : uid.startsWith('enemy:')
+      ? uid.slice('enemy:'.length)
+      : null;
+  if (!rest || rest.startsWith('summon:')) return null;
+  return rest;
 }
 
 function instanceOnSide(uid: string, side: 'player' | 'enemy'): string | null {
@@ -482,10 +493,6 @@ function persistBattleTeam(
         }
       }
     }
-  }
-  // A won hunt still spends the figures that fell. A loss keeps them.
-  if (run.eventId === 'monster-hunt' && run.lastBattle?.winner === 'player') {
-    for (const id of huntKoIds(run, side)) melted.add(id);
   }
   team = compactSlots(team.filter((u) => !melted.has(u.instanceId)));
   team = team.map((u) => {
@@ -1227,7 +1234,7 @@ export function resolveHuntFight(run: RunState): RunState {
   const result = simulateBattle(player, enemy, seed);
   const next = { ...run, lastBonusBattle: result, lastBattle: result, eventStep: 'hunt-result' as const };
   const persisted = persistBattleTeam(next);
-  const koPenalty = result.winner === 'player' ? 0 : huntKoIds(next, 'player').length;
+  const koPenalty = huntKnockedOutIds(next, 'player').length;
   return {
     ...next,
     team: applyLossGrowth(persisted.team, result.winner),
@@ -1239,8 +1246,8 @@ export function resolveHuntFight(run: RunState): RunState {
 
 export function claimHunt(run: RunState): RunState {
   if (run.eventId !== 'monster-hunt' || run.eventStep !== 'hunt-result') return run;
-  const won = run.lastBonusBattle?.winner === 'player';
-  const sid = won && run.huntMonsterId ? huntStickerFor(run.huntMonsterId) : null;
+  const bossDown = huntKnockedOutIds(run, 'enemy').length > 0;
+  const sid = bossDown && run.huntMonsterId ? huntStickerFor(run.huntMonsterId) : null;
   if (!sid) return finishAlley(run);
   return grantEventStickers(run, [sid]);
 }

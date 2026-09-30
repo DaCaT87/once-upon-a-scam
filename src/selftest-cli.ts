@@ -34,6 +34,7 @@ import {
   moveUnitSlot,
   resolveFight,
   resolveHuntFight,
+  huntKnockedOutIds,
   skipEmptyEvent,
   skipRecruit,
   skipStickers,
@@ -4538,15 +4539,10 @@ const base = { ...ev, alleyDone: ['recruit' as const] };
   huntDie = resolveHuntFight(huntDie);
   const huntDead = huntDie.lastBonusBattle?.events.some((e) => e.type === 'UnitDied' && e.unitId === 'player:hd1');
   if (!huntDead) throw new Error('hunt exhaust fixture should die');
-  const stillThere = huntDie.team.some((u) => u.instanceId === 'hd1');
-  if (huntDie.lastBonusBattle?.winner === 'player') {
-    if (stillThere) throw new Error('a won hunt should still lose KO\'d figures');
-    if ((huntDie.victoryPoints ?? 0) !== beforeVp) throw new Error('a won hunt should not spend victory points');
-  } else {
-    if (!stillThere) throw new Error('a lost hunt should keep KO\'d figures');
-    if ((huntDie.victoryPoints ?? 0) !== beforeVp - 1) {
-      throw new Error(`a lost hunt should cost 1 VP per KO, ${beforeVp} -> ${huntDie.victoryPoints}`);
-    }
+  if (!huntDie.team.some((u) => u.instanceId === 'hd1')) throw new Error('a hunt should keep KO\'d figures');
+  if (huntKnockedOutIds(huntDie, 'player').length !== 1) throw new Error('the KO\'d starter should cost one point');
+  if ((huntDie.victoryPoints ?? 0) !== beforeVp - 1) {
+    throw new Error(`a hunt should cost 1 VP per KO, win or lose, ${beforeVp} -> ${huntDie.victoryPoints}`);
   }
 }
 ev = { ...base, phase: 'event', eventId: 'monster-hunt', eventStep: 'preview', huntMonsterId: 'thousand-maws' };
@@ -4572,11 +4568,12 @@ ev = resolveHuntFight(ev);
     throw new Error('woodsman should enter with his axe, 11 ATK');
   }
 }
+const mawsDown = huntKnockedOutIds(ev, 'enemy').length > 0;
 ev = claimHunt(ev);
-if (ev.lastBonusBattle?.winner === 'player') {
-  if (ev.phase !== 'stickerAssign' || ev.pendingStickerIds[0] !== 'endless-hunger') throw new Error('hunt-win-sticker');
+if (mawsDown) {
+  if (ev.phase !== 'stickerAssign' || ev.pendingStickerIds[0] !== 'endless-hunger') throw new Error('hunt-ko-sticker');
 } else if (ev.phase !== 'formation' || ev.pendingStickerIds.length) {
-  throw new Error('hunt-lose-reward');
+  throw new Error('hunt-boss-lives-reward');
 }
 
 {

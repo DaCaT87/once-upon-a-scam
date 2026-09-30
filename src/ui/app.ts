@@ -29,6 +29,7 @@ import {
   eventSelectUnit,
   eventUnitReward,
   migrateRun,
+  huntKnockedOutIds,
   victoryPointsOf,
   ovenDiscardSticker,
   pickEventKind,
@@ -1305,7 +1306,7 @@ export class GameApp {
   private crownPointsDuringBattle(): number {
     const run = this.run!;
     const total = victoryPointsOf(run);
-    if (run.eventId === 'monster-hunt') return total;
+    if (run.eventId === 'monster-hunt') return total + huntKnockedOutIds(run, 'player').length;
     const winner = run.lastBattle?.winner;
     if (winner === 'player') return Math.max(0, total - 3);
     if (winner === 'draw') return Math.max(0, total - 1);
@@ -3464,7 +3465,7 @@ export class GameApp {
     const hunt = this.isHuntEndPending();
     const gained = hunt ? 0 : winner === 'player' ? 3 : winner === 'draw' ? 1 : 0;
     const to = victoryPointsOf(run);
-    const from = Math.max(0, to - gained);
+    const from = hunt ? to + huntKnockedOutIds(run, 'player').length : Math.max(0, to - gained);
     const wordKey = winner === 'player' ? 'resultWin' : winner === 'draw' ? 'resultDraw' : 'resultLose';
     const wordClass = winner === 'player' ? 'is-win' : winner === 'draw' ? 'is-draw' : 'is-lose';
     field.insertAdjacentHTML(
@@ -3487,14 +3488,16 @@ export class GameApp {
       row.style.top = `${Math.max(0, y - 86)}px`;
     }
 
-    if (hunt || to <= from) {
+    const steps = Math.abs(to - from);
+    if (steps === 0) {
       window.setTimeout(() => void this.leaveBattleEnd(), 2000);
       return;
     }
 
     const crown = field.querySelector<HTMLElement>('.battle-hud .line-crown');
     const score = crown?.querySelector(':scope > b');
-    if (crown && score && to > from) {
+    if (crown && score) {
+      const rising = to > from;
       const roll = document.createElement('span');
       roll.className = 'vp-roll';
       const sizer = document.createElement('span');
@@ -3503,17 +3506,17 @@ export class GameApp {
       sizer.textContent = '30';
       const strip = document.createElement('span');
       strip.className = 'vp-roll-strip';
-      for (let n = from; n <= to; n++) {
+      for (let i = 0; i <= steps; i++) {
         const cell = document.createElement('b');
-        cell.textContent = String(n);
+        cell.textContent = String(rising ? from + i : from - i);
         strip.appendChild(cell);
       }
       roll.append(sizer, strip);
       score.replaceWith(roll);
       const tick = (step: number, stepH: number) => {
-        if (step > to - from) return;
+        if (step > steps) return;
         strip.style.transform = `translateY(${-step * stepH}px)`;
-        if (step === to - from) {
+        if (step === steps) {
           window.setTimeout(() => void this.leaveBattleEnd(), 1400);
           return;
         }
