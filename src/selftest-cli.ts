@@ -23,6 +23,9 @@ import {
   seatGoldUnit,
   ensureBookOffers,
   claimBookSticker,
+  claimBookUnit,
+  replaceBookUnit,
+  settleBookChoice,
   pickEventKind,
   placeDraft,
   placeEventUnit,
@@ -4262,12 +4265,56 @@ if (shopStickers().some((s) => s.id === 'endless-hunger')) throw new Error('hung
   if (!bite.events.some((e) => e.type === 'UnitDied' && e.unitId === 'enemy:apFoe')) {
     throw new Error('hunger should get a kill');
   }
-  if (!bite.events.some((e) => e.type === 'StatChanged' && e.unitId === 'player:ap1' && e.stat === 'atk' && e.amount === 2 && e.permanent)) {
+  if (!bite.events.some((e) => e.type === 'StatChanged' && e.unitId === 'player:ap1' && e.stat === 'atk' && e.amount === 2 && e.permanent && e.hunger)) {
     throw new Error('hunger should grow ATK permanently');
   }
   if (bite.events.some((e) => e.type === 'Healed' && e.unitId === 'player:ap1')) {
     throw new Error('hunger should not heal');
   }
+}
+{
+  const grown = applySticker(instanceFromDef('farm-boy', 1, 'hungerCard'), 'endless-hunger');
+  grown.permanentMods = { atk: 6, hp: 0, speed: 0, hungerAtk: 4 };
+  const moved = applySticker(instanceFromDef('hunter', 1, 'freshCard'), 'endless-hunger');
+  if ((moved.permanentMods.hungerAtk ?? 0) !== 0 || moved.permanentMods.atk !== 0) {
+    throw new Error('hunger moved to another card should start at zero');
+  }
+  if (grown.permanentMods.hungerAtk !== 4 || grown.permanentMods.atk !== 6) {
+    throw new Error('hunger bonus should stay on the card it was earned on');
+  }
+  const plated = applySticker(grown, 'silver-plated', undefined, new SeededRng(1));
+  if (plated.defId === 'farm-boy') throw new Error('plated should change the figure');
+  if ((plated.permanentMods.hungerAtk ?? 0) !== 0 || plated.permanentMods.atk !== 2) {
+    throw new Error(`plated should clear only the hunger bonus, got atk ${plated.permanentMods.atk} hunger ${plated.permanentMods.hungerAtk ?? 0}`);
+  }
+  if (!plated.stickerIds.includes('endless-hunger') || plated.stickerIds.includes('silver-plated')) {
+    throw new Error('plated should leave hunger and exhaust itself');
+  }
+  let run = createRun('ai', 'tester', 'HungerCard', 11);
+  run = {
+    ...run,
+    phase: 'battle',
+    team: [applySticker(instanceFromDef('farm-boy', 1, 'ap1'), 'endless-hunger')],
+  };
+  run = resolveFight(
+    run,
+    makeSnapshot({
+      playerId: 'e',
+      playerName: 'e',
+      runId: 'r',
+      round: 1,
+      team: [instanceFromDef('paper-dove', 1, 'apFoe')],
+    }),
+  );
+  const card = run.team.find((u) => u.instanceId === 'ap1');
+  if (!card || card.permanentMods.hungerAtk !== 2 || card.permanentMods.atk !== 2) {
+    throw new Error(`hunger kills should stick to the card, got atk ${card?.permanentMods.atk} hunger ${card?.permanentMods.hungerAtk ?? 0}`);
+  }
+  const afterPlate = applySticker(card, 'gold-plated', undefined, new SeededRng(4));
+  if ((afterPlate.permanentMods.hungerAtk ?? 0) !== 0 || afterPlate.permanentMods.atk !== 0) {
+    throw new Error('plated after a fight should restart the hunger bonus');
+  }
+  if (card.permanentMods.hungerAtk !== 2) throw new Error('plating should not wipe the bonus off the untransformed card');
 }
 if (huntStickerFor('mad-woodsman') !== 'woodsmans-axe') throw new Error('woodsman hunt sticker');
 if (shopStickers().some((s) => s.id === 'woodsmans-axe')) throw new Error('axe in shop');
@@ -4487,10 +4534,20 @@ const base = { ...ev, alleyDone: ['recruit' as const] };
     huntMonsterId: 'greed-fang',
     team: [instanceFromDef('cursed-doll', 1, 'hd1')],
   };
+  const beforeVp = huntDie.victoryPoints ?? 0;
   huntDie = resolveHuntFight(huntDie);
   const huntDead = huntDie.lastBonusBattle?.events.some((e) => e.type === 'UnitDied' && e.unitId === 'player:hd1');
   if (!huntDead) throw new Error('hunt exhaust fixture should die');
-  if (huntDie.team.some((u) => u.instanceId === 'hd1')) throw new Error('hunt death should exhaust');
+  const stillThere = huntDie.team.some((u) => u.instanceId === 'hd1');
+  if (huntDie.lastBonusBattle?.winner === 'player') {
+    if (stillThere) throw new Error('a won hunt should still lose KO\'d figures');
+    if ((huntDie.victoryPoints ?? 0) !== beforeVp) throw new Error('a won hunt should not spend victory points');
+  } else {
+    if (!stillThere) throw new Error('a lost hunt should keep KO\'d figures');
+    if ((huntDie.victoryPoints ?? 0) !== beforeVp - 1) {
+      throw new Error(`a lost hunt should cost 1 VP per KO, ${beforeVp} -> ${huntDie.victoryPoints}`);
+    }
+  }
 }
 ev = { ...base, phase: 'event', eventId: 'monster-hunt', eventStep: 'preview', huntMonsterId: 'thousand-maws' };
 ev = resolveHuntFight(ev);
@@ -4643,6 +4700,60 @@ if (ev.lastBonusBattle?.winner === 'player') {
   const host = swapped.team.find((u) => u.instanceId === 'bkFull');
   if (!host || host.stickerIds[1] !== bookSticker || host.stickerIds[0] !== 'fur-armor' || host.stickerIds[2] !== 'trash') {
     throw new Error(`book replace stk=${host?.stickerIds.join(',')}`);
+  }
+}
+
+{
+  const openBook = (unitId: string, team: RunState['team']): RunState =>
+    ensureBookOffers({
+      ...base,
+      phase: 'event',
+      eventId: 'book-of-lost-tales',
+      eventStep: 'book-kind',
+      losses: 0,
+      eventOffers: [`book-unit:${unitId}`, 'book-sticker:fur-armor'],
+      team,
+      pendingStickerIds: [],
+      pendingGoldUnitId: null,
+    });
+  const boy = settleBookChoice(claimBookUnit(openBook('farm-boy', [instanceFromDef('hunter', 1, 'bkHost')]), 2));
+  if (boy.phase !== 'stickerAssign' || boy.pendingStickerIds.length !== 1 || getSticker(boy.pendingStickerIds[0]!).rarity !== 'bronze') {
+    throw new Error(`book farm boy sticker phase=${boy.phase} pending=${boy.pendingStickerIds.join(',')}`);
+  }
+  const goose = settleBookChoice(claimBookUnit(openBook('golden-goose', [instanceFromDef('hunter', 1, 'bkHost2')]), 2));
+  if (goose.phase !== 'stickerAssign' || goose.pendingStickerIds.length !== 1 || getSticker(goose.pendingStickerIds[0]!).rarity !== 'gold') {
+    throw new Error(`book goose sticker phase=${goose.phase} pending=${goose.pendingStickerIds.join(',')}`);
+  }
+  const plain = settleBookChoice(claimBookUnit(openBook('hunter', [instanceFromDef('farm-boy', 1, 'bkHost3')]), 2));
+  if (plain.phase === 'stickerAssign' || plain.pendingStickerIds.length) {
+    throw new Error(`book hunter should not gift phase=${plain.phase} pending=${plain.pendingStickerIds.join(',')}`);
+  }
+  const herald = claimBookUnit(openBook('royal-herald', [instanceFromDef('hunter', 1, 'bkHost4')]), 2);
+  const extraGold = herald.team.some((u) => u.defId !== 'royal-herald' && u.defId !== 'hunter' && getUnit(u.defId).rarity === 'gold');
+  if (herald.pendingGoldUnitId || herald.team.length !== 3 || !herald.team.some((u) => u.defId === 'royal-herald') || !extraGold) {
+    throw new Error(`book herald with room team=${herald.team.map((u) => u.defId).join(',')} pending=${herald.pendingGoldUnitId}`);
+  }
+  const heraldDone = settleBookChoice(herald);
+  if (heraldDone.phase === 'stickerAssign' || heraldDone.pendingGoldUnitId) {
+    throw new Error(`book herald should leave phase=${heraldDone.phase} pending=${heraldDone.pendingGoldUnitId}`);
+  }
+  const owed = settleBookChoice(
+    replaceBookUnit(
+      openBook('royal-herald', [
+        instanceFromDef('hunter', 1, 'f1'),
+        instanceFromDef('hunter', 2, 'f2'),
+        instanceFromDef('hunter', 3, 'f3'),
+        instanceFromDef('village-fool', 4, 'f4'),
+      ]),
+      4,
+    ),
+  );
+  if (owed.phase !== 'recruit' || !owed.pendingGoldUnitId || getUnit(owed.pendingGoldUnitId).rarity !== 'gold') {
+    throw new Error(`book herald full phase=${owed.phase} pending=${owed.pendingGoldUnitId}`);
+  }
+  const seated = seatGoldUnit(owed, 1);
+  if (seated.pendingGoldUnitId || seated.phase === 'recruit') {
+    throw new Error(`book herald seat phase=${seated.phase} pending=${seated.pendingGoldUnitId}`);
   }
 }
 

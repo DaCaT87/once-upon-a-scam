@@ -100,6 +100,7 @@ export function migrateRun(run: RunState): RunState {
         atk: tale.permanentMods?.atk ?? 0,
         hp: tale.permanentMods?.hp ?? 0,
         speed: tale.permanentMods?.speed ?? 0,
+        hungerAtk: tale.permanentMods?.hungerAtk ?? 0,
       },
     })),
   };
@@ -256,9 +257,26 @@ function applyLossGrowth(team: UnitInstance[], winner: 'player' | 'enemy' | 'dra
         atk: u.permanentMods.atk + gain.atk,
         hp: u.permanentMods.hp + gain.hp,
         speed: u.permanentMods.speed,
+        hungerAtk: u.permanentMods.hungerAtk ?? 0,
       },
     };
   });
+}
+
+function huntKoIds(run: RunState, side: 'player' | 'enemy'): string[] {
+  const events = run.lastBattle?.events ?? [];
+  const fallen = new Set<string>();
+  for (const ev of events) {
+    if (ev.type === 'UnitDied') {
+      const id = instanceOnSide(ev.unitId, side);
+      if (id) fallen.add(id);
+    }
+    if (ev.type === 'Revived') {
+      const id = instanceOnSide(ev.unitId, side);
+      if (id) fallen.delete(id);
+    }
+  }
+  return [...fallen];
 }
 
 function instanceOnSide(uid: string, side: 'player' | 'enemy'): string | null {
@@ -276,13 +294,14 @@ function lostLastScrap(run: RunState): boolean {
   return last.win === false;
 }
 
-function addPermanentMods(u: UnitInstance, atk: number, hp: number, speed = 0): UnitInstance {
+function addPermanentMods(u: UnitInstance, atk: number, hp: number, speed = 0, hungerAtk = 0): UnitInstance {
   return {
     ...u,
     permanentMods: {
       atk: u.permanentMods.atk + atk,
       hp: u.permanentMods.hp + hp,
       speed: u.permanentMods.speed + speed,
+      hungerAtk: Math.max(0, (u.permanentMods.hungerAtk ?? 0) + hungerAtk),
     },
   };
 }
@@ -327,6 +346,7 @@ function persistBattleTeam(
                 atk: u.permanentMods.atk + ev.atk,
                 hp: u.permanentMods.hp + ev.hp,
                 speed: u.permanentMods.speed,
+                hungerAtk: u.permanentMods.hungerAtk ?? 0,
               },
             }
           : u,
@@ -372,6 +392,7 @@ function persistBattleTeam(
                 ev.stat === 'atk' ? ev.amount : 0,
                 ev.stat === 'maxHp' ? ev.amount : 0,
                 ev.stat === 'speed' ? ev.amount : 0,
+                ev.hunger && ev.stat === 'atk' ? ev.amount : 0,
               )
             : u,
         );
@@ -462,19 +483,9 @@ function persistBattleTeam(
       }
     }
   }
-  if (run.eventId === 'monster-hunt') {
-    const fallen = new Set<string>();
-    for (const ev of events) {
-      if (ev.type === 'UnitDied') {
-        const id = sideOf(ev.unitId);
-        if (id) fallen.add(id);
-      }
-      if (ev.type === 'Revived') {
-        const id = sideOf(ev.unitId);
-        if (id) fallen.delete(id);
-      }
-    }
-    for (const id of fallen) melted.add(id);
+  // A won hunt still spends the figures that fell. A loss keeps them.
+  if (run.eventId === 'monster-hunt' && run.lastBattle?.winner === 'player') {
+    for (const id of huntKoIds(run, side)) melted.add(id);
   }
   team = compactSlots(team.filter((u) => !melted.has(u.instanceId)));
   team = team.map((u) => {
@@ -1084,7 +1095,11 @@ export function seatGoldUnit(run: RunState, slot: number): RunState {
   team = team.filter((u) => u.slot !== slot);
   team.push(instanceFromDef(gold, slot, makeId('u')));
   const next = { ...run, team, pendingGoldUnitId: null };
-  return victim ? rememberLost(next, [victim]) : next;
+  const seated = victim ? rememberLost(next, [victim]) : next;
+  if (seated.eventId === 'book-of-lost-tales' && seated.eventOffers.includes('book-picked')) {
+    return handOffBookRewards(seated);
+  }
+  return seated;
 }
 
 export function toggleRecruit(run: RunState, defId: string): RunState {
@@ -1212,11 +1227,13 @@ export function resolveHuntFight(run: RunState): RunState {
   const result = simulateBattle(player, enemy, seed);
   const next = { ...run, lastBonusBattle: result, lastBattle: result, eventStep: 'hunt-result' as const };
   const persisted = persistBattleTeam(next);
+  const koPenalty = result.winner === 'player' ? 0 : huntKoIds(next, 'player').length;
   return {
     ...next,
     team: applyLossGrowth(persisted.team, result.winner),
     deathsThisRun: persisted.deathsThisRun,
     stickersGained: persisted.stickersGained,
+    victoryPoints: victoryPointsOf(next) - koPenalty,
   };
 }
 
@@ -1275,6 +1292,48 @@ function grantBookReward(run: RunState, kind: 'unit' | 'sticker'): RunState {
   );
 }
 
+/** The figure just signed from the book. Same on-recruit gifts as the recruit shop. */
+function bookFigureSigned(run: RunState, team: UnitInstance[], defId: string, eventOffers: string[]): RunState {
+  const added = appendGoldRecruit(run, team, defId);
+  return {
+    ...run,
+    team: compactSlots(added.team),
+    eventOffers,
+    eventPicks: [],
+    pendingStickerIds: collectRecruitStickers(run, [defId]),
+    pendingGoldUnitId: added.pending === undefined ? (run.pendingGoldUnitId ?? null) : added.pending,
+    recruitRarityBump: run.recruitRarityBump || hasRecruitRarityBump(defId),
+  };
+}
+
+/** After the book closes: glue the recruit sticker, or seat the herald's gold figure. */
+function handOffBookRewards(run: RunState): RunState {
+  if (run.pendingGoldUnitId) {
+    return {
+      ...run,
+      phase: 'recruit',
+      eventStep: 'reward',
+      recruitOffers: [run.pendingGoldUnitId],
+      recruitPicks: [],
+    };
+  }
+  if (run.pendingStickerIds.length) {
+    return {
+      ...run,
+      phase: 'stickerAssign',
+      eventStep: 'reward',
+      stickerPickCount: run.pendingStickerIds.length,
+      stickerOffers: [],
+    };
+  }
+  return finishAlley({
+    ...run,
+    eventOffers: [],
+    eventPicks: [],
+    pendingStickerIds: [],
+  });
+}
+
 /** Place the book's unit on an empty slot, or fire the occupant of a full slot. */
 export function replaceBookUnit(run: RunState, slot: number): RunState {
   if (run.phase !== 'event' || run.eventId !== 'book-of-lost-tales' || run.eventStep !== 'book-kind') return run;
@@ -1290,16 +1349,7 @@ export function replaceBookUnit(run: RunState, slot: number): RunState {
   next.push(copyUnit({ defId, stickerIds: [], permanentMods: { atk: 0, hp: 0, speed: 0 } }, slot));
   const eventOffers = ready.eventOffers.filter((o) => !o.startsWith(BOOK_UNIT));
   eventOffers.push('book-picked');
-  return rememberLost(
-    {
-      ...ready,
-      team: next,
-      eventOffers,
-      eventPicks: [],
-      pendingStickerIds: [],
-    },
-    [victim],
-  );
+  return rememberLost(bookFigureSigned(ready, next, defId, eventOffers), [victim]);
 }
 
 /** Place the book's unit on an empty slot. Only that page clears; the sticker stays until the event closes. */
@@ -1315,13 +1365,7 @@ export function claimBookUnit(run: RunState, slot: number): RunState {
   team.push(copyUnit({ defId, stickerIds: [], permanentMods: { atk: 0, hp: 0, speed: 0 } }, slot));
   const eventOffers = ready.eventOffers.filter((o) => !o.startsWith(BOOK_UNIT));
   eventOffers.push('book-picked');
-  return {
-    ...ready,
-    team: compactSlots(team),
-    eventOffers,
-    eventPicks: [],
-    pendingStickerIds: [],
-  };
+  return bookFigureSigned(ready, team, defId, eventOffers);
 }
 
 /** Glue the book's sticker onto a team unit. Only that page clears; the card stays until the event closes. */
@@ -1357,15 +1401,10 @@ export function claimBookSticker(run: RunState, instanceId: string, replaceIndex
   };
 }
 
-/** The book choice is done. Leave the event without a recruit or sticker shop. */
+/** The book choice is done. On-recruit gifts still have to be glued or seated. */
 export function settleBookChoice(run: RunState): RunState {
   if (run.eventId !== 'book-of-lost-tales' || !run.eventOffers.includes('book-picked')) return run;
-  return finishAlley({
-    ...run,
-    eventOffers: [],
-    eventPicks: [],
-    pendingStickerIds: [],
-  });
+  return handOffBookRewards(run);
 }
 
 export function eventSelectUnit(run: RunState, instanceId: string): RunState {
@@ -1590,6 +1629,7 @@ function pendingCopy(run: RunState): LostTale | null {
         atk: tale.permanentMods?.atk ?? 0,
         hp: tale.permanentMods?.hp ?? 0,
         speed: tale.permanentMods?.speed ?? 0,
+        hungerAtk: tale.permanentMods?.hungerAtk ?? 0,
       },
     };
   } catch {

@@ -109,6 +109,10 @@ html:has(.battle-intro:not(.is-gone)) #app {
 .corner-stamps[hidden] {
   display: none !important;
 }
+html:has(.battle-intro:not(.is-gone)) .corner-stamps {
+  visibility: hidden;
+  pointer-events: none;
+}
 .corner-stamps {
   position: fixed;
   z-index: 70;
@@ -121,6 +125,34 @@ html:has(.battle-intro:not(.is-gone)) #app {
   transform: scale(var(--ui-scale));
   transform-origin: left bottom;
 }
+html.is-booting #fullscreen-btn {
+  display: none !important;
+}
+.boot {
+  position: fixed;
+  z-index: 80;
+  left: 50%;
+  bottom: 13%;
+  width: min(360px, 46vw);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+html:not(.is-booting) .boot {
+  display: none;
+}
+.boot-track {
+  height: 28px;
+  border: 3px solid var(--ink);
+  background: #2a2118;
+  box-shadow: 3px 4px 0 var(--ink);
+  overflow: hidden;
+}
+.boot-fill {
+  width: 0%;
+  height: 100%;
+  background: linear-gradient(180deg, #e8c96a, #b8862e);
+}
+
 .fs-btn {
   position: static;
   appearance: none;
@@ -137,6 +169,38 @@ html:has(.battle-intro:not(.is-gone)) #app {
 .fs-btn:hover { transform: translateY(-2px) rotate(-0.4deg); }
 .fs-btn[aria-pressed="true"] {
   background: linear-gradient(180deg, var(--cream), #d8c49a);
+}
+.gear-stamp {
+  position: fixed;
+  z-index: 70;
+  right: calc(50% - (var(--design-w) * var(--ui-scale) * 1px) / 2 + 22px * var(--ui-scale));
+  top: calc(50% - (var(--design-h) * var(--ui-scale) * 1px) / 2 + 18px * var(--ui-scale));
+  width: calc(56px * var(--ui-scale));
+  height: calc(56px * var(--ui-scale));
+  padding: 0;
+  display: grid;
+  place-items: center;
+  appearance: none;
+  border: 0;
+  border-radius: 50%;
+  background: #1a1410;
+  color: #f3e2b0;
+  box-shadow:
+    0 0 0 calc(3px * var(--ui-scale)) #f3e2b0,
+    0 0 0 calc(6px * var(--ui-scale)) #1a1410,
+    calc(3px * var(--ui-scale)) calc(4px * var(--ui-scale)) 0 rgba(12, 8, 6, 0.55);
+  cursor: pointer;
+}
+.gear-stamp svg {
+  width: calc(34px * var(--ui-scale));
+  height: calc(34px * var(--ui-scale));
+  display: block;
+}
+.gear-stamp:hover {
+  transform: translateY(calc(-2px * var(--ui-scale)));
+}
+.gear-stamp[hidden] {
+  display: none !important;
 }
 .credits-stamp {
   position: fixed;
@@ -1354,6 +1418,14 @@ html.needs-landscape .landscape-gate {
   font-size: 11.5px;
   line-height: 1.3;
 }
+.ability-rule [data-rewind-left] {
+  font-family: "Rye", serif;
+  font-size: 1.42em;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  text-shadow: 0.04em 0 0 currentColor, -0.04em 0 0 currentColor;
+}
 .keep-with {
   white-space: nowrap;
 }
@@ -1909,7 +1981,7 @@ h2.sign, .panel h2 {
   z-index: 8;
 }
 .choice-table .unit-card.is-recruit.is-alley-full-plate {
-  aspect-ratio: 641 / 973;
+  aspect-ratio: var(--card-ratio);
 }
 .choice-table .unit-card.rarity-bronze.is-recruit.is-alley-full-plate,
 .choice-table .unit-card.rarity-silver.is-recruit.is-alley-full-plate,
@@ -3219,6 +3291,9 @@ h2.sign, .panel h2 {
   pointer-events: none;
 }
 .menu-actions { margin-top: auto; }
+.menu-actions .btn.is-on {
+  box-shadow: inset 0 0 0 3px #f3e2b0;
+}
 .menu-alias {
   display: flex;
   flex-direction: column;
@@ -3629,6 +3704,14 @@ html.is-codex #app {
   opacity: 0 !important;
   visibility: hidden !important;
 }
+.battle-wrap.is-intro .battle-card.is-dealt,
+.battle-wrap.is-intro .battle-card.is-dealt *,
+.battle-wrap.is-intro .battle-card.is-dealt .sticker-rail,
+.battle-wrap.is-intro .battle-card.is-dealt .sticker-slot,
+.battle-wrap.is-intro .battle-card.is-dealt .sticker-slot.filled {
+  opacity: 1 !important;
+  visibility: visible !important;
+}
 @media (prefers-reduced-motion: reduce) {
   .menu-paint,
   .menu-flame,
@@ -3696,7 +3779,8 @@ html.is-codex #app {
   z-index: 40;
   left: 50%;
   top: calc(100% + 12px);
-  width: max(360px, 200%);
+  width: max-content;
+  max-width: min(360px, calc(100vw - 32px));
   transform: translateX(-50%);
   padding: 16px 18px 18px;
   background:
@@ -3717,9 +3801,12 @@ html.is-codex #app {
 .battle-card:focus-within {
   z-index: 12;
 }
-.battle-card:hover .scrap-readout,
+.battle-card.is-held .scrap-readout,
 .battle-card:focus-within .scrap-readout {
   display: block;
+}
+.battle-slot:has(.battle-card.is-held) {
+  z-index: 20;
 }
 .battle-card .scrap-readout .ability-rule,
 .battle-card .scrap-readout .timing-type,

@@ -28,6 +28,7 @@ import {
   replaceEventUnit,
   replaceRecruit,
   resolveHuntFight,
+  seatGoldUnit,
   settleBookChoice,
   settleStickerShop,
   skipEmptyEvent,
@@ -164,6 +165,12 @@ function playGifts(run: RunState): RunState {
 }
 
 function takeRecruit(run: RunState): RunState {
+  if (run.pendingGoldUnitId && run.eventId === 'book-of-lost-tales') {
+    const open = run.team.filter((u) => !getUnit(u.defId).passives?.grantGoldUnitOnRecruit);
+    const victim = weakest(open.length ? open : run.team);
+    if (!victim) return skipRecruit(run);
+    return seatGoldUnit(run, victim.slot);
+  }
   const ranked = run.recruitOffers.slice().sort((a, b) => power(b) - power(a));
   let guard = 0;
   while (run.phase === 'recruit' && ranked.length && guard++ < 4) {

@@ -166,7 +166,7 @@ export function renderRuleRow(locale: Locale, targeting: TargetingType, defId: s
 function renderAbilityText(locale: Locale, rule: string, rewindLeft?: number): string {
   if (!rule.trim()) return '';
   let html = linkKeywords(locale, rule);
-  if (rewindLeft != null) html = html.replace('{n}', `<b data-rewind-left>${rewindLeft}</b>`);
+  if (rewindLeft != null) html = html.replace('{n}', `<b class="rewind-count" data-rewind-left>${rewindLeft}</b>`);
   return `<div class="ability"><p class="ability-rule">${html}</p></div>`;
 }
 
@@ -453,11 +453,11 @@ export function bindTargetingTips(root: HTMLElement, localeOf?: () => Locale): v
   }, true);
 }
 
-function portraitHtml(locale: Locale, defId: string, opts?: { clip?: string; locked?: boolean }): string {
+function portraitHtml(locale: Locale, defId: string, opts?: { clip?: string; locked?: boolean; figure?: boolean }): string {
   if (!hasUnitArt(defId)) return '';
   const folder = unitArtFolder(defId);
   const clip = opts?.clip ?? 'idle';
-  const file = clip === 'idle' && hasCardFace(defId) ? 'card' : clip;
+  const file = !opts?.figure && clip === 'idle' && hasCardFace(defId) ? 'card' : clip;
   const locked = opts?.locked ? ' data-locked="true"' : '';
   const scenic = isScenicArt(defId) ? ' scenic' : '';
   const src = `./art/units/${folder}/${file}.png?v=cast180`;
@@ -762,6 +762,85 @@ function fitBookStickers(root: ParentNode): void {
       }
       if (body && parseFloat(getComputedStyle(body).fontSize) <= 8) body.style.lineHeight = '1.05';
     }
+  });
+}
+
+const SCRAP_HOLD_MS = 1000;
+
+/** Hold still for a second, then park the parchment so it stays on screen. */
+export function bindScrapReadouts(root: HTMLElement): void {
+  if (root.dataset.scrapHold === '1') return;
+  root.dataset.scrapHold = '1';
+  let timer = 0;
+  let current: HTMLElement | null = null;
+
+  const place = (card: HTMLElement) => {
+    const box = card.querySelector<HTMLElement>('.scrap-readout');
+    if (!box) return;
+    box.style.top = '';
+    box.style.transform = 'translateX(-50%)';
+    const cardRect = card.getBoundingClientRect();
+    const boxRect = box.getBoundingClientRect();
+    const scale = boxRect.width / box.offsetWidth || 1;
+    const margin = 16;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let left = boxRect.left;
+    if (boxRect.width >= vw - margin * 2) left = margin;
+    else left = Math.min(Math.max(left, margin), vw - margin - boxRect.width);
+    const gap = boxRect.top - cardRect.bottom;
+    const belowTop = boxRect.top;
+    const aboveTop = cardRect.top - gap - boxRect.height;
+    const roomBelow = vh - margin - belowTop;
+    const roomAbove = cardRect.top - gap - margin;
+    let top = belowTop;
+    if (boxRect.height <= roomBelow) top = belowTop;
+    else if (boxRect.height <= roomAbove) top = aboveTop;
+    else if (roomAbove > roomBelow) top = Math.max(margin, aboveTop);
+    else top = Math.min(belowTop, Math.max(margin, vh - margin - boxRect.height));
+    const shiftX = (left - boxRect.left) / scale;
+    const shiftY = (top - boxRect.top) / scale;
+    box.style.transform = `translateX(calc(-50% + ${shiftX}px))`;
+    if (shiftY !== 0) box.style.top = `calc(100% + 12px + ${shiftY}px)`;
+  };
+
+  const close = () => {
+    window.clearTimeout(timer);
+    const card = current?.querySelector<HTMLElement>('.battle-card');
+    card?.classList.remove('is-held');
+    const box = card?.querySelector<HTMLElement>('.scrap-readout');
+    if (box) {
+      box.style.transform = '';
+      box.style.top = '';
+    }
+    current = null;
+  };
+
+  root.addEventListener('pointerover', (e) => {
+    const slot = (e.target as HTMLElement | null)?.closest<HTMLElement>('.battle-slot');
+    if (!slot || !root.contains(slot)) return;
+    const from = e.relatedTarget;
+    if (from instanceof Node && slot.contains(from)) return;
+    if (current === slot && slot.querySelector('.battle-card')?.classList.contains('is-held')) return;
+    close();
+    current = slot;
+    timer = window.setTimeout(() => {
+      const card = slot.querySelector<HTMLElement>('.battle-card');
+      if (current !== slot || !card || card.classList.contains('is-empty')) return;
+      card.classList.add('is-held');
+      place(card);
+    }, SCRAP_HOLD_MS);
+  });
+  root.addEventListener('pointerout', (e) => {
+    const slot = (e.target as HTMLElement | null)?.closest<HTMLElement>('.battle-slot');
+    if (!slot || slot !== current) return;
+    const to = e.relatedTarget;
+    if (to instanceof Node && slot.contains(to)) return;
+    close();
+  });
+  window.addEventListener('resize', () => {
+    const card = current?.querySelector<HTMLElement>('.battle-card.is-held');
+    if (card) place(card);
   });
 }
 

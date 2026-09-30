@@ -3,7 +3,7 @@ import { getUnit, slotRange } from '../core/catalog';
 import { translate } from '../data/i18n';
 import type { BattleEvent, DeathStyle, PublicUnitView, Settings, TeamId } from '../core/types';
 import { MAX_TEAM } from '../core/types';
-import { renderBattleCard, renderCocoonBattleAbility, renderStickerRail, fitCardSlabs } from '../ui/cards';
+import { renderBattleCard, renderCocoonBattleAbility, renderStickerRail, fitCardSlabs, bindScrapReadouts } from '../ui/cards';
 import { cardMotion, clipDuration, type AnimClip } from './character';
 
 const SLIDE_DUR = 0.38;
@@ -22,6 +22,10 @@ const CURTAIN_ARENA_AT = CURTAIN_BLACK + CURTAIN_CLOSED_HOLD;
 const CURTAIN_FIELD_AT = CURTAIN_ARENA_AT + CURTAIN_OPEN_DUR;
 const CURTAIN_CARDS = 0.55;
 const CURTAIN_MAX = CURTAIN_FIELD_AT + CURTAIN_CARDS;
+/** Dealer: one slot on both sides, then the next. Fight waits a second after the last card lands. */
+const DEAL_FLIGHT = 0.36;
+const DEAL_GAP = 0.08;
+const DEAL_HOLD = 1;
 /** Banf smoke: dense cover first, then open; phase-2 card is already under before clear. */
 const SMOKE_HOLD_MS = [340, 170, 150, 160] as const;
 const SMOKE_FADE_MS = 280;
@@ -29,6 +33,22 @@ const SMOKE_TOTAL_MS = SMOKE_HOLD_MS.reduce((a, b) => a + b, 0) + SMOKE_FADE_MS;
 const SMOKE_TOTAL_SEC = SMOKE_TOTAL_MS / 1000;
 /** Swap form while frame 1 still covers the card. */
 const SMOKE_REVEAL_MS = SMOKE_HOLD_MS[0]!;
+/** Cancelled swing: reach the ambush card, hold while it changes, then step back. */
+const APPROACH_ARRIVE = 0.36;
+const APPROACH_HOLD_END = 0.48;
+const APPROACH_TOTAL = 0.84;
+
+function approachBlend(t: number): number {
+  if (t <= 0.1) return 0;
+  if (t <= APPROACH_ARRIVE) {
+    const u = (t - 0.1) / (APPROACH_ARRIVE - 0.1);
+    return 1 - (1 - u) * (1 - u);
+  }
+  if (t <= APPROACH_HOLD_END) return 1;
+  if (t >= APPROACH_TOTAL) return 0;
+  const u = (t - APPROACH_HOLD_END) / (APPROACH_TOTAL - APPROACH_HOLD_END);
+  return 1 - u * u;
+}
 
 interface Actor {
   uid: string;
@@ -58,6 +78,10 @@ interface Actor {
   pendingFlip: boolean;
   /** Seconds left of the laugh shake. */
   laughLeft: number;
+  /** Cancelled swing traveling onto an ambush card. -1 when idle. */
+  approachT: number;
+  approachDx: number;
+  approachDy: number;
   /** Death plays forward, then the same clip runs backward. */
   rewindPhase: 'out' | 'back' | null;
   /** Word shown when the death clip turns around. Rewind and Revive share the motion. */
@@ -84,6 +108,10 @@ export class BattleView {
   private arenaUnder = false;
   private cardsArmed = false;
   private curtainOpening = false;
+  private dealing = false;
+  private dealHold = false;
+  private dealSlot = 0;
+  private dealClock = 0;
   private reduceMotion = false;
   private ended = false;
   private paused = false;
@@ -91,6 +119,8 @@ export class BattleView {
   private t = 0;
   private logLines: string[] = [];
   private ambushFx: AmbushFx | null = null;
+  /** "Ambush!" waits until the transform smoke has fully cleared. */
+  private pendingAmbushLabel: string | null = null;
   /** Async VFX (Banf smoke) still playing — scrap must not close until this hits 0. */
   private fxRemain = 0;
   /** Game-time when the Banf smoke veil is gone. Next beat waits for this. */
@@ -116,6 +146,10 @@ export class BattleView {
     this.arenaUnder = false;
     this.cardsArmed = false;
     this.curtainOpening = false;
+    this.dealing = false;
+    this.dealHold = false;
+    this.dealSlot = 0;
+    this.dealClock = 0;
     this.reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.host.classList.add('is-intro', 'is-preamble');
     this.host.classList.remove('is-field-up');
@@ -130,8 +164,10 @@ export class BattleView {
     this.actors.clear();
     this.logLines = [];
     this.ambushFx = null;
+    this.pendingAmbushLabel = null;
     this.t = 0;
     this.buildBoard();
+    bindScrapReadouts(this.host);
     for (const ev of events) {
       if (ev.type === 'UnitSpawned') this.spawn(ev.unit, true);
     }
@@ -164,12 +200,14 @@ export class BattleView {
   }
 
   skip(): void {
+    this.pendingAmbushLabel = null;
     if (this.ambushFx) {
       this.revealAmbush(true);
       this.ambushFx = null;
     }
     while (this.i < this.events.length) this.apply(this.events[this.i++]!, true);
     this.cardsArmed = true;
+    this.dealing = false;
     this.endIntro();
     if (this.ended) return;
     this.ended = true;
@@ -194,41 +232,30 @@ export class BattleView {
     return local * local * (3 - 2 * local);
   }
 
-  /** Inner hem. Wider at the top, the bottom catches up, a small symmetric ripple along the edge. */
+  /** Inner hem. The two edges stay straight and meet on the center line while the curtain is shut. */
   private velvetHemX(w: number, t: number, yN: number, side: 'left' | 'right'): number {
     const half = w * 0.5;
     const lead = this.clothTravel(t, yN, 1);
     const rest = side === 'left' ? half : w - half;
     const dest = side === 'left' ? -w * 0.18 : w + w * 0.18;
-    const ripple = Math.sin(yN * Math.PI * 2.4 + t * 2.2) * Math.sin(Math.PI * Math.min(1, t)) * w * 0.012;
-    return rest + (dest - rest) * lead + (side === 'left' ? -ripple : ripple);
+    return rest + (dest - rest) * lead;
   }
 
   private velvetWash(ctx: CanvasRenderingContext2D, h: number): CanvasGradient {
     const wash = ctx.createLinearGradient(0, 0, 0, h);
-    wash.addColorStop(0, '#7a1c22');
-    wash.addColorStop(0.42, '#5c1418');
-    wash.addColorStop(1, '#2c080c');
+    wash.addColorStop(0, '#7a2830');
+    wash.addColorStop(0.38, '#541820');
+    wash.addColorStop(1, '#2a1014');
     return wash;
   }
 
   private velvetFold(ctx: CanvasRenderingContext2D, x: number, width: number): CanvasGradient {
     const fold = ctx.createLinearGradient(x, 0, x + width, 0);
-    fold.addColorStop(0, 'rgba(42, 8, 12, 0.36)');
-    fold.addColorStop(0.3, 'rgba(120, 28, 34, 0.06)');
-    fold.addColorStop(0.58, 'rgba(210, 150, 140, 0.1)');
-    fold.addColorStop(1, 'rgba(28, 6, 10, 0.4)');
+    fold.addColorStop(0, 'rgba(18, 6, 8, 0.62)');
+    fold.addColorStop(0.28, 'rgba(70, 16, 20, 0.08)');
+    fold.addColorStop(0.55, 'rgba(170, 48, 52, 0.28)');
+    fold.addColorStop(1, 'rgba(14, 4, 6, 0.55)');
     return fold;
-  }
-
-  private paintVelvetSheet(ctx: CanvasRenderingContext2D, w: number, h: number): void {
-    ctx.fillStyle = this.velvetWash(ctx, h);
-    ctx.fillRect(0, 0, w, h);
-    const pleatW = w / 24;
-    for (let x = 0; x < w; x += pleatW) {
-      ctx.fillStyle = this.velvetFold(ctx, x, pleatW);
-      ctx.fillRect(x, 0, pleatW, h);
-    }
   }
 
   private paintVelvetWing(
@@ -280,16 +307,21 @@ export class BattleView {
       ctx.fillStyle = this.velvetFold(ctx, x0, pleatW);
       ctx.fill();
     }
-    ctx.restore();
+    const band = Math.max(12, w * 0.014);
+    const sign = side === 'left' ? -1 : 1;
     ctx.beginPath();
     ctx.moveTo(hem[0]!, 0);
     for (let s = 1; s <= segs; s++) ctx.lineTo(hem[s]!, (h * s) / segs);
-    ctx.lineWidth = Math.max(2, w * 0.003);
-    ctx.strokeStyle = 'rgba(40, 10, 14, 0.55)';
-    ctx.stroke();
-    ctx.lineWidth = Math.max(1, w * 0.0012);
-    ctx.strokeStyle = 'rgba(190, 140, 130, 0.18)';
-    ctx.stroke();
+    for (let s = segs; s >= 0; s--) ctx.lineTo(hem[s]! + sign * band, (h * s) / segs);
+    ctx.closePath();
+    const edge = hem[Math.floor(segs / 2)] ?? w * 0.5;
+    const lip = ctx.createLinearGradient(edge, 0, edge + sign * band, 0);
+    lip.addColorStop(0, 'rgba(16, 5, 7, 0.78)');
+    lip.addColorStop(0.22, 'rgba(150, 42, 48, 0.34)');
+    lip.addColorStop(1, 'rgba(84, 24, 32, 0)');
+    ctx.fillStyle = lip;
+    ctx.fill();
+    ctx.restore();
   }
 
   /** Painted theatre cloth. Pleats gather to the wings and the hem swings behind. */
@@ -310,7 +342,8 @@ export class BattleView {
     const t = open <= 0 ? 0 : open >= 1 ? 1 : open * open * (3 - 2 * open);
     ctx.clearRect(0, 0, w, h);
     if (t < 0.02) {
-      this.paintVelvetSheet(ctx, w, h);
+      this.paintVelvetWing(ctx, w, h, 0, 'left');
+      this.paintVelvetWing(ctx, w, h, 0, 'right');
       return;
     }
     this.paintVelvetWing(ctx, w, h, t, 'left');
@@ -380,11 +413,45 @@ export class BattleView {
       this.paintCurtain(1);
       this.endCurtain();
       this.cardsArmed = true;
-      this.intro = CURTAIN_CARDS;
+      this.dealing = true;
+      this.dealHold = false;
+      this.dealSlot = 0;
+      this.dealClock = 0;
+      this.intro = 1;
       return;
     }
-    this.intro -= dt;
-    if (this.intro <= 0) this.endIntro();
+    this.advanceDeal(dt);
+  }
+
+  private nextDealSlot(after: number): number | null {
+    let best: number | null = null;
+    for (const a of this.actors.values()) {
+      if (a.slot > after && (best === null || a.slot < best)) best = a.slot;
+    }
+    return best;
+  }
+
+  /** Slot 1 on both sides, then 2, then 3, then 4. One card snap each beat. */
+  private advanceDeal(dt: number): void {
+    this.dealClock += dt;
+    if (!this.dealHold) {
+      const ready = this.dealSlot === 0 || this.dealClock >= DEAL_FLIGHT + DEAL_GAP;
+      if (!ready) return;
+      const next = this.nextDealSlot(this.dealSlot);
+      if (next === null) {
+        this.dealHold = true;
+        this.dealClock = 0;
+        return;
+      }
+      this.dealSlot = next;
+      this.dealClock = 0;
+      audio.play('paper');
+      return;
+    }
+    if (this.dealClock >= DEAL_HOLD) {
+      this.dealing = false;
+      this.endIntro();
+    }
   }
 
   tick(dt: number): void {
@@ -498,6 +565,9 @@ export class BattleView {
       flipLeft: 0,
       pendingFlip: false,
       laughLeft: 0,
+      approachT: -1,
+      approachDx: 0,
+      approachDy: 0,
       rewindPhase: null,
       rewindFloat: null,
       rewindHp: unit.maxHp,
@@ -519,6 +589,10 @@ export class BattleView {
     }
     a.flipLeft = Math.max(0, a.flipLeft - d);
     a.laughLeft = Math.max(0, a.laughLeft - d);
+    if (a.approachT >= 0) {
+      a.approachT += d;
+      if (a.approachT >= APPROACH_TOTAL) this.endApproach(a);
+    }
     if (a.rewindPhase === 'out') {
       a.clipT += d;
       if (a.clipT >= clipDuration('death')) {
@@ -580,6 +654,10 @@ export class BattleView {
     const el = this.cardEl(a.uid);
     if (!el) return;
     const m = cardMotion(a.clip, a.clipT, a.team, a.death);
+    const closing = a.approachT >= 0;
+    const blend = closing ? approachBlend(a.approachT) : 0;
+    const motionX = closing ? a.approachDx * blend + (a.approachT < 0.12 ? m.x : 0) : m.x;
+    const motionY = closing ? a.approachDy * blend + m.y : m.y;
     const u = a.slideLeft > 0 ? a.slideLeft / SLIDE_DUR : 0;
     // Ease-out so the card settles into the slot instead of overshooting.
     const slide = u * u;
@@ -590,7 +668,14 @@ export class BattleView {
       // Fold edge-on then open — reads as a mirror flip without leaving the card reversed.
       foldY = Math.sin(t * Math.PI) * 82;
     }
-    el.style.transform = `translate(${m.x + a.slideDx * slide + laugh * 10}px, ${m.y + a.slideDy * slide}px) rotate(${m.rot + laugh * 7}deg) rotateX(${m.foldX}deg) rotateY(${foldY}deg) scale(${m.sx}, ${m.sy})`;
+    const arriving = this.dealing && !this.dealHold && a.slot === this.dealSlot;
+    const p = arriving ? Math.min(1, this.dealClock / DEAL_FLIGHT) : 1;
+    const ease = 1 - (1 - p) * (1 - p);
+    const dealY = (1 - ease) * -150;
+    const dealX = (1 - ease) * (a.team === 'player' ? 64 : -64);
+    const dealRot = (1 - ease) * (a.team === 'player' ? -9 : 9);
+    el.style.transform = `translate(${motionX + a.slideDx * slide + laugh * 10 + dealX}px, ${motionY + a.slideDy * slide + dealY}px) rotate(${m.rot + laugh * 7 + dealRot}deg) rotateX(${m.foldX}deg) rotateY(${foldY}deg) scale(${m.sx}, ${m.sy})`;
+    el.classList.toggle('is-dealt', this.dealing && a.slot <= this.dealSlot && a.slot > 0);
     el.style.opacity = (() => {
       if (this.intro <= 0) return String(m.opacity);
       if (!this.fieldShown) return '0';
@@ -598,7 +683,7 @@ export class BattleView {
       return String(Math.max(0, Math.min(1, fade)) * m.opacity);
     })();
     const flying = a.slideLeft > 0 || a.flipLeft > 0 || a.pendingFlip;
-    el.style.zIndex = a.clip === 'attack' ? '6' : flying ? '7' : a.dead ? '0' : '1';
+    el.style.zIndex = arriving ? '8' : a.clip === 'attack' ? '6' : flying ? '7' : a.dead ? '0' : '1';
     el.dataset.death = a.death;
     el.classList.toggle('is-flash', a.flash > 0 && !this.settings.reduceFlash);
     el.classList.toggle('is-dead', a.dead);
@@ -634,23 +719,30 @@ export class BattleView {
         this.markTarget(ev.targetId);
         if (!silent) audio.play('whoosh');
         if (ev.cancelled) {
-          if (a) {
-            a.clip = 'idle';
-            a.clipT = 0;
-          }
           if (silent) {
+            if (a) {
+              a.clip = 'idle';
+              a.clipT = 0;
+            }
             this.consumeAmbushFollowup(true);
             return 0;
           }
-          // The swing is cancelled. Banf plays next, and the counterattack waits until the smoke is gone.
-          return 0.28;
+          // The swing reaches the card. No hit. The form changes on contact, then that card attacks.
+          if (a) this.beginApproach(a, ev.targetId);
+          this.ambushFx = {
+            revealAt: this.t + APPROACH_ARRIVE,
+            pending: this.consumeAmbushFollowup(false),
+            targetId: ev.targetId,
+            revealed: false,
+          };
+          return APPROACH_ARRIVE + 0.04;
         }
         return 0.52;
       }
       case 'Ambushed': {
         if (!silent) {
-          const tgt = this.actors.get(ev.unitId);
-          if (tgt) this.float(tgt, translate(this.settings.locale, 'fx.ambush'), 'is-ambush');
+          this.pendingAmbushLabel = ev.unitId;
+          if (this.t + 0.02 >= this.smokeUntil) this.flushAmbushLabel();
           this.pulse(ev.unitId);
         }
         return silent ? 0 : 0.08;
@@ -1196,6 +1288,44 @@ export class BattleView {
     }
   }
 
+  /** Move the attacker until the cards nearly touch. The hit clip stays unused. */
+  private beginApproach(a: Actor, targetId: string): void {
+    const el = this.cardEl(a.uid);
+    const tgt = this.cardEl(targetId);
+    if (!el || !tgt) {
+      a.approachT = -1;
+      return;
+    }
+    const ar = el.getBoundingClientRect();
+    const tr = tgt.getBoundingClientRect();
+    const sx = ar.width / Math.max(1, el.offsetWidth);
+    const sy = ar.height / Math.max(1, el.offsetHeight);
+    const vx = tr.left + tr.width / 2 - (ar.left + ar.width / 2);
+    const vy = tr.top + tr.height / 2 - (ar.top + ar.height / 2);
+    const dist = Math.hypot(vx, vy);
+    const pad = (ar.width + tr.width) / 2 + 18 * sx;
+    const travel = Math.max(0, dist - pad);
+    const k = dist > 1 ? travel / dist : 0;
+    a.approachDx = (vx * k) / sx;
+    a.approachDy = (vy * k) / sy;
+    a.approachT = 0;
+    const side = el.closest('.battle-side');
+    const slot = el.closest('.battle-slot');
+    if (side instanceof HTMLElement) side.style.zIndex = '4';
+    if (slot instanceof HTMLElement) slot.style.zIndex = '4';
+  }
+
+  private endApproach(a: Actor): void {
+    a.approachT = -1;
+    a.approachDx = 0;
+    a.approachDy = 0;
+    const el = this.cardEl(a.uid);
+    const side = el?.closest('.battle-side');
+    const slot = el?.closest('.battle-slot');
+    if (side instanceof HTMLElement) side.style.zIndex = '';
+    if (slot instanceof HTMLElement) slot.style.zIndex = '';
+  }
+
   private consumeAmbushFollowup(applyNow: boolean): BattleEvent[] {
     const pending: BattleEvent[] = [];
     while (this.i < this.events.length) {
@@ -1212,6 +1342,15 @@ export class BattleView {
       }
     }
     return pending;
+  }
+
+  /** The word appears only once the smoke element is gone. */
+  private flushAmbushLabel(): void {
+    const uid = this.pendingAmbushLabel;
+    if (!uid || this.ended) return;
+    this.pendingAmbushLabel = null;
+    const live = this.actors.get(uid);
+    if (live) this.float(live, translate(this.settings.locale, 'fx.ambush'), 'is-ambush');
   }
 
   private revealAmbush(silent: boolean): void {
@@ -1290,6 +1429,7 @@ export class BattleView {
   private clipBusy(): boolean {
     if (this.t + 0.02 < this.smokeUntil) return true;
     for (const a of this.actors.values()) {
+      if (a.approachT >= 0 && a.approachT + 0.02 < APPROACH_TOTAL) return true;
       if (a.laughLeft > 0.02) return true;
       if (a.rewindPhase) return true;
       if (a.gone) continue;
@@ -1480,7 +1620,10 @@ export class BattleView {
       window.setTimeout(() => {
         i += 1;
         if (i >= frames.length) {
-          window.setTimeout(() => el.remove(), this.wallMs(SMOKE_FADE_MS));
+          window.setTimeout(() => {
+            el.remove();
+            this.flushAmbushLabel();
+          }, this.wallMs(SMOKE_FADE_MS));
           return;
         }
         el.src = frames[i]!;

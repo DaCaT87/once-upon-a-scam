@@ -2,25 +2,12 @@ import type { DeathStyle, TeamId } from '../core/types';
 
 export type AnimClip = 'idle' | 'enter' | 'attack' | 'hit' | 'death' | 'victory';
 
-export function clipDuration(clip: AnimClip, _art?: CharacterArt): number {
+export function clipDuration(clip: AnimClip): number {
   if (clip === 'attack') return 0.62;
   if (clip === 'hit') return 0.36;
   if (clip === 'death') return 0.85;
   if (clip === 'enter') return 0.5;
   return 0.66;
-}
-
-export function resolveUnitClip(clip: AnimClip, timeSec: number): UnitClip {
-  if (clip === 'idle' || clip === 'victory') return Math.floor(timeSec * 5) % 2 === 0 ? 'idle' : 'idle2';
-  if (clip === 'enter') return timeSec < 0.2 ? 'idle2' : 'idle';
-  if (clip === 'attack') return timeSec < 0.14 ? 'idle2' : 'attack';
-  if (clip === 'hit') return 'hit';
-  if (clip === 'death') return 'death';
-  return 'idle';
-}
-
-export function unitArtSrc(defId: string, clip: UnitClip): string {
-  return `./art/units/${unitArtFolder(defId)}/${clip}.png`;
 }
 
 export interface CardMotion {
@@ -81,64 +68,5 @@ export function cardMotion(
     const bounce = Math.abs(Math.sin(timeSec * 6)) * 8;
     return { x: 0, y: -bounce, rot: Math.sin(timeSec * 5) * 2, sx: 1, sy: 1 + bounce * 0.01, opacity: 1, ...still };
   }
-  const wobble = 0;
-  return { x: 0, y: 0, rot: 0, sx: 1 + wobble, sy: 1 - wobble, opacity: 1, ...still };
-}
-
-export function squashFor(clip: AnimClip, timeSec: number): { sx: number; sy: number; y: number; rot: number } {
-  const m = cardMotion(clip, timeSec, 'player');
-  return { sx: m.sx, sy: m.sy, y: m.y, rot: (m.rot * Math.PI) / 180 };
-}
-
-export function drawPaintedUnit(
-  ctx: CanvasRenderingContext2D,
-  defId: string,
-  clip: AnimClip,
-  timeSec: number,
-  x: number,
-  y: number,
-  facing: 1 | -1,
-  scale = 1,
-): void {
-  const img = unitFrame(defId, resolveUnitClip(clip, timeSec));
-  if (!img) return;
-  const xf = squashFor(clip, timeSec);
-  const w = 168 * scale;
-  const h = 224 * scale;
-  ctx.save();
-  ctx.translate(x, y + xf.y);
-  ctx.scale(facing, 1);
-  ctx.rotate(xf.rot * facing);
-  ctx.scale(xf.sx, xf.sy);
-  ctx.drawImage(img, -w / 2, -h + 18, w, h);
-  ctx.restore();
-}
-
-export function drawCharacter(
-  ctx: CanvasRenderingContext2D,
-  art: CharacterArt,
-  x: number,
-  y: number,
-  facing: 1 | -1,
-  _pose: unknown,
-  _seed = 1,
-): void {
-  void art;
-  void _pose;
-  void _seed;
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.scale(facing, 1);
-  ctx.fillStyle = '#ead7ad';
-  ctx.strokeStyle = '#1a1410';
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.ellipse(0, 0, 20, 28, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.stroke();
-  ctx.restore();
-}
-
-export function samplePose(): Record<string, number> {
-  return {};
+  return { x: 0, y: 0, rot: 0, sx: 1, sy: 1, opacity: 1, ...still };
 }

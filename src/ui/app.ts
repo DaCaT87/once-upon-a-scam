@@ -57,9 +57,9 @@ import type { AlleyChoice, CodexState, EventId, RunState, Settings, UnitInstance
 import { ALLEY_PICK, DATA_VERSION, DRAFT_PICK, MAX_STICKERS, MAX_TEAM, RUN_ROUNDS, STICKER_PICK } from '../core/types';
 import { bindTargetingTips, fitCardSlabs, paintPortraits, rarityLabel, renderDossierOverlay, renderOfferCard, renderStickerCard, renderTeamLane, renderUnitCard, t } from './cards';
 import { bindFullscreenControls, enterFullscreen, exitFullscreen, setLandscapeGateLabel, syncFullscreenChrome, toggleFullscreen } from './fullscreen';
-import { fadeOutScene, hideVeil, revealScene, syncScene, willChangeScene } from './sceneFade';
+import { fadeOutLight, fadeOutScene, hideVeil, revealLight, revealScene, syncScene, willChangeScene } from './sceneFade';
 
-type Screen = 'menu' | 'run' | 'battle' | 'codex';
+type Screen = 'menu' | 'options' | 'run' | 'battle' | 'codex';
 
 export class GameApp {
   private services = createLocalServices();
@@ -135,6 +135,9 @@ export class GameApp {
       sessionStorage.setItem('oua.scrap-boss', 'thousand-maws');
       this.run = this.scrapTryRun();
       this.screen = 'battle';
+    } else if (this.isAmbushTry()) {
+      this.run = this.ambushTryRun();
+      this.screen = 'battle';
     } else if (tryId === 'monster-hunt') {
       this.armTry(tryId);
       this.run = resolveHuntFight({
@@ -175,6 +178,9 @@ export class GameApp {
     document.getElementById('menu-stamp')?.addEventListener('click', () => {
       void this.onAction('menu', this.root);
     });
+    document.getElementById('options-gear')?.addEventListener('click', () => {
+      void this.onAction('options', this.root);
+    });
     this.render();
   }
 
@@ -197,6 +203,9 @@ export class GameApp {
     document.getElementById('menu-stamp')?.addEventListener('pointerdown', (e) => {
       if (e.button === 0) audio.play('click', 'ui');
     });
+    document.getElementById('options-gear')?.addEventListener('pointerdown', (e) => {
+      if (e.button === 0) audio.play('click', 'ui');
+    });
     this.root.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
       const btn = target.closest<HTMLElement>('[data-act]');
@@ -206,10 +215,17 @@ export class GameApp {
     this.root.addEventListener('dragstart', (e) => {
       if ((e.target as HTMLElement).closest('.btn-fight-art')) e.preventDefault();
     });
-    this.root.addEventListener('contextmenu', (e) => {
-      const card = (e.target as HTMLElement).closest<HTMLElement>('.unit-card[data-def]');
-      if (!card?.dataset.def) return;
+    document.addEventListener('contextmenu', (e) => {
+      const target = e.target;
+      if (!(target instanceof Element)) {
+        e.preventDefault();
+        return;
+      }
+      if (target.closest('input, textarea, [contenteditable="true"]')) return;
       e.preventDefault();
+      if (this.screen !== 'codex') return;
+      const card = target.closest<HTMLElement>('.unit-card[data-def]');
+      if (!card?.dataset.def) return;
       this.openDossier(card.dataset.def);
     });
     window.addEventListener('keydown', (e) => {
@@ -235,10 +251,10 @@ export class GameApp {
 
   private async persist(): Promise<void> {
     if (this.run?.phase === 'final') {
-      if (this.tryEvent() || this.isMarketTry() || this.isWidowTry() || this.isWidowCardTry() || this.isHuntCardsTry() || this.isWoodsmanTry() || this.isFilthTry() || this.isScrapTry()) sessionStorage.removeItem('oua.try-run');
+      if (this.tryEvent() || this.isMarketTry() || this.isWidowTry() || this.isWidowCardTry() || this.isHuntCardsTry() || this.isWoodsmanTry() || this.isFilthTry() || this.isScrapTry() || this.isAmbushTry()) sessionStorage.removeItem('oua.try-run');
       else await this.services.runs.clear();
     } else if (this.run) {
-      if (this.tryEvent() || this.isMarketTry() || this.isWidowTry() || this.isWidowCardTry() || this.isHuntCardsTry() || this.isWoodsmanTry() || this.isFilthTry() || this.isScrapTry()) sessionStorage.setItem('oua.try-run', JSON.stringify(this.run));
+      if (this.tryEvent() || this.isMarketTry() || this.isWidowTry() || this.isWidowCardTry() || this.isHuntCardsTry() || this.isWoodsmanTry() || this.isFilthTry() || this.isScrapTry() || this.isAmbushTry()) sessionStorage.setItem('oua.try-run', JSON.stringify(this.run));
       else await this.services.runs.save(this.run);
     }
     saveSettings(this.settings);
@@ -412,6 +428,16 @@ export class GameApp {
     this.render();
   }
 
+  /** Scrap arena, player or hunt, dims under a light black before the square is painted. */
+  private async fadeArenaToSquare(): Promise<void> {
+    const ticket = ++this.fadeTicket;
+    cancelAnimationFrame(this.raf);
+    await fadeOutLight();
+    if (ticket !== this.fadeTicket) return;
+    this.paintScreen();
+    revealLight(this.viewKey());
+  }
+
   /** Cover the screen that is still up, then paint the next one and uncover it. */
   private async crossfadeRender(): Promise<void> {
     const ticket = ++this.fadeTicket;
@@ -444,12 +470,12 @@ export class GameApp {
     this.stopMenu = null;
     if (this.screen !== 'battle') cancelAnimationFrame(this.raf);
     audio.setVolumes(this.settings.music, this.settings.sfx, this.settings.ui);
-    document.title = this.tryTitle() ?? (this.isWidowTry() || this.isWidowCardTry() ? 'Widow' : null) ?? (this.isHuntCardsTry() ? 'Hunt cards' : null) ?? (this.isWoodsmanTry() ? 'Woodsman' : null) ?? (this.isFilthTry() ? 'Filth' : null) ?? (this.isScrapTry() ? 'Scrap' : null) ?? (this.isMarketTry() ? 'Market' : null) ?? this.L('title');
+    document.title = this.tryTitle() ?? (this.isWidowTry() || this.isWidowCardTry() ? 'Widow' : null) ?? (this.isHuntCardsTry() ? 'Hunt cards' : null) ?? (this.isWoodsmanTry() ? 'Woodsman' : null) ?? (this.isFilthTry() ? 'Filth' : null) ?? (this.isScrapTry() ? 'Scrap' : null) ?? (this.isAmbushTry() ? 'Ambush' : null) ?? (this.isMarketTry() ? 'Market' : null) ?? this.L('title');
     if (this.run?.phase === 'recruit' && this.run.pendingGoldUnitId) {
       this.recruitReplace = { defId: this.run.pendingGoldUnitId, gold: true };
     }
     const huntFight = this.screen === 'battle' && this.isHuntBattle();
-    document.documentElement.classList.toggle('is-menu', this.screen === 'menu');
+    document.documentElement.classList.toggle('is-menu', this.screen === 'menu' || this.screen === 'options');
     document.documentElement.classList.toggle('is-battle', this.screen === 'battle' && !huntFight);
     document.documentElement.classList.toggle('is-hunt', huntFight);
     document.documentElement.classList.toggle('is-square', this.screen === 'run');
@@ -468,6 +494,9 @@ export class GameApp {
       case 'menu':
         this.root.innerHTML = this.menuHtml();
         paintPortraits(this.root);
+        break;
+      case 'options':
+        this.root.innerHTML = this.optionsHtml();
         break;
       case 'run':
         if (this.run?.eventId === 'monster-hunt' && this.run.eventStep === 'hunt-result') {
@@ -514,6 +543,11 @@ export class GameApp {
     if (menuStamp) {
       menuStamp.textContent = this.L('quitToMenu');
       menuStamp.hidden = this.screen === 'menu';
+    }
+    const gear = document.getElementById('options-gear');
+    if (gear) {
+      gear.setAttribute('aria-label', this.L('options'));
+      gear.hidden = this.screen !== 'menu' && this.screen !== 'options';
     }
   }
 
@@ -575,6 +609,22 @@ export class GameApp {
           ${this.run && this.run.phase !== 'final' ? `<button class="btn ghost" data-act="continue">${this.L('continue')}</button>` : ''}
           <button class="btn ghost" data-act="codex">${this.L('codex')}</button>
           <button class="btn ghost" data-act="exit-game">${this.L('exit')}</button>
+        </div>
+      </section>`;
+  }
+
+  private optionsHtml(): string {
+    const on = (locale: 'en' | 'it') => (this.settings.locale === locale ? ' is-on' : '');
+    return `
+      <section class="screen menu-screen">
+        <div class="menu-stage" aria-hidden="true">
+          <div class="menu-paint"></div>
+          <div class="menu-wash"></div>
+        </div>
+        <div class="col menu-actions">
+          <button type="button" class="btn ghost${on('en')}" data-act="set-locale" data-locale="en" aria-pressed="${this.settings.locale === 'en'}">${this.L('langEnglish')}</button>
+          <button type="button" class="btn ghost${on('it')}" data-act="set-locale" data-locale="it" aria-pressed="${this.settings.locale === 'it'}">${this.L('langItalian')}</button>
+          <button type="button" class="btn ghost" data-act="menu">${this.L('back')}</button>
         </div>
       </section>`;
   }
@@ -672,7 +722,7 @@ export class GameApp {
             <span class="recruit-round">${this.recruitRoundHtml(run.round, victoryPointsOf(run))}</span>
           </div>
           <div class="choice-table">
-            ${plate('recruit', './art/ui/plate-recruit.png?v=recruit9', this.L('alleyRecruit'), this.L('alleyRecruitD'), {
+            ${plate('recruit', './art/ui/plate-recruit.png?v=recruit15', this.L('alleyRecruit'), this.L('alleyRecruitD'), {
               extraClass: 'is-event-plain is-alley-full-plate',
             })}
             ${plate('sticker', './art/ui/plate-sticker.png?v=alley3', this.L('alleySticker'), this.L('alleyStickerD'), {
@@ -2635,6 +2685,33 @@ export class GameApp {
     return new URLSearchParams(location.search).get('try') === 'scrap';
   }
 
+  private isAmbushTry(): boolean {
+    return new URLSearchParams(location.search).get('try') === 'ambush';
+  }
+
+  /** Farm boy swings into a toy box so the ambush can be watched. */
+  private ambushTryRun(): RunState {
+    const player: RunState = {
+      ...this.ovenLoopRun(),
+      runId: 'run-ambush-test',
+      round: 1,
+      phase: 'fight',
+      playerName: 'Farm Boy',
+      team: [
+        { instanceId: 'u1', defId: 'farm-boy', slot: 1, stickerIds: [], permanentMods: { atk: 0, hp: 0, speed: 0 } },
+      ],
+    };
+    const foe: RunState = {
+      ...player,
+      runId: 'run-ambush-foe',
+      playerName: 'Toy Box',
+      team: [
+        { instanceId: 'e1', defId: 'jack-in-the-box', slot: 1, stickerIds: [], permanentMods: { atk: 0, hp: 0, speed: 0 } },
+      ],
+    };
+    return resolveFight(player, playerSnapshot(foe));
+  }
+
   /** Formation table: the woodsman already wearing his axe. */
   private woodsmanTryRun(): RunState {
     return {
@@ -3088,6 +3165,17 @@ export class GameApp {
       return this.go('run');
     }
     if (act === 'codex') return this.go('codex');
+    if (act === 'options') return this.go('options');
+    if (act === 'set-locale') {
+      const next = el.dataset.locale;
+      if (next !== 'en' && next !== 'it') return;
+      if (this.settings.locale === next) return;
+      this.settings.locale = next;
+      saveSettings(this.settings);
+      syncFullscreenChrome(this.L('fullscreen'), this.L('fullscreenExit'));
+      setLandscapeGateLabel(this.L('turnPhone'));
+      return this.render();
+    }
     if (act === 'confirm-draft' && this.run) {
       this.run = confirmDraft(this.run);
       this.noteTeam();
@@ -3276,7 +3364,7 @@ export class GameApp {
     this.player = { ...this.player, name: alias };
     savePlayer(this.player.id, alias);
     this.run = null;
-    if (!this.tryEvent() && !this.isMarketTry() && !this.isWidowTry() && !this.isWidowCardTry() && !this.isHuntCardsTry() && !this.isWoodsmanTry() && !this.isFilthTry() && !this.isScrapTry()) await this.services.runs.clear();
+    if (!this.tryEvent() && !this.isMarketTry() && !this.isWidowTry() && !this.isWidowCardTry() && !this.isHuntCardsTry() && !this.isWoodsmanTry() && !this.isFilthTry() && !this.isScrapTry() && !this.isAmbushTry()) await this.services.runs.clear();
     this.run = createRun('ai', this.player.id, alias);
     this.cuts = [];
     this.noteDraft();
@@ -3450,7 +3538,7 @@ export class GameApp {
       this.battleFieldUp = false;
       this.screen = 'run';
       await this.persist();
-      this.render();
+      await this.fadeArenaToSquare();
       this.maybeLoopHunt();
       return;
     }
@@ -3460,7 +3548,7 @@ export class GameApp {
     await this.persist();
     this.battleFieldUp = false;
     this.screen = 'run';
-    this.render();
+    await this.fadeArenaToSquare();
   }
 
   private mountBattle(): void {
@@ -3500,8 +3588,8 @@ export class GameApp {
           }
           this.battleFieldUp = false;
           this.screen = 'run';
-          this.render();
           void this.persist();
+          void this.fadeArenaToSquare();
         }, waitMs);
         return;
       }

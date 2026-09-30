@@ -6,7 +6,7 @@ const CARD_W = 642;
 const CARD_H = 972;
 const KEY = [0, 254, 102];
 const SRC =
-  'C:/Users/copan/.cursor/projects/c-Users-copan-Desktop-Once-Upon-a-Scam/assets/c__Users_copan_AppData_Roaming_Cursor_User_workspaceStorage_39f0117879db467f92618b6dc4c58c15_images_Recruit-51372417-278e-4a1f-ba81-d6c0b9cf00a1.jpg';
+  'C:/Users/copan/.cursor/projects/c-Users-copan-Desktop-Once-Upon-a-Scam/assets/plate-recruit-src.jpg';
 const DEST = 'C:/Users/copan/Desktop/Once Upon a Scam/public/art/ui/plate-recruit.png';
 
 function decodeImage(buf) {
@@ -214,6 +214,9 @@ function writePng(img, dest) {
 
 const framed = decodeImage(readFileSync(SRC));
 const keyed = cutout(framed, floodGreen(framed));
-const plate = scaleTo(crop(keyed, contentBox(keyed)), CARD_W, CARD_H);
+const cropped = crop(keyed, contentBox(keyed));
+const dw = cropped.width;
+const dh = Math.round(dw * 973 / 641);
+const plate = dh === cropped.height ? cropped : scaleTo(cropped, dw, dh);
 writePng(plate, DEST);
 console.log('recruit', `${framed.width}x${framed.height}`, '->', `${plate.width}x${plate.height}`);

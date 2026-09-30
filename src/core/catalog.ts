@@ -5,6 +5,7 @@ import type {
   AbilityDef,
   AbilityTiming,
   Passives,
+  PermanentMods,
   Rarity,
   StickerDef,
   TargetingType,
@@ -835,6 +836,13 @@ function onApplyRng(inst: UnitInstance, stickerId: string, rng?: SeededRng): See
   return rng ?? new Rng(hashString(`${inst.instanceId}:${stickerId}:${inst.defId}`));
 }
 
+/** Drop only the Endless Hunger kill bonus. Other permanent stats stay on the card. */
+export function clearHungerBonus(mods: PermanentMods): PermanentMods {
+  const hunger = mods.hungerAtk ?? 0;
+  if (hunger <= 0) return { ...mods, hungerAtk: 0 };
+  return { ...mods, atk: Math.max(0, mods.atk - hunger), hungerAtk: 0 };
+}
+
 function resolveOnApplySticker(inst: UnitInstance, stickerId: string, rng: SeededRng): UnitInstance {
   const st = getSticker(stickerId);
   const ab = st.ability;
@@ -851,7 +859,11 @@ function resolveOnApplySticker(inst: UnitInstance, stickerId: string, rng: Seede
     }
   }
   if (transformed) {
-    next = { ...next, stickerIds: next.stickerIds.filter((id) => id !== stickerId) };
+    next = {
+      ...next,
+      stickerIds: next.stickerIds.filter((id) => id !== stickerId),
+      permanentMods: clearHungerBonus(next.permanentMods),
+    };
   }
   return next;
 }
@@ -868,6 +880,7 @@ export function applySticker(inst: UnitInstance, stickerId: string, replaceIndex
         atk: inst.permanentMods.atk + eat.atk,
         hp: inst.permanentMods.hp + eat.hp,
         speed: inst.permanentMods.speed,
+        hungerAtk: inst.permanentMods.hungerAtk ?? 0,
       },
     };
   }

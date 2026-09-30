@@ -12,6 +12,7 @@ import {
   scaleStickerAbility,
   stickerEffectScale,
   baseFormOf,
+  clearHungerBonus,
   type StatContext,
 } from '../core/catalog';
 import { SeededRng } from '../core/rng';
@@ -24,6 +25,7 @@ import type {
   EffectOp,
   EffectTarget,
   Passives,
+  PermanentMods,
   PublicUnitView,
   TeamId,
   TeamSnapshot,
@@ -69,7 +71,7 @@ interface Combatant {
   attacksDone: number;
   turnsTaken: number;
   hitsTaken: number;
-  permanentMods: { atk: number; hp: number; speed: number };
+  permanentMods: PermanentMods;
   /** Run counters used when sticker and figure effects were printed onto the stats. */
   statCtx: StatContext;
   stickerEffectsSuppressed: boolean;
@@ -143,6 +145,8 @@ interface SimState {
   lostLastRound: Record<TeamId, boolean>;
   lossesThisRun: Record<TeamId, number>;
   graveyard: Array<{ team: TeamId; defId: string; stickers: string[]; permanentMods: Combatant['permanentMods'] }>;
+  /** Set while Endless Hunger is applying its kill bonus, so that ATK is tagged apart from other permanent gains. */
+  hungerGrant: boolean;
 }
 
 function viewOf(u: Combatant): PublicUnitView {
@@ -457,8 +461,18 @@ function applyOp(state: SimState, source: Combatant, target: Combatant, op: Effe
       const amount = scaleBuff(target, op.amount, permanent);
       if (op.stat === 'atk') {
         target.atk = clampStat('atk', target.atk + amount);
+        const hunger = permanent && state.hungerGrant;
         if (permanent) target.permanentMods.atk += amount;
-        emit(state, { type: 'StatChanged', unitId: target.uid, stat: 'atk', amount, now: target.atk, permanent });
+        if (hunger) target.permanentMods.hungerAtk = (target.permanentMods.hungerAtk ?? 0) + amount;
+        emit(state, {
+          type: 'StatChanged',
+          unitId: target.uid,
+          stat: 'atk',
+          amount,
+          now: target.atk,
+          permanent,
+          ...(hunger ? { hunger: true } : {}),
+        });
       } else if (op.stat === 'speed') {
         target.speed = clampStat('speed', target.speed + amount);
         if (permanent) target.permanentMods.speed += amount;
@@ -755,6 +769,8 @@ function transformCombatant(
   }
   if (revive && nextId === 'flock-of-ravens' && target.ravenFlockHp === 0) return;
   const keptHp = target.hp;
+  const hunger = op.randomRarity ? (target.permanentMods.hungerAtk ?? 0) : 0;
+  if (hunger > 0) target.permanentMods = clearHungerBonus(target.permanentMods);
   target.defId = nextId;
   rebuildFromDef(target);
   if (sharesCombatHp(fromId, nextId)) {
@@ -765,6 +781,17 @@ function transformCombatant(
   }
   target.dead = false;
   target.dying = false;
+  if (hunger > 0) {
+    emit(state, {
+      type: 'StatChanged',
+      unitId: target.uid,
+      stat: 'atk',
+      amount: -hunger,
+      now: target.atk,
+      permanent: true,
+      hunger: true,
+    });
+  }
   emit(state, { type: 'Transformed', unit: viewOf(target), fromId, combat: op.duration === 'combat' });
   maybeSuppressSummon(state, target);
 }
@@ -1680,8 +1707,14 @@ function fireAbilities(
         ab.used = true;
         if (ab.stickerId) spendSticker(state, owner, ab.stickerId, ab.stickerSlot);
       }
-      for (const t of targets) {
-        for (const op of ab.def.effects) applyOp(state, owner, t, op, 'effect');
+      const prevHunger = state.hungerGrant;
+      state.hungerGrant = ab.stickerId === 'endless-hunger';
+      try {
+        for (const t of targets) {
+          for (const op of ab.def.effects) applyOp(state, owner, t, op, 'effect');
+        }
+      } finally {
+        state.hungerGrant = prevHunger;
       }
     }
   }
@@ -2278,6 +2311,7 @@ export function simulateBattle(a: TeamSnapshot, b: TeamSnapshot, seed: number): 
       enemy: Math.max(0, b.lossesThisRun ?? 0),
     },
     graveyard: [],
+    hungerGrant: false,
   };
 
   refreshChampionAtk(state);

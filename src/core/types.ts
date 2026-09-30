@@ -323,12 +323,20 @@ export interface RarityWeights {
   diamond: number;
 }
 
+/** Stats printed onto one card. hungerAtk is the Endless Hunger portion of atk. */
+export interface PermanentMods {
+  atk: number;
+  hp: number;
+  speed: number;
+  hungerAtk?: number;
+}
+
 export interface SnapshotUnit {
   instanceId: string;
   defId: string;
   slot: number;
   stickerIds: string[];
-  permanentMods: { atk: number; hp: number; speed: number };
+  permanentMods: PermanentMods;
   baseStats: { atk: number; hp: number; speed: number };
 }
 
@@ -385,7 +393,7 @@ export type BattleEvent =
   | { type: 'DamageDealt'; sourceId: string; targetId: string; amount: number; lethal: boolean; kind: 'attack' | 'effect' | 'thorns' | 'reflect' }
   | { type: 'DamageReceived'; unitId: string; amount: number; sourceId: string | null; absorbed: boolean }
   | { type: 'Healed'; unitId: string; amount: number }
-  | { type: 'StatChanged'; unitId: string; stat: 'atk' | 'hp' | 'maxHp' | 'speed'; amount: number; now: number; permanent?: boolean }
+  | { type: 'StatChanged'; unitId: string; stat: 'atk' | 'hp' | 'maxHp' | 'speed'; amount: number; now: number; permanent?: boolean; hunger?: boolean }
   | { type: 'UnitKilled'; killerId: string; victimId: string }
   | { type: 'UnitDied'; unitId: string; death: DeathStyle }
   | { type: 'AllyDied'; watcherId: string; deadId: string }
@@ -438,7 +446,7 @@ export interface UnitInstance {
   defId: string;
   slot: number;
   stickerIds: string[];
-  permanentMods: { atk: number; hp: number; speed: number };
+  permanentMods: PermanentMods;
 }
 
 export type RunPhase =
@@ -521,7 +529,7 @@ export interface RunState {
 export interface LostTale {
   defId: string;
   stickerIds: string[];
-  permanentMods: { atk: number; hp: number; speed: number };
+  permanentMods: PermanentMods;
 }
 
 /** One of the nine rivals who share the run with you. */

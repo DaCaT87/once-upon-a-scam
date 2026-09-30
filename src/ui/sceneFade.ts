@@ -85,6 +85,30 @@ export async function fadeOutScene(): Promise<void> {
   await ramp(from, 1, 360);
 }
 
+/** Soft black over the scrap arena, light enough that it is a dim, not a blackout. */
+export async function fadeOutLight(): Promise<void> {
+  const veil = veilEl();
+  if (!veil) return;
+  veil.style.pointerEvents = 'auto';
+  const current = Number(getComputedStyle(veil).opacity);
+  const from = Number.isFinite(current) ? current : 0;
+  await ramp(from, 0.62, 520);
+}
+
+/** Lift a light black veil off the screen that was just painted. */
+export function revealLight(page: string): void {
+  shown = page;
+  const veil = veilEl();
+  if (!veil) return;
+  const current = Number(getComputedStyle(veil).opacity);
+  const from = Number.isFinite(current) ? current : 0.62;
+  void ramp(from, 0, 560).then(() => {
+    if (shown !== page) return;
+    const live = veilEl();
+    if (live) live.style.pointerEvents = 'none';
+  });
+}
+
 /** Uncover the screen that was just painted. */
 export function revealScene(page: string): void {
   shown = page;

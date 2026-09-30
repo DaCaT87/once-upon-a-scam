@@ -1,8 +1,5 @@
-import { stickerArtFile, unitArtFolder } from '../core/catalog';
-
 export type UnitClip = 'idle';
 
-const images = new Map<string, HTMLImageElement>();
 let ready = false;
 let readyPromise: Promise<void> | null = null;
 
@@ -159,53 +156,34 @@ function load(src: string): Promise<HTMLImageElement> {
   });
 }
 
-export function preloadArt(): Promise<void> {
-  if (ready) return Promise.resolve();
-  if (readyPromise) return readyPromise;
-  const jobs: Promise<void>[] = [];
-  const put = (key: string, src: string) => {
-    jobs.push(
-      load(src)
-        .then((img) => {
-          images.set(key, img);
-        })
-        .catch(() => {
-          /* missing clip is fine — cards fall back to idle */
-        }),
-    );
-  };
-  for (const id of UNIT_IDS) {
-    for (const clip of CLIPS) put(`unit:${id}:${clip}`, `./art/units/${id}/${clip}.png?v=cast180`);
+export function preloadArt(onProgress?: (done: number, total: number) => void): Promise<void> {
+  if (ready) {
+    onProgress?.(1, 1);
+    return Promise.resolve();
   }
-  for (const id of STICKERS) put(`sticker:${id}`, `./art/stickers/${id}.png?v=cast173`);
-  for (const id of UI) put(`ui:${id}`, `./art/ui/${id}.png${id === 'arena' ? '?v=court2' : ''}`);
-  for (const id of VFX) put(`vfx:${id}`, `./art/vfx/${id}.png`);
-  readyPromise = Promise.all(jobs).then(() => {
+  if (readyPromise) return readyPromise;
+  const srcs: string[] = [];
+  for (const id of UNIT_IDS) {
+    for (const clip of CLIPS) srcs.push(`./art/units/${id}/${clip}.png?v=cast180`);
+  }
+  for (const id of STICKERS) srcs.push(`./art/stickers/${id}.png?v=cast173`);
+  for (const id of UI) srcs.push(`./art/ui/${id}.png${id === 'arena' ? '?v=court2' : ''}`);
+  for (const id of VFX) srcs.push(`./art/vfx/${id}.png`);
+  let done = 0;
+  const total = srcs.length;
+  onProgress?.(0, total);
+  readyPromise = Promise.all(
+    srcs.map((src) =>
+      load(src)
+        .then(() => {})
+        .catch(() => {})
+        .finally(() => {
+          done += 1;
+          onProgress?.(done, total);
+        }),
+    ),
+  ).then(() => {
     ready = true;
   });
   return readyPromise;
 }
-
-export function art(key: string): HTMLImageElement | null {
-  return images.get(key) ?? null;
-}
-
-export function unitFrame(defId: string, clip: UnitClip): HTMLImageElement | null {
-  const folder = unitArtFolder(defId);
-  return art(`unit:${folder}:${clip}`) ?? art(`unit:${folder}:idle`);
-}
-
-export function stickerArt(id: string): HTMLImageElement | null {
-  return art(`sticker:${stickerArtFile(id)}`);
-}
-
-export function uiArt(id: string): HTMLImageElement | null {
-  return art(`ui:${id}`);
-}
-
-export function vfxArt(id: string): HTMLImageElement | null {
-  return art(`vfx:${id}`);
-}
-
-export const SLICE_UNIT_IDS = UNIT_IDS;
-export const SLICE_STICKER_IDS = STICKERS;

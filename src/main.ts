@@ -40,6 +40,19 @@ bindLandscapeHold();
 const root = document.querySelector<HTMLElement>('#app');
 if (!root) throw new Error('#app missing');
 const app = new GameApp(root);
-void preloadArt().finally(() => {
-  void app.start();
+const boot = document.getElementById('boot');
+const bootFill = document.getElementById('boot-fill');
+
+function paintBoot(done: number, total: number): void {
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  if (bootFill) bootFill.style.width = `${pct}%`;
+  boot?.setAttribute('aria-valuenow', String(pct));
+}
+
+void preloadArt(paintBoot).finally(() => {
+  void app.start().finally(() => {
+    document.documentElement.classList.remove('is-booting');
+    document.getElementById('fullscreen-btn')?.removeAttribute('hidden');
+    boot?.remove();
+  });
 });
