@@ -54,7 +54,7 @@ html.is-fullscreen body {
   background: #100c0a center top / cover no-repeat;
 }
 html.is-menu #stage-fill {
-  background-image: url('/art/ui/bg-home.jpg?v=home14');
+  background-image: url('/art/ui/bg-home.jpg?v=home15');
 }
 html.is-battle #stage-fill {
   background-image: url('/art/ui/arena.png?v=court12');
@@ -247,7 +247,7 @@ html.needs-landscape .landscape-gate {
   margin: 0;
   padding: 32px;
   background: #100c0a center top / cover no-repeat;
-  background-image: url('/art/ui/bg-home.jpg?v=home14');
+  background-image: url('/art/ui/bg-home.jpg?v=home15');
   color: var(--cream);
   text-align: center;
 }
