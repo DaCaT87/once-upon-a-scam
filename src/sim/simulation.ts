@@ -831,6 +831,23 @@ function applyPigForm(state: SimState, target: Combatant, pigId: string): void {
   target.targeting = pig.targeting;
   target.passives = { ...pig.passives };
   target.abilities = pig.ability ? [{ def: pig.ability, used: false }] : [];
+  if (pig.id === 'pig' && !target.stickerEffectsSuppressed) {
+    const worn = {
+      instanceId: target.uid,
+      defId: target.defId,
+      slot: target.slot,
+      stickerIds: [...target.stickers],
+      permanentMods: { atk: 0, hp: 0, speed: 0 },
+      baseStats: { atk: 0, hp: target.maxHp, speed: 0 },
+    };
+    const stats = computedStats(worn);
+    target.atk = stats.atk;
+    target.coreAtk = stats.atk;
+    target.speed = stats.speed;
+    target.passives = mergePassives(worn);
+    target.targeting = resolveTargeting(worn);
+    target.abilities = target.pigRevert.abilities.filter((ab) => ab.stickerId);
+  }
   emit(state, { type: 'Transformed', unit: viewOf(target), fromId, combat: true });
   refreshChampionAtk(state);
 }
@@ -1703,10 +1720,9 @@ function fireAbilities(
       if (ab.used && ab.def.once) continue;
       if (!condOk(state, owner, ab.def.condition, ctx)) continue;
       const targets = resolveTargets(state, owner, ab.def.target, ctx);
-      if (ab.def.once) {
-        ab.used = true;
-        if (ab.stickerId) spendSticker(state, owner, ab.stickerId, ab.stickerSlot);
-      }
+      const onceSticker =
+        ab.def.once && ab.stickerId ? { id: ab.stickerId, slot: ab.stickerSlot } : null;
+      if (ab.def.once) ab.used = true;
       const prevHunger = state.hungerGrant;
       state.hungerGrant = ab.stickerId === 'endless-hunger';
       try {
@@ -1716,6 +1732,7 @@ function fireAbilities(
       } finally {
         state.hungerGrant = prevHunger;
       }
+      if (onceSticker) spendSticker(state, owner, onceSticker.id, onceSticker.slot);
     }
   }
   state.depth -= 1;
@@ -1788,11 +1805,12 @@ function dealDamage(
   const hpBefore = target.hp;
   const cocoonTakingDamage = target.defId === 'silk-cocoon' && Boolean(target.pigRevert);
   target.hp -= dmg;
+  let cheated = false;
   if (target.hp <= 0 && target.passives.cheatDeath && !target.cheatDeathUsed) {
     target.cheatDeathUsed = true;
     target.hp = 1;
+    cheated = true;
     emit(state, { type: 'Log', message: `cheat-death:${target.uid}` });
-    spendPassiveStickers(state, target, 'cheatDeath');
   }
   const lethal = target.hp <= 0;
   emit(state, {
@@ -1804,6 +1822,7 @@ function dealDamage(
     kind,
   });
   emit(state, { type: 'DamageReceived', unitId: target.uid, amount: dmg, sourceId: source?.uid ?? null, absorbed: false });
+  if (cheated) spendPassiveStickers(state, target, 'cheatDeath');
   if (source && source.uid !== target.uid) target.lastAttackerId = source.uid;
 
   if (kind === 'attack' && source) {

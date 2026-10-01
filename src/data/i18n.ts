@@ -525,7 +525,7 @@ const en: Record<string, string> = {
   discovered: 'Seen',
   locked: 'Still in the alley',
   audioNote:
-    'Menu: Fairytale Waltz. Market Square: Enchanted Valley. Final standings: The Parting. Kevin MacLeod (incompetech.com), CC BY. Scrap and Monster Hunt: Boss Fight Ahh Music by u_98a917e4i7 (Pixabay). Sticker peel and button tick by Kenney (kenney.nl), CC0. Cards from Freesound (freesound.org). Hit: Punch by Universfield. Attack: Item Swing by oxidvideos. KO: Game Character Fall by Universfield. Lucky: Lucky Guitar by sergequadrado. Other damage is the same Punch, a little lower and shorter. Transform: Swish by stereogenicstudio.',
+    'Kevin MacLeod (incompetech.com)\nCC BY 4.0\n\nMenu — Fairytale Waltz\nMarket — Enchanted Valley\nFinal standings — The Parting\n\nFreesound\nHit — Punch, Universfield\nAttack — Item Swing, oxidvideos\nKO — Game Character Fall, Universfield\nLucky — Lucky Guitar, sergequadrado\nTransform — Swish, stereogenicstudio',
   skipNeedResult: 'The scrap is already decided.',
   mustAssign: 'Every chosen sticker must be pasted before the next scrap.',
   mustPickDraft: 'Choose exactly two.',
@@ -826,7 +826,7 @@ const it: Record<string, string> = {
   discovered: 'Visti',
   locked: 'Ancora in vicolo',
   audioNote:
-    'Menù: Fairytale Waltz. Piazza: Enchanted Valley. Classifica finale: The Parting. Kevin MacLeod (incompetech.com), CC BY. Scrap e Monster Hunt: Boss Fight Ahh Music di u_98a917e4i7 (Pixabay). Stacco sticker e tic del bottone di Kenney (kenney.nl), CC0. Carte da Freesound (freesound.org). Colpo: Punch di Universfield. Attacco: Item Swing di oxidvideos. KO: Game Character Fall di Universfield. Lucky: Lucky Guitar di sergequadrado. Altro danno è lo stesso Punch, un po’ più basso e più corto. Trasformazione: Swish di stereogenicstudio.',
+    'Kevin MacLeod (incompetech.com)\nCC BY 4.0\n\nMenù — Fairytale Waltz\nPiazza — Enchanted Valley\nClassifica — The Parting\n\nFreesound\nColpo — Punch, Universfield\nAttacco — Item Swing, oxidvideos\nKO — Game Character Fall, Universfield\nFortuna — Lucky Guitar, sergequadrado\nTrasformazione — Swish, stereogenicstudio',
   mustAssign: 'Ogni sticker scelto va incollato prima del prossimo scontro.',
   mustPickDraft: 'Scegline esattamente due.',
   recruited: 'Ingaggiato',

@@ -54,7 +54,7 @@ html.is-fullscreen body {
   background: #100c0a center top / cover no-repeat;
 }
 html.is-menu #stage-fill {
-  background-image: url('/art/ui/bg-home.jpg?v=home7');
+  background-image: url('/art/ui/bg-home.jpg?v=home14');
 }
 html.is-battle #stage-fill {
   background-image: url('/art/ui/arena.png?v=court12');
@@ -230,7 +230,10 @@ html:not(.is-booting) .boot {
   font-size: 16px;
   line-height: 1.45;
 }
-.credits-panel p { margin: 0; }
+.credits-panel p {
+  margin: 0;
+  white-space: pre-line;
+}
 
 .landscape-gate {
   display: none;
@@ -244,7 +247,7 @@ html.needs-landscape .landscape-gate {
   margin: 0;
   padding: 32px;
   background: #100c0a center top / cover no-repeat;
-  background-image: url('/art/ui/bg-home.jpg?v=home7');
+  background-image: url('/art/ui/bg-home.jpg?v=home14');
   color: var(--cream);
   text-align: center;
 }
@@ -1463,6 +1466,7 @@ html.needs-landscape .landscape-gate {
   visibility: hidden;
 }
 .sticker-slot.filled {
+  position: relative;
   visibility: visible;
   pointer-events: auto;
   transform: rotate(-6deg);
@@ -1471,8 +1475,31 @@ html.needs-landscape .landscape-gate {
 }
 .sticker-slot.filled:nth-child(2) { transform: rotate(4deg); }
 .sticker-slot.filled:nth-child(3) { transform: rotate(-3deg); }
-.sticker-slot.filled.is-spent {
-  filter: grayscale(1) brightness(0.78) contrast(0.9) drop-shadow(1px 2px 0 rgba(26, 20, 16, 0.28));
+.sticker-slot.filled.is-graying img,
+.sticker-slot.filled.is-spent img {
+  filter: grayscale(1) brightness(0.78) contrast(0.9);
+  transition: filter 0.28s ease;
+}
+.sticker-slot.filled.is-spent::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: url('/art/ui/spent-x.svg?v=spent2') center / 100% 100% no-repeat;
+  pointer-events: none;
+  animation: stickerXIn 0.24s ease;
+}
+.sticker-slot.filled.is-spent.is-spent-still::after {
+  animation: none;
+}
+@keyframes stickerXIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sticker-slot.filled.is-graying img,
+  .sticker-slot.filled.is-spent img { transition: none; }
+  .sticker-slot.filled.is-spent::after { animation: none; }
 }
 .sticker-slot img {
   width: 59px;
@@ -2900,7 +2927,7 @@ h2.sign, .panel h2 {
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-  height: 96px;
+  height: 128px;
   font-size: 72px;
   font-weight: 400;
   line-height: 72px;
@@ -2936,7 +2963,7 @@ h2.sign, .panel h2 {
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-  height: 96px;
+  height: 128px;
   line-height: 72px;
   font-weight: 400;
   font-size: 72px;

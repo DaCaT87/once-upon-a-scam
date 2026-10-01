@@ -3,7 +3,7 @@ import { getUnit, slotRange } from '../core/catalog';
 import { translate } from '../data/i18n';
 import type { BattleEvent, DeathStyle, PublicUnitView, Settings, TeamId } from '../core/types';
 import { MAX_TEAM } from '../core/types';
-import { renderBattleCard, renderCocoonBattleAbility, renderStickerRail, fitCardSlabs, bindScrapReadouts } from '../ui/cards';
+import { battleTargetingHtml, renderBattleCard, renderCocoonBattleAbility, renderStickerRail, fitCardSlabs, bindScrapReadouts } from '../ui/cards';
 import { cardMotion, clipDuration, type AnimClip } from './character';
 
 const SLIDE_DUR = 0.38;
@@ -67,6 +67,8 @@ interface Actor {
   flash: number;
   pop: number;
   stickers: string[];
+  /** Sticker slots already used this scrap. A rail redraw must not paint them fresh. */
+  spentSlots: number[];
   silenced: boolean;
   slideDx: number;
   slideDy: number;
@@ -557,6 +559,7 @@ export class BattleView {
       flash: 0,
       pop: 0,
       stickers: [...unit.stickers],
+      spentSlots: [...(this.actors.get(unit.uid)?.spentSlots ?? [])],
       silenced: Boolean(unit.silenced),
       slideDx: 0,
       slideDy: 0,
@@ -573,6 +576,7 @@ export class BattleView {
       rewindHp: unit.maxHp,
     };
     this.actors.set(unit.uid, actor);
+    this.paintStickerRail(actor);
     if (!silent) audio.play('paper');
   }
 
@@ -956,16 +960,14 @@ export class BattleView {
           .some((e) => e.type === 'AteSticker' && e.unitId === ev.thiefId && e.stickerId === ev.stickerId);
         if (victim) {
           const vIdx = victim.stickers.indexOf(ev.stickerId);
-          if (vIdx >= 0) victim.stickers.splice(vIdx, 1);
+          if (vIdx >= 0) this.dropStickerAt(victim, vIdx);
         }
         if (!silent && victim && thief && ev.applied && !ateAlready) {
           this.flySticker(ev.victimId, ev.thiefId, ev.stickerId, () => {});
         }
         if (victim) {
-          const rail = this.cardEl(ev.victimId)?.querySelector('.sticker-rail');
-          if (rail) {
-            rail.innerHTML = renderStickerRail(this.settings.locale, victim.stickers, { spent: victim.silenced });
-          }
+          this.paintStickerRail(victim);
+          this.refreshTargeting(ev.victimId);
         }
         if (ev.applied && !ateAlready) this.applyStickerToCard(ev.thiefId, ev.stickerId, silent);
         this.pulse(ev.thiefId);
@@ -977,11 +979,11 @@ export class BattleView {
         if (tgt) {
           if (!tgt.stickers.includes(ev.stickerId)) tgt.stickers.push(ev.stickerId);
           const card = this.cardEl(ev.unitId);
-          const rail = card?.querySelector('.sticker-rail');
-          if (rail && !card?.querySelector(`[data-sticker="${cssEscape(ev.stickerId)}"]`)) {
-            rail.innerHTML = renderStickerRail(this.settings.locale, tgt.stickers, { spent: tgt.silenced });
+          if (card && !card.querySelector(`[data-sticker="${cssEscape(ev.stickerId)}"]`)) {
+            this.paintStickerRail(tgt);
           }
-          this.markStickerSpent(card, ev.stickerId, ev.stickerSlot);
+          this.markStickerSpent(card, ev.stickerId, ev.stickerSlot, silent);
+          this.refreshTargeting(ev.unitId);
         }
         this.pulse(ev.unitId);
         return 0.1;
@@ -991,10 +993,11 @@ export class BattleView {
       case 'PoisonFaded': {
         const tgt = this.actors.get(ev.unitId);
         if (tgt) {
-          tgt.stickers = [...ev.stickers];
-          const card = this.cardEl(ev.unitId);
-          const rail = card?.querySelector('.sticker-rail');
-          if (rail) rail.innerHTML = renderStickerRail(this.settings.locale, tgt.stickers, { spent: tgt.silenced });
+          const next = [...ev.stickers];
+          tgt.spentSlots = tgt.spentSlots.filter((i) => tgt.stickers[i] === next[i]);
+          tgt.stickers = next;
+          this.paintStickerRail(tgt);
+          this.refreshTargeting(ev.unitId);
         }
         this.pulse(ev.unitId);
         return 0.16;
@@ -1003,10 +1006,9 @@ export class BattleView {
         const tgt = this.actors.get(ev.unitId);
         if (tgt) {
           const idx = tgt.stickers.indexOf(ev.stickerId);
-          if (idx >= 0) tgt.stickers.splice(idx, 1);
-          const card = this.cardEl(ev.unitId);
-          const rail = card?.querySelector('.sticker-rail');
-          if (rail) rail.innerHTML = renderStickerRail(this.settings.locale, tgt.stickers, { spent: tgt.silenced });
+          if (idx >= 0) this.dropStickerAt(tgt, idx);
+          this.paintStickerRail(tgt);
+          this.refreshTargeting(ev.unitId);
           if (!silent) this.float(tgt, 'USED', 'is-stat');
         }
         this.pulse(ev.unitId);
@@ -1014,8 +1016,8 @@ export class BattleView {
       }
       case 'StickerSpent': {
         const card = this.cardEl(ev.unitId);
-        this.markStickerSpent(card, ev.stickerId, ev.stickerSlot);
-        return 0.42;
+        const lead = silent ? 0 : this.effectTailMs();
+        return this.markStickerSpent(card, ev.stickerId, ev.stickerSlot, silent, lead);
       }
       case 'ExhaustedUnit': {
         const tgt = this.actors.get(ev.unitId);
@@ -1265,10 +1267,7 @@ export class BattleView {
           const el = this.cardEl(ev.unitId);
           if (el) {
             el.classList.add('is-silenced');
-            const rail = el.querySelector('.sticker-rail');
-            if (rail) {
-              rail.innerHTML = renderStickerRail(this.settings.locale, tgt.stickers, { spent: true });
-            }
+            this.paintStickerRail(tgt);
             el.querySelector('.ability')?.remove();
             el.querySelector('.timing-type')?.closest('.rule-tip')?.remove();
             // Keep targeting chip; strip timing labels from rule-row
@@ -1484,25 +1483,94 @@ export class BattleView {
     return ms / Math.max(0.01, this.speed);
   }
 
-  private markStickerSpent(card: HTMLElement | null, stickerId: string, stickerSlot?: number): void {
-    if (!card) return;
+  private rememberSpent(card: HTMLElement, slot: HTMLElement): void {
+    const actor = this.actors.get(card.dataset.uid ?? '');
+    const index = Number(slot.dataset.stickerSlot);
+    if (!actor || !Number.isInteger(index) || actor.spentSlots.includes(index)) return;
+    actor.spentSlots.push(index);
+  }
+
+  private dropStickerAt(actor: Actor, index: number): void {
+    actor.stickers.splice(index, 1);
+    actor.spentSlots = actor.spentSlots.filter((s) => s !== index).map((s) => (s > index ? s - 1 : s));
+  }
+
+  /** Redraw the rail and keep already-spent stickers gray, with the cross. */
+  private paintStickerRail(actor: Actor): void {
+    const rail = this.cardEl(actor.uid)?.querySelector('.sticker-rail');
+    if (!rail) return;
+    rail.innerHTML = renderStickerRail(this.settings.locale, actor.stickers, { spent: actor.silenced });
+    if (actor.silenced) return;
+    for (const index of actor.spentSlots) {
+      rail.querySelector(`[data-sticker-slot="${index}"]`)?.classList.add('is-spent', 'is-spent-still');
+    }
+  }
+
+  /** How long the damage number or impact still has left on screen. */
+  private effectTailMs(): number {
+    let max = 0;
+    const nodes = this.host.querySelectorAll<HTMLElement>('.battle-float, .battle-burst:not(.is-smoke)');
+    for (const el of nodes) {
+      for (const anim of el.getAnimations()) {
+        const timing = anim.effect?.getComputedTiming();
+        if (!timing) continue;
+        const end = Number(timing.endTime);
+        const now = Number(anim.currentTime ?? 0);
+        if (!Number.isFinite(end) || !Number.isFinite(now)) continue;
+        max = Math.max(max, end - now);
+      }
+    }
+    return Math.max(0, max);
+  }
+
+  /** Color while the effect plays, then gray, then the red cross. Returns seconds to hold. */
+  private markStickerSpent(
+    card: HTMLElement | null,
+    stickerId: string,
+    stickerSlot?: number,
+    silent = false,
+    leadMs = 0,
+  ): number {
+    if (!card) return 0;
     const bySlot =
       stickerSlot != null
         ? card.querySelector<HTMLElement>(`[data-sticker-slot="${stickerSlot}"]`)
         : null;
     const matches = [...card.querySelectorAll<HTMLElement>(`[data-sticker="${cssEscape(stickerId)}"]`)];
     const slot = bySlot ?? matches.find((s) => !s.classList.contains('is-spent')) ?? matches[0];
-    if (!slot) return;
-    slot.classList.add('is-spent', 'sticker-pop');
-    const name = slot.querySelector('.tip-name')?.textContent?.trim();
-    const rarity = slot.querySelector('.tip-rarity')?.textContent?.trim();
-    const effect = slot.querySelector('.tip-effect')?.textContent?.trim();
-    const spent = slot.querySelector('.tip-spent')?.textContent?.trim();
-    if (name && effect && spent) {
-      slot.setAttribute('aria-label', `${name}. ${rarity ? `${rarity}. ` : ''}${effect}. ${spent}`);
+    if (!slot || slot.classList.contains('is-spent') || slot.classList.contains('is-graying')) return 0;
+    this.rememberSpent(card, slot);
+    const noteSpent = () => {
+      const name = slot.querySelector('.tip-name')?.textContent?.trim();
+      const rarity = slot.querySelector('.tip-rarity')?.textContent?.trim();
+      const effect = slot.querySelector('.tip-effect')?.textContent?.trim();
+      const spent = slot.querySelector('.tip-spent')?.textContent?.trim();
+      if (name && effect && spent) {
+        slot.setAttribute('aria-label', `${name}. ${rarity ? `${rarity}. ` : ''}${effect}. ${spent}`);
+      }
+      if (slot.matches(':hover')) document.querySelector('.targeting-float')?.classList.add('is-spent');
+    };
+    const showCross = () => {
+      if (!slot.isConnected) return;
+      slot.classList.remove('is-graying', 'sticker-pop');
+      slot.classList.add('is-spent');
+      noteSpent();
+    };
+    if (silent || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      showCross();
+      return 0;
     }
-    if (slot.matches(':hover')) document.querySelector('.targeting-float')?.classList.add('is-spent');
-    window.setTimeout(() => slot.classList.remove('sticker-pop'), this.wallMs(480));
+    const grayAt = Math.max(this.wallMs(500), leadMs);
+    const crossAt = grayAt + this.wallMs(550);
+    slot.classList.add('sticker-pop');
+    window.setTimeout(() => {
+      if (!slot.isConnected) return;
+      slot.classList.remove('sticker-pop');
+      slot.classList.add('is-graying');
+      noteSpent();
+    }, grayAt);
+    window.setTimeout(showCross, crossAt);
+    return (crossAt + this.wallMs(260)) / 1000;
   }
 
   private applyStickerToCard(uid: string, stickerId: string, silent: boolean): void {
@@ -1512,18 +1580,26 @@ export class BattleView {
     const el = this.cardEl(uid);
     const rail = el?.querySelector('.sticker-rail');
     if (rail) {
-      const before = rail.querySelectorAll('.sticker-slot.filled').length;
-      rail.innerHTML = renderStickerRail(this.settings.locale, tgt.stickers, { spent: tgt.silenced });
+      const freshAt = tgt.stickers.length - 1;
+      this.paintStickerRail(tgt);
       if (!silent && !tgt.silenced) {
-        const slots = [...rail.querySelectorAll<HTMLElement>('.sticker-slot.filled')];
-        const fresh = slots[Math.min(before, slots.length - 1)];
+        const fresh = rail.querySelector<HTMLElement>(`[data-sticker-slot="${freshAt}"]`);
         fresh?.classList.add('sticker-pop', 'is-new-stick');
         this.holdFx(0.7);
         window.setTimeout(() => fresh?.classList.remove('sticker-pop', 'is-new-stick'), this.wallMs(700));
       }
     }
     this.pulse(uid);
+    this.refreshTargeting(uid);
     if (!silent) audio.play('peel');
+  }
+
+  /** The word on the card follows the stickers it has now. */
+  private refreshTargeting(uid: string): void {
+    const tgt = this.actors.get(uid);
+    const row = this.cardEl(uid)?.querySelector('.rule-row');
+    if (!tgt || !row) return;
+    row.innerHTML = battleTargetingHtml(this.settings.locale, tgt.defId, tgt.stickers);
   }
 
   /** Animate a sticker icon from one card rail to another, then run onDone. */

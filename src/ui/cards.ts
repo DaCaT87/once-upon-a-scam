@@ -182,6 +182,20 @@ export function renderAbility(locale: Locale, defId: string, rewindLeft?: number
   return renderAbilityText(locale, abilityRule(locale, defId), left);
 }
 
+/** Targeting word for a card, after every sticker on it. */
+export function battleTargetingHtml(locale: Locale, defId: string, stickerIds: readonly string[]): string {
+  return renderTargetingLabel(
+    locale,
+    resolveTargeting({
+      instanceId: defId,
+      defId,
+      slot: 1,
+      stickerIds: [...stickerIds],
+      permanentMods: { atk: 0, hp: 0, speed: 0 },
+    }),
+  );
+}
+
 export function renderTargetingLabel(locale: Locale, type: TargetingType): string {
   const label = t(locale, `tgt.${type}`);
   const tip = t(locale, `tgt.${type}.d`);
@@ -220,7 +234,7 @@ export function bindTargetingTips(root: HTMLElement, localeOf?: () => Locale): v
     const structured = label.querySelector('.targeting-tip.tip-sticker');
     if (structured) {
       floater.innerHTML = structured.innerHTML;
-      floater.classList.toggle('is-spent', label.classList.contains('is-spent'));
+      floater.classList.toggle('is-spent', label.classList.contains('is-spent') || label.classList.contains('is-graying'));
       return;
     }
     if (label.classList.contains('is-peek-link')) {

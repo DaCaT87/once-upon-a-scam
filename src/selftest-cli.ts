@@ -43,7 +43,7 @@ import {
 } from './run/runEngine';
 import { translate } from './data/i18n';
 import { UNITS } from './data/units';
-import { abilityRule, renderBattleCard, renderOfferCard, renderStickerCard, renderUnitCard } from './ui/cards';
+import { abilityRule, battleTargetingHtml, renderBattleCard, renderOfferCard, renderStickerCard, renderUnitCard } from './ui/cards';
 import { assertDeterministic, simulateBattle } from './sim/simulation';
 import { assertTargetingRules } from './sim/targeting';
 import type { RunState } from './core/types';
@@ -2248,7 +2248,7 @@ assertShopCurve();
     hog.unit.defId !== 'pig' ||
     hog.unit.team !== 'enemy' ||
     !hog.combat ||
-    hog.unit.atk !== 0 ||
+    hog.unit.atk !== 2 ||
     hog.unit.speed !== 0 ||
     hog.unit.hp !== 16 ||
     hog.unit.rarity !== 'platinum' ||
@@ -2267,6 +2267,29 @@ assertShopCurve();
   const pigged = swine.events.slice(hogAt, pigTurn + 1);
   if (pigged.some((e) => e.type === 'AttackStarted' && e.unitId === 'enemy:og7')) {
     throw new Error('pig attacked');
+  }
+  const heartPig = simulateBattle(
+    makeSnapshot({
+      playerId: 'p',
+      playerName: 'p',
+      runId: 'r',
+      round: 1,
+      team: [instanceFromDef('circe', 1, 'ciHeart')],
+    }),
+    makeSnapshot({
+      playerId: 'e',
+      playerName: 'e',
+      runId: 'r',
+      round: 1,
+      team: [applySticker(instanceFromDef('the-collector', 1, 'colHeart'), 'phoenix-heart')],
+    }),
+    4,
+  );
+  const heartHog = heartPig.events.find((e) => e.type === 'Transformed' && e.unit.uid === 'enemy:colHeart' && e.unit.defId === 'pig');
+  const heartDied = heartPig.events.some((e) => e.type === 'UnitDied' && e.unitId === 'enemy:colHeart');
+  const heartRose = heartPig.events.some((e) => e.type === 'Revived' && e.unitId === 'enemy:colHeart');
+  if (!heartHog || !heartDied || !heartRose) {
+    throw new Error(`phoenix heart should revive a pig died=${heartDied} revived=${heartRose}`);
   }
   if (getUnit('circe').rarity !== 'platinum') throw new Error('circe rarity');
   if (!hasUnitArt('circe') || !hasCardFace('circe') || !hasPrintedCard('circe')) throw new Error('circe art');
@@ -2772,6 +2795,17 @@ assertShopCurve();
   if (resolveTargeting(hood) !== 'sneak') throw new Error('thief hood sneak');
   const scope = applySticker(instanceFromDef('farm-boy', 1, 'fbScope'), 'snipers-sight');
   if (resolveTargeting(scope) !== 'hitman') throw new Error('sniper sight hitman');
+  for (const id of ['farm-boy', 'phoenix', 'hunter', 'ogre-king', 'royal-herald', 'wish-pinata'] as const) {
+    const base = getUnit(id).targeting;
+    const plain = battleTargetingHtml('en', id, []);
+    const scoped = battleTargetingHtml('en', id, ['snipers-sight']);
+    const hooded = battleTargetingHtml('it', id, ['fur-armor', 'thiefs-hood']);
+    if (!plain.includes(`data-targeting="${base}"`)) throw new Error(`${id} label should start as ${base}`);
+    if (!scoped.includes('data-targeting="hitman"') || !scoped.includes('HITMAN')) {
+      throw new Error(`${id} label should become Hitman when Sniper's Sight is on it`);
+    }
+    if (!hooded.includes('data-targeting="sneak"')) throw new Error(`${id} label should become Sneak under the hood`);
+  }
 }
 {
   const drums = simulateBattle(
