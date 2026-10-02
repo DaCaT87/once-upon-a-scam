@@ -214,6 +214,12 @@ export function renderTimingLabel(locale: Locale, timing: AbilityTiming): string
   </button>`;
 }
 
+function phoneFace(root: HTMLElement): boolean {
+  if (root.classList.contains('card-zoom-stage')) return false;
+  const short = Math.min(window.innerWidth, window.innerHeight);
+  return short < 520 && window.matchMedia('(pointer: coarse)').matches;
+}
+
 export function bindTargetingTips(root: HTMLElement, localeOf?: () => Locale): void {
   if (root.dataset.tgtBound === '1') return;
   root.dataset.tgtBound = '1';
@@ -390,6 +396,7 @@ export function bindTargetingTips(root: HTMLElement, localeOf?: () => Locale): v
   root.addEventListener(
     'pointerdown',
     (e) => {
+      if (phoneFace(root)) return;
       const tip = (e.target as HTMLElement).closest('.rule-tip');
       if (
         tip &&
@@ -406,6 +413,7 @@ export function bindTargetingTips(root: HTMLElement, localeOf?: () => Locale): v
   root.addEventListener(
     'click',
     (e) => {
+      if (phoneFace(root)) return;
       const label = (e.target as HTMLElement).closest<HTMLElement>('.rule-tip');
       if (label && root.contains(label)) {
         if (label.classList.contains('sticker-slot')) {
@@ -426,6 +434,7 @@ export function bindTargetingTips(root: HTMLElement, localeOf?: () => Locale): v
   );
 
   root.addEventListener('pointerover', (e) => {
+    if (phoneFace(root)) return;
     if (!window.matchMedia('(hover: hover)').matches) return;
     const label = (e.target as HTMLElement).closest<HTMLElement>('.rule-tip');
     if (!label || !root.contains(label)) return;

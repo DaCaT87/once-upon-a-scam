@@ -83,6 +83,7 @@ export class GameApp {
   private ghostGrabY = 36;
   private dragSlot: number | null = null;
   private cardZoom: HTMLElement | null = null;
+  private zoomFloat: HTMLElement | null = null;
   private zoomHold: { x: number; y: number; card: HTMLElement } | null = null;
   /** True when the open card zoom is what paused the scrap. */
   private zoomPaused = false;
@@ -512,12 +513,18 @@ export class GameApp {
 
   private zoomableCard(target: EventTarget | null): HTMLElement | null {
     if (!(target instanceof Element)) return null;
-    if (target.closest('.card-zoom, .rule-tip, .dossier-overlay, button, a, input')) return null;
+    if (target.closest('.card-zoom, .dossier-overlay, input, a, [data-act]')) return null;
+    const phone = this.phonePlay();
+    if (!phone && target.closest('.rule-tip, button')) return null;
     const unit = target.closest<HTMLElement>('.unit-card');
-    if (unit && !unit.classList.contains('is-empty') && !unit.classList.contains('team-slot-empty')) return unit;
+    if (unit && !unit.classList.contains('is-empty') && !unit.classList.contains('team-slot-empty')) {
+      if (phone && target.closest('button') && !unit.contains(target)) return null;
+      return unit;
+    }
     const sticker = target.closest<HTMLElement>('.sticker-card');
-    if (sticker) return sticker;
-    return null;
+    if (!sticker) return null;
+    if (phone && target.closest('button') && !sticker.contains(target)) return null;
+    return sticker;
   }
 
   /** Library card for this figure, including the stickers glued on it. */
@@ -577,9 +584,19 @@ export class GameApp {
       e.stopPropagation();
       this.closeCardZoom();
     };
-    overlay.addEventListener('pointerdown', shut);
-    overlay.addEventListener('click', shut);
+    scrim.addEventListener('pointerdown', shut);
+    stage.addEventListener('pointerdown', (e) => {
+      const hit = e.target instanceof Element ? e.target : null;
+      if (hit?.closest('.rule-tip, .form-peek')) return;
+      shut(e);
+    });
     document.body.appendChild(overlay);
+    this.root.querySelectorAll('.battle-card.is-held').forEach((el) => el.classList.remove('is-held'));
+    fitCardSlabs(stage);
+    bindTargetingTips(stage, () => this.settings.locale);
+    const floats = document.querySelectorAll<HTMLElement>('.targeting-float');
+    this.zoomFloat = floats[floats.length - 1] ?? null;
+    this.zoomFloat?.classList.add('zoom-float');
     const naturalW = face.offsetWidth || 248;
     const naturalH = face.offsetHeight || 375;
     const scale = Math.min((window.innerWidth - 28) / naturalW, (window.innerHeight - 20) / naturalH);
@@ -596,6 +613,8 @@ export class GameApp {
   }
 
   private closeCardZoom(): void {
+    this.zoomFloat?.remove();
+    this.zoomFloat = null;
     this.cardZoom?.remove();
     this.cardZoom = null;
     if (!this.zoomPaused) return;

@@ -1256,6 +1256,7 @@ html.needs-landscape .landscape-gate {
   display: none;
 }
 .targeting-float.is-on { display: inline-block; }
+.targeting-float.zoom-float.is-on { pointer-events: auto; }
 .targeting-float.is-on:has(.is-peek-link) { pointer-events: auto; }
 .targeting-float .keyword-term.is-peek-link {
   pointer-events: auto;
@@ -4494,9 +4495,39 @@ html:has(.battle-wrap.is-ended) .screen-battle {
   z-index: 1;
   flex: none;
 }
-.card-zoom .targeting-tip,
-.card-zoom .form-peek,
-.card-zoom .scrap-readout {
+.card-zoom .scrap-readout,
+html:has(.card-zoom) .scrap-readout {
   display: none !important;
+}
+/* Stickers stay on the enlarged card, on the frame, not over the painting or the board. */
+.card-zoom .unit-card > .sticker-rail {
+  left: 3.2%;
+  top: 6%;
+  width: 13%;
+  gap: 1%;
+}
+.card-zoom .sticker-slot {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+}
+.card-zoom .sticker-slot img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* Phone shop: the small card is the scrap face. The tap opens the whole card. */
+@media (pointer: coarse) and (max-height: 519px) {
+  .screen-recruit .unit-card .ability,
+  .screen-sticker .unit-card .ability,
+  .screen-recruit .sticker-card p,
+  .screen-recruit .sticker-card .timing-type,
+  .screen-recruit .sticker-card .poison-rule,
+  .screen-sticker .sticker-card p,
+  .screen-sticker .sticker-card .timing-type,
+  .screen-sticker .sticker-card .poison-rule {
+    display: none;
+  }
 }
 
