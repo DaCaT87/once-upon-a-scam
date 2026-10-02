@@ -520,9 +520,43 @@ export class GameApp {
     return null;
   }
 
+  /** Library card for this figure, including the stickers glued on it. */
+  private zoomCardHtml(card: HTMLElement): string {
+    const loc = this.settings.locale;
+    if (card.classList.contains('sticker-card')) {
+      const id = card.dataset.sticker;
+      return id ? renderStickerCard(loc, id, false) : '';
+    }
+    const defId = card.dataset.def;
+    if (!defId) return '';
+    const instanceId = card.dataset.instance || defId;
+    const saved = this.run?.team.find((u) => u.instanceId === instanceId);
+    const stickerIds = [...card.querySelectorAll<HTMLElement>(':scope > .sticker-rail .sticker-slot.filled')]
+      .map((slot) => slot.dataset.sticker)
+      .filter((id): id is string => Boolean(id));
+    return renderUnitCard(
+      loc,
+      {
+        instanceId,
+        defId,
+        slot: Number(card.dataset.slot) || saved?.slot || 1,
+        stickerIds: stickerIds.length ? stickerIds : (saved?.stickerIds ?? []),
+        permanentMods: saved?.permanentMods ?? { atk: 0, hp: 0, speed: 0 },
+      },
+      this.runStatCtx(),
+    );
+  }
+
   private openCardZoom(card: HTMLElement): void {
     if (!this.phonePlay()) return;
+    const html = this.zoomCardHtml(card);
+    if (!html) return;
     this.closeCardZoom();
+    document.querySelector('.targeting-float')?.classList.remove('is-on');
+    this.root.querySelectorAll('.rule-tip.is-open').forEach((el) => {
+      el.classList.remove('is-open');
+      el.setAttribute('aria-expanded', 'false');
+    });
     const overlay = document.createElement('div');
     overlay.className = 'card-zoom';
     const scrim = document.createElement('button');
@@ -531,12 +565,12 @@ export class GameApp {
     scrim.setAttribute('aria-label', this.L('exit'));
     const stage = document.createElement('div');
     stage.className = 'card-zoom-stage';
-    const clone = card.cloneNode(true) as HTMLElement;
-    clone.classList.remove('is-dragging', 'lift', 'is-attack', 'drop-glow');
-    clone.querySelectorAll('img').forEach((img) => {
+    stage.innerHTML = html;
+    const face = stage.querySelector<HTMLElement>('.unit-card, .sticker-card');
+    if (!face) return;
+    face.querySelectorAll('img').forEach((img) => {
       img.draggable = false;
     });
-    stage.appendChild(clone);
     overlay.append(scrim, stage);
     const shut = (e: Event) => {
       e.preventDefault();
@@ -546,6 +580,13 @@ export class GameApp {
     overlay.addEventListener('pointerdown', shut);
     overlay.addEventListener('click', shut);
     document.body.appendChild(overlay);
+    const naturalW = face.offsetWidth || 248;
+    const naturalH = face.offsetHeight || 375;
+    const scale = Math.min((window.innerWidth - 28) / naturalW, (window.innerHeight - 20) / naturalH);
+    face.style.transformOrigin = 'top left';
+    face.style.transform = `scale(${scale})`;
+    stage.style.width = `${naturalW * scale}px`;
+    stage.style.height = `${naturalH * scale}px`;
     this.cardZoom = overlay;
     const pauseBtn = this.root.querySelector<HTMLButtonElement>('[data-act="pause-battle"]');
     if (this.screen === 'battle' && this.battleView && pauseBtn?.dataset.paused !== '1') {
