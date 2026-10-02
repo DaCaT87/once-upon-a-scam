@@ -3654,7 +3654,7 @@ export class GameApp {
         y += node.offsetTop;
         node = node.offsetParent instanceof HTMLElement ? node.offsetParent : null;
       }
-      row.style.top = `${Math.max(0, y - 170)}px`;
+      row.style.top = `${Math.max(0, y - 140)}px`;
     }
 
     const steps = Math.abs(to - from);

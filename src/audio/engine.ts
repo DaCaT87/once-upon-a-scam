@@ -29,19 +29,15 @@ const TRACK: Record<HtmlCue, { src: string; from: number; gain: number }> = {
 const RESULT_SEC = { win: 6.75, draw: 4.9, lose: 3.55 } as const;
 
 /** Open file is the short attack plus one pass of the motif. The loop file repeats until the scrap ends. */
-const BATTLE_MUSIC: Record<BattleCue, { open: string; loop: string; finale: string; introShare: number; bpm: number }> = {
+const BATTLE_MUSIC: Record<BattleCue, { open: string; loop: string; bpm: number }> = {
   fight: {
     open: './audio/scrap-open.wav?v=boss1',
     loop: './audio/scrap-loop.wav?v=boss1',
-    finale: './audio/scrap-finale.wav?v=boss1',
-    introShare: 1,
     bpm: 109.78,
   },
   hunt: {
     open: './audio/hunt-open.wav',
     loop: './audio/hunt-loop.wav',
-    finale: './audio/hunt-finale.wav',
-    introShare: 2 / 6,
     bpm: 108,
   },
 };
@@ -50,10 +46,9 @@ const BATTLE_MUSIC: Record<BattleCue, { open: string; loop: string; finale: stri
 const MENU_MUSIC = {
   open: './audio/menu-open.wav',
   loop: './audio/menu-loop.wav',
-  introShare: 2 / 10,
 };
 
-const SFX_SRC: Partial<Record<SfxName, string>> = {
+const SFX_SRC: Record<SfxName, string> = {
   punch: './audio/sfx/punch.wav?v=trim1',
   death: './audio/sfx/character-fall.wav?v=trim1',
   whoosh: './audio/sfx/swing.wav?v=trim1',
@@ -82,10 +77,8 @@ export class AudioEngine {
   private bedCue: BattleCue | 'menu' | null = null;
   private bedPhase: 'bed' | 'finale' | null = null;
   private bedLive = false;
-  private endRequested = false;
   /** Coming back from a scrap or a hunt reward: start on the waltz, not the intro. */
   private resumeLoop = false;
-  private introEndsAt = 0;
   private loopStartsAt = 0;
   private bedStart = 0;
   private htmlFade = 0;
@@ -95,10 +88,9 @@ export class AudioEngine {
   private fadingEl: HTMLAudioElement | null = null;
   private openSrc: AudioBufferSourceNode | null = null;
   private loopSrc: AudioBufferSourceNode | null = null;
-  private finaleSrc: AudioBufferSourceNode | null = null;
   private resultSrc: AudioBufferSourceNode | null = null;
   private resultCache: Promise<Record<'win' | 'draw' | 'lose', AudioBuffer>> | null = null;
-  private readonly bedCache = new Map<BattleCue, Promise<[AudioBuffer, AudioBuffer, AudioBuffer]>>();
+  private readonly bedCache = new Map<BattleCue, Promise<[AudioBuffer, AudioBuffer]>>();
   private menuCache: Promise<[AudioBuffer, AudioBuffer]> | null = null;
   private readonly sfxBuffers = new Map<SfxName, AudioBuffer>();
   private readonly sfxLoading = new Set<SfxName>();
@@ -263,19 +255,7 @@ export class AudioEngine {
     if ((this.cue === 'fight' || this.cue === 'hunt') && (this.bedLive || this.bedPhase === 'bed')) {
       return this.finishBed();
     }
-    const el = this.musicEl;
-    if (!el || (this.cue !== 'fight' && this.cue !== 'hunt')) return 0;
-    if (this.fadingEl === el) return 0;
-    const seconds = 2.8;
-    this.fadingEl = el;
-    this.fadeHtmlVolume(el, 0, seconds);
-    const fading = el;
-    window.setTimeout(() => {
-      fading.pause();
-      if (this.musicEl === fading) this.musicEl = null;
-      if (this.fadingEl === fading) this.fadingEl = null;
-    }, seconds * 1000 + 80);
-    return seconds;
+    return 0;
   }
 
   /** Short result tune. Starts only after the scrap piece has gone quiet. */
@@ -284,8 +264,7 @@ export class AudioEngine {
     ++this.bedGen;
     this.dropNow(this.openSrc);
     this.dropNow(this.loopSrc);
-    this.dropNow(this.finaleSrc);
-    this.openSrc = this.loopSrc = this.finaleSrc = null;
+    this.openSrc = this.loopSrc = null;
     this.bedLive = false;
     this.bedPhase = null;
     this.bedCue = null;
@@ -391,19 +370,19 @@ export class AudioEngine {
     this.playTrack(this.cue);
   }
 
-  private async loadBed(cue: BattleCue): Promise<[AudioBuffer, AudioBuffer, AudioBuffer]> {
+  private async loadBed(cue: BattleCue): Promise<[AudioBuffer, AudioBuffer]> {
     let pending = this.bedCache.get(cue);
     if (!pending) {
       if (!this.ctx) this.ctx = new AudioContext();
       const ctx = this.ctx;
       const spec = BATTLE_MUSIC[cue];
       pending = Promise.all(
-        [spec.open, spec.loop, spec.finale].map(async (src) => {
+        [spec.open, spec.loop].map(async (src) => {
           const res = await fetch(src);
           if (!res.ok) throw new Error(src);
           return ctx.decodeAudioData(await res.arrayBuffer());
         }),
-      ) as Promise<[AudioBuffer, AudioBuffer, AudioBuffer]>;
+      ) as Promise<[AudioBuffer, AudioBuffer]>;
       pending.catch(() => {
         if (this.bedCache.get(cue) === pending) this.bedCache.delete(cue);
       });
@@ -488,7 +467,6 @@ export class AudioEngine {
       return;
     }
     this.openSrc = this.startBuf(open, t0, false);
-    this.introEndsAt = t0 + open.duration * MENU_MUSIC.introShare;
     this.loopStartsAt = t0 + open.duration;
     this.loopSrc = this.startBuf(loop, this.loopStartsAt, true);
   }
@@ -500,18 +478,11 @@ export class AudioEngine {
     try { src.disconnect(); } catch { /* already gone */ }
   }
 
-  private haltAt(src: AudioBufferSourceNode | null, when: number): void {
-    if (!src) return;
-    src.onended = null;
-    try { src.stop(when); } catch { /* already stopped */ }
-  }
-
   private stopBedSources(): void {
     this.dropNow(this.openSrc);
     this.dropNow(this.loopSrc);
-    this.dropNow(this.finaleSrc);
     this.dropNow(this.resultSrc);
-    this.openSrc = this.loopSrc = this.finaleSrc = this.resultSrc = null;
+    this.openSrc = this.loopSrc = this.resultSrc = null;
     this.bedPhase = null;
     this.bedLive = false;
     this.bedCue = null;
@@ -533,36 +504,25 @@ export class AudioEngine {
     void this.loadResults().catch(() => {});
     if (!this.ctx) this.ctx = new AudioContext();
     if (this.ctx.state === 'suspended') await this.ctx.resume();
-    let buffers: [AudioBuffer, AudioBuffer, AudioBuffer];
+    let buffers: [AudioBuffer, AudioBuffer];
     try {
       buffers = await this.loadBed(cue);
     } catch {
       if (gen === this.bedGen) this.bedPhase = null;
       return;
     }
-    if (gen !== this.bedGen || !this.playing) return;
-    const [open, loop, finale] = buffers;
+    if (gen !== this.bedGen || !this.playing || this.cue !== cue) return;
+    const [open, loop] = buffers;
     this.snapBed(this.music);
-    if (this.endRequested || this.cue !== cue) {
-      const endIt = this.endRequested || this.cue === 'menu';
-      this.endRequested = false;
-      if (endIt && this.cue === 'menu') this.playFinale(finale, this.ctx.currentTime + 0.05, gen);
-      return;
-    }
-    const spec = BATTLE_MUSIC[cue];
     const t0 = this.ctx.currentTime + 0.05;
     this.bedStart = t0;
     this.bedLive = true;
     this.openSrc = this.startBuf(open, t0, false);
-    this.introEndsAt = t0 + open.duration * spec.introShare;
     this.loopStartsAt = t0 + open.duration;
     this.loopSrc = this.startBuf(loop, this.loopStartsAt, true);
   }
 
-  /**
-   * Hunt and scrap both melt out over a few bars so the last hit does not cut the tune short.
-   * Hunt used to keep a sting; that fought the soft release when leaving the arena.
-   */
+  /** Hunt and scrap both melt out over a few bars so the last hit does not cut the tune short. */
   private finishBed(): number {
     if (!this.ctx || !this.bedCue || this.bedCue === 'menu' || !this.bedLive) return 0;
     const cue = this.bedCue;
@@ -591,8 +551,7 @@ export class AudioEngine {
       if (gen !== this.bedGen || this.bedPhase !== 'finale') return;
       this.dropNow(this.openSrc);
       this.dropNow(this.loopSrc);
-      this.dropNow(this.finaleSrc);
-      this.openSrc = this.loopSrc = this.finaleSrc = null;
+      this.openSrc = this.loopSrc = null;
       this.bedPhase = null;
       this.bedCue = null;
       this.snapBed(this.musicLevel());
@@ -624,18 +583,6 @@ export class AudioEngine {
     return this.resultCache;
   }
 
-  private playFinale(finale: AudioBuffer, when: number, gen: number): void {
-    this.bedPhase = 'finale';
-    this.dropNow(this.finaleSrc);
-    this.finaleSrc = this.startBuf(finale, when, false);
-    this.finaleSrc.onended = () => {
-      if (gen !== this.bedGen) return;
-      this.finaleSrc = null;
-      this.bedPhase = null;
-      this.bedCue = null;
-    };
-  }
-
   /** The square has its own music. Whatever is left of the scrap fades out as the waltz fades in. */
   private handoffToMenu(): void {
     const gen = ++this.bedGen;
@@ -644,8 +591,8 @@ export class AudioEngine {
     this.bedPhase = null;
     this.bedLive = false;
     this.bedCue = null;
-    const sources = [this.openSrc, this.loopSrc, this.finaleSrc];
-    this.openSrc = this.loopSrc = this.finaleSrc = null;
+    const sources = [this.openSrc, this.loopSrc];
+    this.openSrc = this.loopSrc = null;
     for (const src of sources) this.dropNow(src);
     if (this.playing && this.cue === 'menu') void this.playMenu(true);
     void gen;
@@ -738,49 +685,27 @@ export class AudioEngine {
     if (name === 'paper' || name === 'wood') g *= 2.6;
     if (name === 'punch' || name === 'boing') g *= 0.8;
     if (this.playSample(name, g)) return;
-    const t = this.ctx.currentTime;
-    switch (name) {
-      case 'paper':
-        this.noise(t, 0.08, 1800, 0.18 * g, 'highpass');
-        break;
-      case 'sticker':
-        this.noise(t, 0.05, 2400, 0.16 * g, 'bandpass');
-        this.tone(t, 220, 0.09, 'triangle', 0.08 * g);
-        break;
-      case 'peel':
-        this.noise(t, 0.16, 3200, 0.2 * g, 'highpass');
-        this.slide(t, 420, 180, 0.14, 0.07 * g);
-        break;
-      case 'punch':
-        this.tone(t, 140, 0.045, 'sine', 0.22 * g);
-        this.noise(t, 0.03, 220, 0.12 * g, 'lowpass');
-        break;
-      case 'boing':
-        this.slide(t, 180, 420, 0.16, 0.16 * g);
-        break;
-      case 'wood':
-        this.tone(t, 140, 0.07, 'triangle', 0.14 * g);
-        this.noise(t, 0.04, 800, 0.1 * g, 'bandpass');
-        break;
-      case 'bell':
-        this.tone(t, 880, 0.35, 'sine', 0.1 * g);
-        this.tone(t, 1320, 0.28, 'sine', 0.05 * g);
-        break;
-      case 'death':
-        this.tone(t, 70, 0.16, 'sine', 0.2 * g);
-        this.noise(t, 0.05, 180, 0.08 * g, 'lowpass');
-        break;
-      case 'click':
-        this.tone(t, 340, 0.04, 'square', 0.05 * g);
-        break;
-      case 'whoosh':
-        this.noise(t, 0.16, 900, 0.14 * g, 'bandpass');
-        break;
-      case 'puff':
-        this.noise(t, 0.28, 420, 0.16 * g, 'lowpass');
-        this.slide(t, 210, 80, 0.3, 0.08 * g);
-        break;
-    }
+    this.playOfficial(name, g);
+  }
+
+  /** The file is still decoding. Play that file when it is ready. Never a generated tone. */
+  private playOfficial(name: SfxName, vol: number): void {
+    const ctx = this.ctx;
+    const pending = this.sfxRaw.get(name);
+    if (!ctx || !pending) return;
+    this.loadSfx();
+    void pending
+      .then(async (raw) => {
+        const ready = this.sfxBuffers.get(name);
+        if (ready) return ready;
+        const buf = await ctx.decodeAudioData(raw.slice(0));
+        this.sfxBuffers.set(name, buf);
+        return buf;
+      })
+      .then(() => {
+        this.playSample(name, vol);
+      })
+      .catch(() => {});
   }
 
   private dest(): AudioNode {
@@ -790,52 +715,6 @@ export class AudioEngine {
       this.sfxOut.connect(ctx.destination);
     }
     return this.sfxOut;
-  }
-
-  private tone(t: number, freq: number, dur: number, type: OscillatorType, vol: number): void {
-    const ctx = this.ctx!;
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    o.type = type;
-    o.frequency.setValueAtTime(freq, t);
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(Math.max(0.0002, vol), t + 0.01);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(g).connect(this.dest());
-    o.start(t);
-    o.stop(t + dur + 0.02);
-  }
-
-  private slide(t: number, a: number, b: number, dur: number, vol: number): void {
-    const ctx = this.ctx!;
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    o.type = 'sine';
-    o.frequency.setValueAtTime(a, t);
-    o.frequency.exponentialRampToValueAtTime(Math.max(20, b), t + dur);
-    g.gain.setValueAtTime(vol, t);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(g).connect(this.dest());
-    o.start(t);
-    o.stop(t + dur + 0.02);
-  }
-
-  private noise(t: number, dur: number, freq: number, vol: number, kind: BiquadFilterType): void {
-    const ctx = this.ctx!;
-    const buffer = ctx.createBuffer(1, ctx.sampleRate * dur, ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * 0.8;
-    const src = ctx.createBufferSource();
-    src.buffer = buffer;
-    const f = ctx.createBiquadFilter();
-    f.type = kind;
-    f.frequency.value = freq;
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(vol, t);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    src.connect(f).connect(g).connect(this.dest());
-    src.start(t);
-    src.stop(t + dur);
   }
 }
 

@@ -122,6 +122,7 @@ const STICKERS = [
   'spider-silk',
   'ogres-club',
   'woodsmans-axe',
+  'mythic-treasure',
   'trash',
   'poison',
   'filth',

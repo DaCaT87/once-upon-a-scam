@@ -51,22 +51,60 @@ function remapUnitId(id: string): string {
   return id;
 }
 
+function remapStickerId(id: string): string {
+  if (id === 'bandage-roll') return 'life-potion';
+  if (id === 'boom-stick') return 'revenge-bomb';
+  return id;
+}
+
+function remapBattle(battle: BattleResult | null | undefined): BattleResult | null {
+  if (!battle?.snapshots) return battle ?? null;
+  const unitsOf = (units: TeamSnapshot['units']) =>
+    units.map((u) => ({
+      ...u,
+      defId: remapUnitId(u.defId),
+      stickerIds: u.stickerIds.map(remapStickerId),
+    }));
+  return {
+    ...battle,
+    events: battle.events.map((ev) =>
+      'stickerId' in ev && typeof ev.stickerId === 'string' ? { ...ev, stickerId: remapStickerId(ev.stickerId) } : ev,
+    ),
+    snapshots: {
+      a: { ...battle.snapshots.a, units: unitsOf(battle.snapshots.a.units) },
+      b: { ...battle.snapshots.b, units: unitsOf(battle.snapshots.b.units) },
+    },
+  };
+}
+
 export function migrateRun(run: RunState): RunState {
-  const known = (id: string) => STICKER_BY_ID.has(id);
+  const stickersOf = (ids: string[] | undefined) => (ids ?? []).map(remapStickerId).filter((id) => STICKER_BY_ID.has(id));
   const saved = run as RunState & { stickerBag?: string[] };
-  const legacyBag = (Array.isArray(saved.stickerBag) ? saved.stickerBag : []).filter(known);
+  const legacyBag = stickersOf(Array.isArray(saved.stickerBag) ? saved.stickerBag : []);
   delete saved.stickerBag;
   if (saved.circuit) {
     saved.circuit = saved.circuit.map((rival) => {
       const copy = { ...rival } as typeof rival & { stickerBag?: string[] };
       delete copy.stickerBag;
-      return copy;
+      return {
+        ...copy,
+        team: copy.team.map((u) => ({
+          ...u,
+          defId: remapUnitId(u.defId),
+          stickerIds: stickersOf(u.stickerIds),
+        })),
+        lostTales: (copy.lostTales ?? []).map((tale) => ({
+          ...tale,
+          defId: remapUnitId(tale.defId),
+          stickerIds: stickersOf(tale.stickerIds),
+        })),
+      };
     });
   }
   const team = capTeam(run.team).map((u) => ({
     ...u,
     defId: remapUnitId(u.defId),
-    stickerIds: u.stickerIds.filter(known),
+    stickerIds: stickersOf(u.stickerIds),
   }));
   const recruitPicks = Array.isArray(run.recruitPicks) ? run.recruitPicks : [];
   return {
@@ -74,8 +112,8 @@ export function migrateRun(run: RunState): RunState {
     team,
     draftPicks: run.draftPicks.slice(0, DRAFT_PICK),
     recruitPicks: recruitPicks.slice(0, recruitPickLimit(recruitPicks)),
-    pendingStickerIds: (Array.isArray(run.pendingStickerIds) ? run.pendingStickerIds : []).filter(known),
-    stickerOffers: (Array.isArray(run.stickerOffers) ? run.stickerOffers : []).filter(known),
+    pendingStickerIds: stickersOf(run.pendingStickerIds),
+    stickerOffers: stickersOf(run.stickerOffers),
     eventId: run.eventId && EVENT_BY_ID.has(run.eventId) ? run.eventId : null,
     eventStep: run.eventStep ?? null,
     eventOffers: Array.isArray(run.eventOffers) ? run.eventOffers : [],
@@ -83,7 +121,8 @@ export function migrateRun(run: RunState): RunState {
     huntMonsterId: run.huntMonsterId ?? null,
     huntRaritiesSeen: Array.isArray(run.huntRaritiesSeen) ? run.huntRaritiesSeen : [],
     pendingGoldUnitId: typeof run.pendingGoldUnitId === 'string' ? run.pendingGoldUnitId : null,
-    lastBonusBattle: run.lastBonusBattle ?? null,
+    lastBattle: remapBattle(run.lastBattle),
+    lastBonusBattle: remapBattle(run.lastBonusBattle),
     recruitRarityBump: Boolean(run.recruitRarityBump),
     alleyPicks: Array.isArray(run.alleyPicks) ? run.alleyPicks : [],
     alleyQueue: Array.isArray(run.alleyQueue) ? run.alleyQueue : [],
@@ -95,7 +134,7 @@ export function migrateRun(run: RunState): RunState {
     victoryPoints: victoryPointsOf(run),
     lostTales: (Array.isArray(run.lostTales) ? run.lostTales : []).map((tale) => ({
       defId: remapUnitId(tale.defId),
-      stickerIds: (tale.stickerIds ?? []).filter(known),
+      stickerIds: stickersOf(tale.stickerIds),
       permanentMods: {
         atk: tale.permanentMods?.atk ?? 0,
         hp: tale.permanentMods?.hp ?? 0,

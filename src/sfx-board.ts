@@ -2,9 +2,8 @@ import { audio, type SfxName } from './audio/engine';
 
 type Row = {
   label: string;
-  name?: SfxName;
+  name: SfxName;
   bus?: 'sfx' | 'ui';
-  file?: string;
   note?: string;
 };
 
@@ -26,7 +25,6 @@ const groups: { title: string; rows: Row[] }[] = [
 ];
 
 const list = document.getElementById('list')!;
-let file: HTMLAudioElement | null = null;
 let current: HTMLButtonElement | null = null;
 
 for (const group of groups) {
@@ -51,21 +49,8 @@ async function play(row: Row, button: HTMLButtonElement): Promise<void> {
   if (audio.ctx.state === 'suspended') await audio.ctx.resume();
   await audio.arm();
   audio.cutSfx();
-  if (file) {
-    file.pause();
-    file = null;
-  }
   current?.classList.remove('is-on');
   current = button;
   button.classList.add('is-on');
-  if (row.file) {
-    const el = new Audio(row.file);
-    file = el;
-    el.onended = () => {
-      if (file === el) button.classList.remove('is-on');
-    };
-    await el.play();
-    return;
-  }
-  if (row.name) audio.play(row.name, row.bus ?? 'sfx');
+  audio.play(row.name, row.bus ?? 'sfx');
 }

@@ -283,111 +283,11 @@ html.needs-landscape .landscape-gate {
   inset: 0;
   background: none;
 }
-.menu-flame {
-  position: absolute;
-  left: var(--x);
-  top: var(--y);
-  width: 96px;
-  height: 126px;
-  transform: translate(-50%, -78%);
-  filter: drop-shadow(0 0 12px rgba(255, 132, 36, 0.55));
-  animation: menuWobble 0.52s ease-in-out infinite;
-  animation-delay: var(--d);
-}
-.menu-flame.is-far {
-  width: 52px;
-  height: 70px;
-  filter: drop-shadow(0 0 8px rgba(255, 132, 36, 0.4));
-}
-.menu-flame::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 62%;
-  width: 170%;
-  height: 110%;
-  transform: translate(-50%, -40%);
-  background: radial-gradient(circle, rgba(255, 150, 48, 0.5), transparent 68%);
-  animation: menuGlow 0.42s ease-in-out infinite;
-  animation-delay: var(--d);
-  z-index: -1;
-}
-.menu-flame .cel {
-  position: absolute;
-  inset: 0;
-  background-position: center;
-  background-size: contain;
-  background-repeat: no-repeat;
-}
-.menu-flame .a {
-  background-image: url('/art/ui/menu-flame.png?v=live');
-  animation: menuCelA 0.34s steps(1) infinite;
-  animation-delay: var(--d);
-}
-.menu-flame .b {
-  background-image: url('/art/ui/menu-flame-b.png?v=live');
-  animation: menuCelB 0.34s steps(1) infinite;
-  animation-delay: var(--d);
-}
-.menu-ember {
-  position: absolute;
-  left: var(--x);
-  bottom: var(--s, 30%);
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: #ffb14a;
-  box-shadow: 0 0 6px #ff8a28;
-  animation: menuEmber var(--t) linear infinite;
-  animation-delay: var(--d);
-}
-.menu-glint {
-  position: absolute;
-  left: var(--x);
-  top: var(--y);
-  width: 9px;
-  height: 9px;
-  background: #ffe08a;
-  box-shadow: 0 0 8px #ffd060;
-  transform: rotate(45deg) scale(0);
-  animation: menuGlint 2.8s ease-in-out infinite;
-  animation-delay: var(--d);
-}
 .menu-wash {
   position: absolute;
   inset: 0;
   background:
     linear-gradient(180deg, transparent 58%, rgba(18, 10, 6, 0.22) 100%);
-}
-@keyframes menuBreathe {
-  0%, 100% { transform: scale(1.03) translate3d(0, 0, 0); }
-  50% { transform: scale(1.085) translate3d(0, -1.2%, 0); }
-}
-@keyframes menuWobble {
-  0%, 100% { transform: translate(-50%, -78%) rotate(-2deg) scaleY(1); }
-  50% { transform: translate(-50%, -78%) rotate(3deg) scaleY(1.08); }
-}
-@keyframes menuGlow {
-  0%, 100% { opacity: 0.55; }
-  50% { opacity: 1; }
-}
-@keyframes menuCelA {
-  0%, 49% { opacity: 1; }
-  50%, 100% { opacity: 0; }
-}
-@keyframes menuCelB {
-  0%, 49% { opacity: 0; }
-  50%, 100% { opacity: 1; }
-}
-@keyframes menuEmber {
-  0% { transform: translate(0, 0) scale(1); opacity: 0; }
-  10% { opacity: 0.85; }
-  100% { transform: translate(var(--dx), -46vh) scale(0.25); opacity: 0; }
-}
-@keyframes menuGlint {
-  0%, 68%, 100% { opacity: 0; transform: rotate(45deg) scale(0); }
-  76% { opacity: 1; transform: rotate(45deg) scale(1); }
-  84% { opacity: 0.15; transform: rotate(45deg) scale(0.35); }
 }
 .screen {
   min-height: 100%;
@@ -3597,16 +3497,6 @@ html.is-codex #app {
   .curtain-veil,
   .curtain-house { transition: none !important; }
 }
-.menu-cast {
-  display: flex;
-  gap: 10px;
-  justify-content: center;
-  flex-wrap: wrap;
-  margin: 8px 0 12px;
-  width: min(var(--safe), 100%);
-}
-.menu-cast .unit-card { pointer-events: none; }
-.menu-cast .rule-tip { pointer-events: auto; }
 .card-sample {
   display: flex;
   flex-direction: column;
@@ -3749,16 +3639,6 @@ html.is-codex #app {
   visibility: visible !important;
 }
 @media (prefers-reduced-motion: reduce) {
-  .menu-paint,
-  .menu-flame,
-  .menu-flame::before,
-  .menu-flame .cel,
-  .menu-ember,
-  .menu-glint { animation: none !important; }
-  .menu-flame { transform: translate(-50%, -78%); }
-  .menu-flame .b,
-  .menu-embers,
-  .menu-glints { display: none; }
   .curtain-veil,
   .curtain-house { transition: none !important; }
   .battle-intro[data-curtain="black"] .curtain-veil { opacity: 1; }

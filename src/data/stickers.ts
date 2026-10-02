@@ -471,8 +471,6 @@ STICKERS.sort((a, b) => {
 });
 
 export const STICKER_BY_ID = new Map(STICKERS.map((s) => [s.id, s]));
-STICKER_BY_ID.set('bandage-roll', STICKER_BY_ID.get('life-potion')!);
-STICKER_BY_ID.set('boom-stick', STICKER_BY_ID.get('revenge-bomb')!);
 
 export function grantableStickers(): StickerDef[] {
   return STICKERS.filter((s) => s.frame !== 'monster' && s.id !== 'trash' && s.id !== 'poison');
