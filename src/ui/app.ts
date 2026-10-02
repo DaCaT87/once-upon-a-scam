@@ -3632,6 +3632,11 @@ export class GameApp {
     const from = hunt ? to + huntKnockedOutIds(run, 'player').length : Math.max(0, to - gained);
     const wordKey = winner === 'player' ? 'resultWin' : winner === 'draw' ? 'resultDraw' : 'resultLose';
     const wordClass = winner === 'player' ? 'is-win' : winner === 'draw' ? 'is-draw' : 'is-lose';
+    const stingMs = Math.round(audio.playResult(winner) * 1000);
+    const holdUntil = performance.now() + Math.max(stingMs, 2200);
+    const leave = (tailMs: number) => {
+      window.setTimeout(() => void this.leaveBattleEnd(), Math.max(tailMs, holdUntil - performance.now()));
+    };
     field.insertAdjacentHTML(
       'beforeend',
       `<div class="battle-end">
@@ -3649,12 +3654,12 @@ export class GameApp {
         y += node.offsetTop;
         node = node.offsetParent instanceof HTMLElement ? node.offsetParent : null;
       }
-      row.style.top = `${Math.max(0, y - 86)}px`;
+      row.style.top = `${Math.max(0, y - 170)}px`;
     }
 
     const steps = Math.abs(to - from);
     if (steps === 0) {
-      window.setTimeout(() => void this.leaveBattleEnd(), 2000);
+      leave(0);
       return;
     }
 
@@ -3681,7 +3686,7 @@ export class GameApp {
         if (step > steps) return;
         strip.style.transform = `translateY(${-step * stepH}px)`;
         if (step === steps) {
-          window.setTimeout(() => void this.leaveBattleEnd(), 1400);
+          leave(900);
           return;
         }
         window.setTimeout(() => tick(step + 1, stepH), 420);
@@ -3694,7 +3699,7 @@ export class GameApp {
       });
       return;
     }
-    window.setTimeout(() => void this.leaveBattleEnd(), 2000);
+    leave(0);
   }
 
   private async leaveBattleEnd(): Promise<void> {
