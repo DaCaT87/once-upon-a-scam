@@ -47,11 +47,14 @@ export function syncFullscreenChrome(enterLabel: string, exitLabel: string): voi
   }
 }
 
-/** A phone, not a desktop window. The short side of a handset stays under 700. */
+/** A phone, not a desktop window. A mouse, even on a touch laptop, does not count. */
 export function isHandheld(): boolean {
+  const nav = navigator as Navigator & { userAgentData?: { mobile?: boolean } };
+  if (nav.userAgentData?.mobile === false) return false;
   const coarse = window.matchMedia('(pointer: coarse)').matches;
+  const noHover = window.matchMedia('(hover: none)').matches;
   const shortSide = Math.min(window.screen.width, window.screen.height);
-  return coarse && shortSide > 0 && shortSide < 700;
+  return coarse && noHover && shortSide > 0 && shortSide < 700;
 }
 
 export function isPortrait(): boolean {
@@ -59,7 +62,9 @@ export function isPortrait(): boolean {
 }
 
 export function syncLandscapeGate(): void {
-  document.documentElement.classList.toggle('needs-landscape', isHandheld() && isPortrait());
+  const on = isHandheld() && isPortrait();
+  document.documentElement.classList.toggle('needs-landscape', on);
+  document.querySelector('.landscape-gate')?.toggleAttribute('hidden', !on);
 }
 
 export function setLandscapeGateLabel(text: string): void {

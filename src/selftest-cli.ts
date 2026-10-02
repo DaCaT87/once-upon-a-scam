@@ -46,7 +46,7 @@ import { UNITS } from './data/units';
 import { abilityRule, battleTargetingHtml, renderBattleCard, renderOfferCard, renderStickerCard, renderUnitCard } from './ui/cards';
 import { assertDeterministic, simulateBattle } from './sim/simulation';
 import { assertTargetingRules } from './sim/targeting';
-import type { RunState } from './core/types';
+import type { BattleEvent, RunState } from './core/types';
 
 assertTargetingRules();
 assertAbilityTiming();
@@ -3676,6 +3676,80 @@ assertShopCurve();
   }
   if (translate('en', 'stk.knightsCrest.d') !== 'This figure has Guardian.') {
     throw new Error('knight crest text');
+  }
+}
+{
+  const repliesBefore = (
+    events: BattleEvent[],
+    attackerId: string,
+  ): string[] => {
+    const ids: string[] = [];
+    for (const e of events) {
+      if (e.type === 'AttackStarted' && e.unitId === attackerId) break;
+      if (e.type === 'Log' && e.message.startsWith('guardian:')) ids.push(e.message.slice('guardian:'.length));
+    }
+    return ids;
+  };
+  const crow = () =>
+    makeSnapshot({
+      playerId: 'e',
+      playerName: 'e',
+      runId: 'r',
+      round: 1,
+      team: [instanceFromDef('king-of-crows', 1, 'kcrow')],
+    });
+  const stackedGoose = simulateBattle(
+    makeSnapshot({
+      playerId: 'p',
+      playerName: 'p',
+      runId: 'r',
+      round: 1,
+      team: [
+        applySticker(instanceFromDef('magic-mirror', 1, 'ggc'), 'knights-crest'),
+        instanceFromDef('farm-boy', 2, 'fbG'),
+      ],
+    }),
+    crow(),
+    13,
+  );
+  const gooseReplies = repliesBefore(stackedGoose.events, 'enemy:kcrow');
+  if (gooseReplies.length !== 1 || gooseReplies[0] !== 'player:ggc') {
+    throw new Error(`guardian on a guardian should counter once, got ${gooseReplies.join(',')}`);
+  }
+  const doubleCrest = simulateBattle(
+    makeSnapshot({
+      playerId: 'p',
+      playerName: 'p',
+      runId: 'r',
+      round: 1,
+      team: [
+        applySticker(applySticker(instanceFromDef('farm-boy', 1, 'two'), 'knights-crest'), 'knights-crest'),
+      ],
+    }),
+    crow(),
+    13,
+  );
+  const crestReplies = repliesBefore(doubleCrest.events, 'enemy:kcrow');
+  if (crestReplies.length !== 1 || crestReplies[0] !== 'player:two') {
+    throw new Error(`two guardian stickers should counter once, got ${crestReplies.join(',')}`);
+  }
+  const both = simulateBattle(
+    makeSnapshot({
+      playerId: 'p',
+      playerName: 'p',
+      runId: 'r',
+      round: 1,
+      team: [
+        instanceFromDef('magic-mirror', 1, 'ggb'),
+        applySticker(instanceFromDef('farm-boy', 2, 'fbc'), 'knights-crest'),
+      ],
+    }),
+    crow(),
+    13,
+  );
+  const split = repliesBefore(both.events, 'enemy:kcrow');
+  if (split.length !== 2 || !split.includes('player:ggb') || !split.includes('player:fbc')) {
+    throw new Error(`two different guardians should each counter once, got ${split.join(',')}`);
   }
 }
 {

@@ -147,6 +147,11 @@ interface SimState {
   graveyard: Array<{ team: TeamId; defId: string; stickers: string[]; permanentMods: Combatant['permanentMods'] }>;
   /** Set while Endless Hunger is applying its kill bonus, so that ATK is tagged apart from other permanent gains. */
   hungerGrant: boolean;
+  /** Id of the incoming attack whose Guardian replies are being resolved. */
+  guardianWave: number;
+  attackSerial: number;
+  /** `${wave}:${uid}` figures that already countered this incoming attack. */
+  guardianAnswered: Set<string>;
 }
 
 function viewOf(u: Combatant): PublicUnitView {
@@ -642,11 +647,16 @@ function applyOp(state: SimState, source: Combatant, target: Combatant, op: Effe
       emit(state, { type: 'GiftedStat', unitId: source.uid, recipientId: target.uid, stat: pick, amount: shown });
       break;
     }
-    case 'counterAttack':
+    case 'counterAttack': {
+      // Innate Guardian plus Knight's Crest, or two crests, is still one reply.
+      const key = `${state.guardianWave}:${source.uid}`;
+      if (state.guardianAnswered.has(key)) break;
+      state.guardianAnswered.add(key);
       emit(state, { type: 'Log', message: `guardian:${source.uid}` });
       // Pacifists do not start fights, but a guardian still hits back when struck.
       strike(state, source, target, true);
       break;
+    }
     case 'extraAttack':
       if (op.noChain && state.drainingExtraAttacks) break;
       if (!target.dead && !target.dying && target.hp > 0) {
@@ -2066,6 +2076,8 @@ function resolveAttack(state: SimState, u: Combatant, target: Combatant): void {
     }
     state.attackCancelled = false;
     state.pendingAmbush = null;
+    const prevWave = state.guardianWave;
+    state.guardianWave = ++state.attackSerial;
     fireAbilities(
       state,
       'whenTargeted',
@@ -2076,6 +2088,7 @@ function resolveAttack(state: SimState, u: Combatant, target: Combatant): void {
         isAttack: true,
       },
     );
+    state.guardianWave = prevWave;
     if (state.attackCancelled) {
       state.attackCancelled = false;
       const pend = state.pendingAmbush;
@@ -2331,6 +2344,9 @@ export function simulateBattle(a: TeamSnapshot, b: TeamSnapshot, seed: number): 
     },
     graveyard: [],
     hungerGrant: false,
+    guardianWave: 0,
+    attackSerial: 0,
+    guardianAnswered: new Set(),
   };
 
   refreshChampionAtk(state);
