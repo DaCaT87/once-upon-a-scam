@@ -82,6 +82,10 @@ export class GameApp {
   private ghostGrabX = 36;
   private ghostGrabY = 36;
   private dragSlot: number | null = null;
+  private cardZoom: HTMLElement | null = null;
+  private zoomHold: { x: number; y: number; card: HTMLElement } | null = null;
+  /** True when the open card zoom is what paused the scrap. */
+  private zoomPaused = false;
   /** Offer waiting for which team card to fire when the line is full. */
   private recruitReplace: { defId: string; gold?: boolean } | null = null;
   /** Card waiting for which of 3 stickers to peel when applying a new one. */
@@ -231,6 +235,11 @@ export class GameApp {
     });
     window.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape') return;
+      if (this.cardZoom) {
+        e.preventDefault();
+        this.closeCardZoom();
+        return;
+      }
       const credits = document.getElementById('credits-panel');
       if (credits && !credits.hidden) {
         credits.hidden = true;
@@ -239,6 +248,35 @@ export class GameApp {
       if (!this.dossierDefId) return;
       e.preventDefault();
       this.closeDossier();
+    });
+    this.root.addEventListener(
+      'pointerdown',
+      (e) => {
+        if (!this.phonePlay() || e.button !== 0 || this.cardZoom) return;
+        const card = this.zoomableCard(e.target);
+        if (!card) return;
+        this.zoomHold = { x: e.clientX, y: e.clientY, card };
+      },
+      { capture: true },
+    );
+    window.addEventListener('pointermove', (e) => {
+      const hold = this.zoomHold;
+      if (!hold) return;
+      if (Math.hypot(e.clientX - hold.x, e.clientY - hold.y) > 14) this.zoomHold = null;
+    });
+    window.addEventListener('pointerup', (e) => {
+      const hold = this.zoomHold;
+      this.zoomHold = null;
+      if (!hold || !this.phonePlay()) return;
+      if (Math.hypot(e.clientX - hold.x, e.clientY - hold.y) > 14) return;
+      const card = hold.card;
+      requestAnimationFrame(() => {
+        if (!card.isConnected || this.cardZoom) return;
+        this.openCardZoom(card);
+      });
+    });
+    window.addEventListener('pointercancel', () => {
+      this.zoomHold = null;
     });
     document.getElementById('credits-stamp')?.addEventListener('click', () => {
       const panel = document.getElementById('credits-panel');
@@ -466,7 +504,67 @@ export class GameApp {
     syncScene(page);
   }
 
+  /** A phone in landscape. A mouse, even in a small window, does not count. */
+  private phonePlay(): boolean {
+    const short = Math.min(window.innerWidth, window.innerHeight);
+    return short < 520 && window.matchMedia('(pointer: coarse)').matches;
+  }
+
+  private zoomableCard(target: EventTarget | null): HTMLElement | null {
+    if (!(target instanceof Element)) return null;
+    if (target.closest('.card-zoom, .rule-tip, .dossier-overlay, button, a, input')) return null;
+    const unit = target.closest<HTMLElement>('.unit-card');
+    if (unit && !unit.classList.contains('is-empty') && !unit.classList.contains('team-slot-empty')) return unit;
+    const sticker = target.closest<HTMLElement>('.sticker-card');
+    if (sticker) return sticker;
+    return null;
+  }
+
+  private openCardZoom(card: HTMLElement): void {
+    if (!this.phonePlay()) return;
+    this.closeCardZoom();
+    const overlay = document.createElement('div');
+    overlay.className = 'card-zoom';
+    const scrim = document.createElement('button');
+    scrim.type = 'button';
+    scrim.className = 'card-zoom-scrim';
+    scrim.setAttribute('aria-label', this.L('exit'));
+    const stage = document.createElement('div');
+    stage.className = 'card-zoom-stage';
+    const clone = card.cloneNode(true) as HTMLElement;
+    clone.classList.remove('is-dragging', 'lift', 'is-attack', 'drop-glow');
+    clone.querySelectorAll('img').forEach((img) => {
+      img.draggable = false;
+    });
+    stage.appendChild(clone);
+    overlay.append(scrim, stage);
+    const shut = (e: Event) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.closeCardZoom();
+    };
+    overlay.addEventListener('pointerdown', shut);
+    overlay.addEventListener('click', shut);
+    document.body.appendChild(overlay);
+    this.cardZoom = overlay;
+    const pauseBtn = this.root.querySelector<HTMLButtonElement>('[data-act="pause-battle"]');
+    if (this.screen === 'battle' && this.battleView && pauseBtn?.dataset.paused !== '1') {
+      this.battleView.setPaused(true);
+      this.zoomPaused = true;
+    }
+  }
+
+  private closeCardZoom(): void {
+    this.cardZoom?.remove();
+    this.cardZoom = null;
+    if (!this.zoomPaused) return;
+    this.zoomPaused = false;
+    const pauseBtn = this.root.querySelector<HTMLButtonElement>('[data-act="pause-battle"]');
+    if (pauseBtn?.dataset.paused !== '1') this.battleView?.setPaused(false);
+  }
+
   private paintScreen(): void {
+    this.closeCardZoom();
     this.stopMenu?.();
     this.stopMenu = null;
     if (this.screen !== 'battle') cancelAnimationFrame(this.raf);
@@ -3523,7 +3621,9 @@ export class GameApp {
         window.setTimeout(() => tick(step + 1, stepH), 420);
       };
       window.requestAnimationFrame(() => {
-        const stepH = strip.querySelector('b')?.getBoundingClientRect().height || 78;
+        // offsetHeight stays in the stage's own pixels. getBoundingClientRect
+        // is already shrunk by the phone scale, so the roll would stop halfway.
+        const stepH = strip.querySelector('b')?.offsetHeight || 128;
         window.setTimeout(() => tick(1, stepH), 480);
       });
       return;
