@@ -29,16 +29,14 @@ const TRACK: Record<HtmlCue, { src: string; from: number; gain: number }> = {
 const RESULT_SEC = { win: 6.75, draw: 4.9, lose: 3.55 } as const;
 
 /** Open file is the short attack plus one pass of the motif. The loop file repeats until the scrap ends. */
-const BATTLE_MUSIC: Record<BattleCue, { open: string; loop: string; bpm: number }> = {
+const BATTLE_MUSIC: Record<BattleCue, { open: string; loop: string }> = {
   fight: {
     open: './audio/scrap-open.wav?v=boss1',
     loop: './audio/scrap-loop.wav?v=boss1',
-    bpm: 109.78,
   },
   hunt: {
     open: './audio/hunt-open.wav',
     loop: './audio/hunt-loop.wav',
-    bpm: 108,
   },
 };
 
@@ -248,8 +246,8 @@ export class AudioEngine {
   }
 
   /**
-   * The fight is over. The scrap piece rides to the bar and fades to silence
-   * before the result word. Returns how long that fade takes.
+   * The fight is over. A short fade starts at once. Returns how long it takes
+   * to reach silence, so the result word can come in before that.
    */
   beginEnding(): number {
     if ((this.cue === 'fight' || this.cue === 'hunt') && (this.bedLive || this.bedPhase === 'bed')) {
@@ -522,7 +520,7 @@ export class AudioEngine {
     this.loopSrc = this.startBuf(loop, this.loopStartsAt, true);
   }
 
-  /** Hunt and scrap both melt out over a few bars so the last hit does not cut the tune short. */
+  /** A light fade right after the last hit. It stays audible until the last moment. */
   private finishBed(): number {
     if (!this.ctx || !this.bedCue || this.bedCue === 'menu' || !this.bedLive) return 0;
     const cue = this.bedCue;
@@ -530,23 +528,17 @@ export class AudioEngine {
     const pending = this.bedCache.get(cue);
     if (!pending) return 0;
     const now = this.ctx.currentTime;
-    const beat = 60 / BATTLE_MUSIC[cue].bpm;
-    const step = cue === 'fight' ? beat * 4 : beat;
-    const elapsed = Math.max(0, now - this.bedStart);
-    const into = elapsed % step;
-    const remain = into < 0.03 ? 0.02 : step - into;
+    const remain = 0.12;
     const at = now + remain;
     this.bedLive = false;
     this.bedPhase = 'finale';
 
-    // Soft release: ride the bar, then fade the bed away.
-    const fadeSec = cue === 'fight' ? 3.4 : 2.8;
+    const fadeSec = 1.2;
     const gain = this.musicOut();
     const level = Math.max(0.0001, gain.gain.value);
     gain.gain.cancelScheduledValues(now);
     gain.gain.setValueAtTime(level, now);
-    gain.gain.setValueAtTime(level, at);
-    gain.gain.exponentialRampToValueAtTime(0.0001, at + fadeSec);
+    gain.gain.linearRampToValueAtTime(0.0001, at + fadeSec);
     window.setTimeout(() => {
       if (gen !== this.bedGen || this.bedPhase !== 'finale') return;
       this.dropNow(this.openSrc);

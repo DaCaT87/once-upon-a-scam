@@ -59,7 +59,7 @@ import { ALLEY_PICK, DATA_VERSION, DRAFT_PICK, MAX_STICKERS, MAX_TEAM, RUN_ROUND
 import { bindTargetingTips, fitCardSlabs, paintPortraits, rarityLabel, renderDossierOverlay, renderOfferCard, renderStickerCard, renderTeamLane, renderUnitCard, t } from './cards';
 import { bindFullscreenControls, enterFullscreen, exitFullscreen, setLandscapeGateLabel, syncFullscreenChrome, toggleFullscreen } from './fullscreen';
 import { applyViewportScale } from './scale';
-import { fadeOutLight, fadeOutScene, hideVeil, revealLight, revealScene, syncScene, willChangeScene } from './sceneFade';
+import { fadeOutScene, hideVeil, revealScene, syncScene, willChangeScene } from './sceneFade';
 
 type Screen = 'menu' | 'options' | 'run' | 'battle' | 'codex';
 
@@ -470,14 +470,14 @@ export class GameApp {
     this.render();
   }
 
-  /** Scrap arena, player or hunt, dims under a light black before the square is painted. */
+  /** After the result, the arena sinks into black, then the square is painted. */
   private async fadeArenaToSquare(): Promise<void> {
     const ticket = ++this.fadeTicket;
-    cancelAnimationFrame(this.raf);
-    await fadeOutLight();
+    await fadeOutScene(2600);
     if (ticket !== this.fadeTicket) return;
+    cancelAnimationFrame(this.raf);
     this.paintScreen();
-    revealLight(this.viewKey());
+    revealScene(this.viewKey());
   }
 
   /** Cover the screen that is still up, then paint the next one and uncover it. */
@@ -3606,14 +3606,14 @@ export class GameApp {
     const field = this.root.querySelector<HTMLElement>('#battlefield');
     const battle = run?.lastBattle;
     if (!run || !field || !battle || field.querySelector('.battle-end')) return;
-    const waitMs = Math.round(audio.beginEnding() * 1000);
+    const waitMs = Math.round(audio.beginEnding() * 1000) + 1000;
     window.setTimeout(() => {
       if (this.screen !== 'battle') return;
       if (this.run?.phase !== 'result' && !this.isHuntEndPending()) return;
       const live = this.root.querySelector<HTMLElement>('#battlefield');
       const still = this.run?.lastBattle;
       if (!live || !still || live.querySelector('.battle-end')) return;
-      this.revealBattleEnd(live, still);
+      this.revealBattleEnd(live, still, 0);
     }, waitMs);
   }
 
@@ -3621,7 +3621,11 @@ export class GameApp {
     return this.run?.eventId === 'monster-hunt' && this.run.eventStep === 'hunt-result';
   }
 
-  private revealBattleEnd(field: HTMLElement, battle: NonNullable<NonNullable<typeof this.run>['lastBattle']>): void {
+  private revealBattleEnd(
+    field: HTMLElement,
+    battle: NonNullable<NonNullable<typeof this.run>['lastBattle']>,
+    stingDelayMs = 0,
+  ): void {
     const run = this.run;
     if (!run) return;
     field.classList.add('is-ended');
@@ -3632,11 +3636,6 @@ export class GameApp {
     const from = hunt ? to + huntKnockedOutIds(run, 'player').length : Math.max(0, to - gained);
     const wordKey = winner === 'player' ? 'resultWin' : winner === 'draw' ? 'resultDraw' : 'resultLose';
     const wordClass = winner === 'player' ? 'is-win' : winner === 'draw' ? 'is-draw' : 'is-lose';
-    const stingMs = Math.round(audio.playResult(winner) * 1000);
-    const holdUntil = performance.now() + Math.max(stingMs, 2200);
-    const leave = (tailMs: number) => {
-      window.setTimeout(() => void this.leaveBattleEnd(), Math.max(tailMs, holdUntil - performance.now()));
-    };
     field.insertAdjacentHTML(
       'beforeend',
       `<div class="battle-end">
@@ -3657,11 +3656,18 @@ export class GameApp {
       row.style.top = `${Math.max(0, y - 140)}px`;
     }
 
-    const steps = Math.abs(to - from);
-    if (steps === 0) {
-      leave(0);
-      return;
-    }
+    const beginScore = () => {
+      if (this.screen !== 'battle') return;
+      const stingMs = Math.round(audio.playResult(winner) * 1000);
+      const holdUntil = performance.now() + Math.max(stingMs, 2200);
+      const leave = (tailMs: number) => {
+        window.setTimeout(() => void this.leaveBattleEnd(), Math.max(tailMs, holdUntil - performance.now()));
+      };
+      const steps = Math.abs(to - from);
+      if (steps === 0) {
+        leave(0);
+        return;
+      }
 
     const crown = field.querySelector<HTMLElement>('.battle-hud .line-crown');
     const score = crown?.querySelector(':scope > b');
@@ -3699,12 +3705,14 @@ export class GameApp {
       });
       return;
     }
-    leave(0);
+      leave(0);
+    };
+    if (stingDelayMs > 0) window.setTimeout(beginScore, stingDelayMs);
+    else beginScore();
   }
 
   private async leaveBattleEnd(): Promise<void> {
     if (!this.run) return;
-    cancelAnimationFrame(this.raf);
     if (this.isHuntEndPending()) {
       this.run = claimHunt(this.run);
       this.codex = discover(this.codex, [], this.run.pendingStickerIds);

@@ -76,37 +76,13 @@ export function syncScene(page?: string): void {
 }
 
 /** Darken the screen that is still visible. Resolves once the veil is opaque. */
-export async function fadeOutScene(): Promise<void> {
+export async function fadeOutScene(ms = 360): Promise<void> {
   const veil = veilEl();
   if (!veil) return;
   veil.style.pointerEvents = 'auto';
   const current = Number(getComputedStyle(veil).opacity);
   const from = Number.isFinite(current) ? current : 0;
-  await ramp(from, 1, 360);
-}
-
-/** Soft black over the scrap arena, light enough that it is a dim, not a blackout. */
-export async function fadeOutLight(): Promise<void> {
-  const veil = veilEl();
-  if (!veil) return;
-  veil.style.pointerEvents = 'auto';
-  const current = Number(getComputedStyle(veil).opacity);
-  const from = Number.isFinite(current) ? current : 0;
-  await ramp(from, 0.62, 520);
-}
-
-/** Lift a light black veil off the screen that was just painted. */
-export function revealLight(page: string): void {
-  shown = page;
-  const veil = veilEl();
-  if (!veil) return;
-  const current = Number(getComputedStyle(veil).opacity);
-  const from = Number.isFinite(current) ? current : 0.62;
-  void ramp(from, 0, 560).then(() => {
-    if (shown !== page) return;
-    const live = veilEl();
-    if (live) live.style.pointerEvents = 'none';
-  });
+  await ramp(from, 1, ms);
 }
 
 /** Uncover the screen that was just painted. */
