@@ -4,6 +4,19 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <script>
+      (function () {
+        var w = window.innerWidth;
+        var h = Math.max(1, window.innerHeight - 18);
+        var scale = Math.min(w / 1920, h / 1080);
+        var root = document.documentElement;
+        root.style.setProperty('--ui-scale', String(scale));
+        root.style.setProperty('--design-w', '1920');
+        root.style.setProperty('--design-h', '1080');
+        root.style.setProperty('--vv-x', Math.max(0, (w - 1920 * scale) / 2) + 'px');
+        root.style.setProperty('--vv-y', '18px');
+      })();
+    </script>
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="./manifest.webmanifest" />
@@ -15,8 +28,8 @@
       href="https://fonts.googleapis.com/css2?family=Anton&family=Berkshire+Swash&family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,700;1,9..144,500&family=Limelight&family=Rye&family=Special+Elite&display=swap"
       rel="stylesheet"
     />
-    <script type="module" crossorigin src="./assets/index-D4_NVRj5.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-DHbj9cN2.css">
+    <script type="module" crossorigin src="./assets/index-cTm85_RP.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-DlZaRSvE.css">
   </head>
   <body>
     <div id="stage-fill" aria-hidden="true"></div>
