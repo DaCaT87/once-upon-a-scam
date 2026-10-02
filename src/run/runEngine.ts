@@ -18,7 +18,7 @@ import {
   randomUnitOfRarity,
   teamSizeForRound,
 } from '../core/catalog';
-import { STICKER_BY_ID } from '../data/stickers';
+import { STICKER_BY_ID, ovenSweetOffer } from '../data/stickers';
 import { EVENT_BY_ID, huntLevelForRound, huntMonstersFor, huntPower, huntRarityForRound, huntStickerFor, lossRewardRarity } from '../data/events';
 import { nextWellRarity } from '../data/rarity';
 import { STARTING_BRONZE_IDS, unitsByRarity } from '../data/units';
@@ -989,6 +989,31 @@ export function assignPendingSticker(
   if (idx < 0) return run;
   const [sid] = pending.splice(idx, 1);
   if (!sid) return run;
+  const sweet = ovenSweetOffer(sid);
+  if (sweet) {
+    const host = run.team.find((u) => u.instanceId === instanceId);
+    if (!host) return run;
+    const team = cloneTeam(run.team).map((u) =>
+      u.instanceId === instanceId
+        ? {
+            ...u,
+            permanentMods: {
+              ...u.permanentMods,
+              [sweet.stat]: u.permanentMods[sweet.stat] + sweet.amount,
+            },
+          }
+        : u,
+    );
+    const next = {
+      ...run,
+      team,
+      pendingStickerIds: [],
+      stickersGained: (run.stickersGained ?? 0) + 1,
+    };
+    // The shop holds this frame so the sweet can sit on the card, then vanish.
+    if (opts?.settle === false) return next;
+    return settleStickerAssign(next);
+  }
   const plateRng = rngFor(run, 0x51a7);
   const fromId = run.team.find((u) => u.instanceId === instanceId)?.defId;
   const team = spreadIfMythic(
@@ -1540,14 +1565,29 @@ function sacrificeWellSticker(run: RunState, instanceId: string, stickerId: stri
   );
 }
 
+function figureOwnStat(unit: UnitInstance, stat: 'hp' | 'atk' | 'speed'): number {
+  return getUnit(unit.defId)[stat] + (unit.permanentMods[stat] ?? 0);
+}
+
 function resolveOven(run: RunState, instanceId: string): RunState {
   const victim = run.team.find((u) => u.instanceId === instanceId);
   if (!victim) return run;
-  const recovered = [...victim.stickerIds];
-  const team = cloneTeam(run.team).filter((u) => u.instanceId !== instanceId);
-  const next = rememberLost({ ...run, team: compactSlots(team), eventPicks: [] }, [victim]);
-  if (!recovered.length) return finishAlley(next);
-  return grantEventStickers(next, recovered);
+  const team = compactSlots(cloneTeam(run.team).filter((u) => u.instanceId !== instanceId));
+  const eaten = { ...run, team, eventPicks: [] };
+  if (!team.length) return finishAlley(eaten);
+  return {
+    ...eaten,
+    phase: 'stickerAssign',
+    eventId: 'witch-oven',
+    eventStep: 'reward',
+    pendingStickerIds: [
+      `heartbeat-sweet:${figureOwnStat(victim, 'hp')}`,
+      `strength-sweet:${figureOwnStat(victim, 'atk')}`,
+      `flash-sweet:${figureOwnStat(victim, 'speed')}`,
+    ],
+    stickerPickCount: 1,
+    stickerOffers: [],
+  };
 }
 
 export function ovenDiscardSticker(run: RunState): RunState {

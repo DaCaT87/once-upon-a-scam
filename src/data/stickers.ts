@@ -455,6 +455,9 @@ export const STICKERS: StickerDef[] = [
     },
     archetypes: ['attack'],
   },
+  { id: 'heartbeat-sweet', nameKey: 'stk.heartbeatSweet', descKey: 'stk.heartbeatSweet.d', family: 'stat', rarity: 'bronze', icon: 'heart', archetypes: ['tank'] },
+  { id: 'strength-sweet', nameKey: 'stk.strengthSweet', descKey: 'stk.strengthSweet.d', family: 'stat', rarity: 'bronze', icon: 'fists', archetypes: ['attack'] },
+  { id: 'flash-sweet', nameKey: 'stk.flashSweet', descKey: 'stk.flashSweet.d', family: 'stat', rarity: 'bronze', icon: 'cup', archetypes: ['speed'] },
 ];
 
 const RARITY_RANK: Record<Rarity, number> = {
@@ -472,8 +475,40 @@ STICKERS.sort((a, b) => {
 
 export const STICKER_BY_ID = new Map(STICKERS.map((s) => [s.id, s]));
 
+const OVEN_SWEETS = {
+  'heartbeat-sweet': 'hp',
+  'strength-sweet': 'atk',
+  'flash-sweet': 'speed',
+} as const;
+
+export type OvenSweetId = keyof typeof OVEN_SWEETS;
+
+export function isOvenSweet(id: string): boolean {
+  return Object.prototype.hasOwnProperty.call(OVEN_SWEETS, id.split(':')[0]);
+}
+
+/** `heartbeat-sweet:6` is one baked offer. A bare id is the library card. */
+export function ovenSweetOffer(id: string): { id: OvenSweetId; stat: 'hp' | 'atk' | 'speed'; amount: number } | null {
+  const [base, raw] = id.split(':');
+  if (!base || !Object.prototype.hasOwnProperty.call(OVEN_SWEETS, base)) return null;
+  if (raw == null || raw === '') return null;
+  const amount = Number(raw);
+  if (!Number.isInteger(amount) || amount < 0) return null;
+  const sweetId = base as OvenSweetId;
+  return { id: sweetId, stat: OVEN_SWEETS[sweetId], amount };
+}
+
+export function ovenSweetBase(id: string): string {
+  const base = id.split(':')[0] ?? id;
+  return isOvenSweet(base) ? base : id;
+}
+
+export function ovenSweets(): StickerDef[] {
+  return STICKERS.filter((s) => isOvenSweet(s.id));
+}
+
 export function grantableStickers(): StickerDef[] {
-  return STICKERS.filter((s) => s.frame !== 'monster' && s.id !== 'trash' && s.id !== 'poison');
+  return STICKERS.filter((s) => s.frame !== 'monster' && s.id !== 'trash' && s.id !== 'poison' && !isOvenSweet(s.id));
 }
 
 export function shopStickers(): StickerDef[] {

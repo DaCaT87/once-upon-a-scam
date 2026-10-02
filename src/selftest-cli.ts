@@ -4639,13 +4639,20 @@ if (huntWon) {
     eventStep: 'preview',
     team: [applySticker(instanceFromDef('farm-boy', 1, 'ov1'), 'fur-armor'), instanceFromDef('hunter', 2, 'ov2')],
   };
+  const talesBefore = oven.lostTales?.length ?? 0;
   oven = eventSelectUnit(oven, 'ov1');
-  if (oven.phase !== 'stickerAssign' || oven.pendingStickerIds[0] !== 'fur-armor' || oven.team.some((u) => u.instanceId === 'ov1')) {
+  if (
+    oven.phase !== 'stickerAssign' ||
+    oven.pendingStickerIds.join(',') !== 'heartbeat-sweet:6,strength-sweet:2,flash-sweet:5' ||
+    oven.team.some((u) => u.instanceId === 'ov1') ||
+    (oven.lostTales?.length ?? 0) !== talesBefore
+  ) {
     throw new Error(`oven failed phase=${oven.phase} step=${oven.eventStep} pending=${oven.pendingStickerIds.join(',')}`);
   }
-  oven = assignPendingSticker(oven, 'ov2');
-  if (oven.phase !== 'formation' || !oven.team.some((u) => u.instanceId === 'ov2' && u.stickerIds.includes('fur-armor'))) {
-    throw new Error(`oven apply failed phase=${oven.phase}`);
+  oven = assignPendingSticker(oven, 'ov2', undefined, 'heartbeat-sweet:6');
+  const fed = oven.team.find((u) => u.instanceId === 'ov2');
+  if (oven.phase !== 'formation' || !fed || fed.permanentMods.hp !== 6 || fed.stickerIds.some((id) => id.startsWith('heartbeat-sweet'))) {
+    throw new Error(`oven apply failed phase=${oven.phase} hp=${fed?.permanentMods.hp}`);
   }
 }
 
@@ -4660,18 +4667,11 @@ if (huntWon) {
       instanceFromDef('hunter', 2, 'od2'),
     ],
   };
+  const grown = ovenDup.team[0]!;
+  grown.permanentMods = { ...grown.permanentMods, hp: 3 };
   ovenDup = eventSelectUnit(ovenDup, 'od1');
-  if (ovenDup.phase !== 'stickerAssign' || ovenDup.pendingStickerIds.join(',') !== 'fur-armor,fur-armor') {
-    throw new Error(`oven dup pending=${ovenDup.pendingStickerIds.join(',')}`);
-  }
-  ovenDup = assignPendingSticker(ovenDup, 'od2', undefined, 'fur-armor', { settle: false });
-  if (ovenDup.phase !== 'stickerAssign' || ovenDup.pendingStickerIds.join(',') !== 'fur-armor') {
-    throw new Error(`oven dup after one phase=${ovenDup.phase} pending=${ovenDup.pendingStickerIds.join(',')}`);
-  }
-  ovenDup = assignPendingSticker(ovenDup, 'od2', undefined, 'fur-armor');
-  const glued = ovenDup.team.find((u) => u.instanceId === 'od2')?.stickerIds.filter((id) => id === 'fur-armor').length;
-  if (ovenDup.phase !== 'formation' || glued !== 2) {
-    throw new Error(`oven dup apply-all phase=${ovenDup.phase} glued=${glued}`);
+  if (ovenDup.phase !== 'stickerAssign' || !ovenDup.pendingStickerIds.includes('heartbeat-sweet:9')) {
+    throw new Error(`oven should ignore glued stickers and keep printed growth, pending=${ovenDup.pendingStickerIds.join(',')}`);
   }
 }
 

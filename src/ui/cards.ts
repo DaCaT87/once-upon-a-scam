@@ -1,5 +1,6 @@
 import { computedStats, getSticker, getUnit, hasCardFace, hasStickerArt, hasUnitArt, isScenicArt, nextFormOf, prevFormOf, resolveAbilityTiming, resolveTargeting, stickerArtFile, teamLaneOrder, unitArtFolder, usesPrintedCardFace, type StatContext } from '../core/catalog';
 import { translate } from '../data/i18n';
+import { isOvenSweet, ovenSweetOffer } from '../data/stickers';
 import type { AbilityTiming, Locale, PublicUnitView, StickerDef, TargetingType, TeamId, UnitInstance } from '../core/types';
 
 export function t(locale: Locale, key: string): string {
@@ -631,9 +632,17 @@ function poisonRules(locale: Locale): string {
   return `${line('stk.poison.when', 'stk.poison.hit')}${line('stk.poison.then', 'stk.poison.out')}`;
 }
 
+function ovenSweetLine(locale: Locale, s: StickerDef, rawId?: string): string | null {
+  if (!isOvenSweet(s.id)) return null;
+  const baked = rawId ? ovenSweetOffer(rawId) : null;
+  return t(locale, s.descKey).split('{n}').join(baked ? String(baked.amount) : 'X');
+}
+
 /** Same rules the sticker card prints, so a glued sticker's hover matches its own card. */
-function stickerRulesHtml(locale: Locale, s: StickerDef): string {
+function stickerRulesHtml(locale: Locale, s: StickerDef, rawId?: string): string {
   if (s.id === 'poison') return poisonRules(locale);
+  const sweet = ovenSweetLine(locale, s, rawId);
+  if (sweet) return `<p>${linkKeywords(locale, sweet)}</p>`;
   const desc = t(locale, s.descKey);
   const splitAt = s.id === 'woodsmans-axe' ? desc.indexOf('. ') : -1;
   const grant = splitAt > 0 ? desc.slice(0, splitAt + 1) : '';
@@ -644,10 +653,12 @@ function stickerRulesHtml(locale: Locale, s: StickerDef): string {
   return `${timingHtml}<p>${linkKeywords(locale, effect)}</p>`;
 }
 
-function stickerRulesPlain(locale: Locale, s: StickerDef): string {
+function stickerRulesPlain(locale: Locale, s: StickerDef, rawId?: string): string {
   if (s.id === 'poison') {
     return `${t(locale, 'stk.poison.when')}: ${t(locale, 'stk.poison.hit')} ${t(locale, 'stk.poison.then')}: ${t(locale, 'stk.poison.out')}`;
   }
+  const sweet = ovenSweetLine(locale, s, rawId);
+  if (sweet) return sweet;
   const desc = t(locale, s.descKey);
   const splitAt = s.id === 'woodsmans-axe' ? desc.indexOf('. ') : -1;
   const grant = splitAt > 0 ? desc.slice(0, splitAt + 1) : '';
@@ -745,12 +756,13 @@ export function renderStickerCard(locale: Locale, id: string, picked: boolean, e
     ? `<img class="sticker-art" src="./art/stickers/${stickerArtFile(id)}.png?v=cast173" alt="${t(locale, s.nameKey)}" draggable="false" />`
     : '<div class="sticker-art is-empty" aria-hidden="true"></div>';
   const monster = s.frame === 'monster' ? ' monster' : '';
+  const sweet = isOvenSweet(id);
   return `
-    <article class="sticker-card rarity-${s.rarity} ${picked ? 'picked' : ''} ${extraClass}${monster}" data-sticker="${id}" data-rarity="${s.rarity}">
-      ${renderStickerRarity(locale, s.rarity)}
+    <article class="sticker-card rarity-${s.rarity} ${picked ? 'picked' : ''} ${extraClass}${monster}${sweet ? ' is-oven-sweet' : ''}" data-sticker="${id}" data-rarity="${s.rarity}">
+      ${sweet ? '' : renderStickerRarity(locale, s.rarity)}
       ${art}
       <h4>${t(locale, s.nameKey)}</h4>
-      ${stickerRulesHtml(locale, s)}
+      ${stickerRulesHtml(locale, s, id)}
     </article>
   `;
 }

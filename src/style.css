@@ -1436,6 +1436,15 @@ html.needs-landscape .landscape-gate {
   animation: stickerPop 0.45s ease;
   outline: 2px solid var(--red);
 }
+.sticker-slot.filled.is-oven-flash {
+  pointer-events: none;
+}
+.sticker-slot.filled.is-oven-gone {
+  animation: ovenSweetGone 0.28s ease forwards;
+}
+@keyframes ovenSweetGone {
+  to { opacity: 0; transform: scale(0.55) rotate(-8deg); }
+}
 
 .sticker-card {
   width: 168px;

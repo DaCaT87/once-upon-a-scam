@@ -1,4 +1,4 @@
-import { STICKER_BY_ID, grantableStickers, shopStickers } from '../data/stickers';
+import { STICKER_BY_ID, grantableStickers, ovenSweetBase, shopStickers } from '../data/stickers';
 import { UNIT_BY_ID, lampUnits, recruitableUnits, unitsByRarity } from '../data/units';
 import { RARITY_ORDER, nextShopRarity, rarityForRound, recruitRarityMix, shopMaxRarity, stickerRarityMix } from '../data/rarity';
 import type {
@@ -26,7 +26,7 @@ export function getUnit(id: string): UnitDef {
 }
 
 export function getSticker(id: string) {
-  const s = STICKER_BY_ID.get(id);
+  const s = STICKER_BY_ID.get(ovenSweetBase(id));
   if (!s) throw new Error(`Unknown sticker: ${id}`);
   return s;
 }
@@ -716,6 +716,9 @@ const STICKER_ART_FILES = new Set([
   'poison',
   'filth',
   'cocoon',
+  'heartbeat-sweet',
+  'strength-sweet',
+  'flash-sweet',
 ]);
 
 export function hasStickerArt(id: string): boolean {

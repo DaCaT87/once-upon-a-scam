@@ -3,7 +3,7 @@ import { firstFreeSlot, getUnit, stickerArtFile } from '../core/catalog';
 import { clampPlayerName, PLAYER_NAME_MAX } from '../core/ids';
 import { EVENT_BY_ID, HUNT_MONSTERS, eventHidesRarity, huntStickerFor, lossRewardRarity } from '../data/events';
 import { rarityRank, shopMaxRarity, stickerMaxRarity } from '../data/rarity';
-import { grantableStickers, libraryHuntStickers } from '../data/stickers';
+import { grantableStickers, isOvenSweet, libraryHuntStickers, ovenSweetBase, ovenSweets } from '../data/stickers';
 import { UNITS } from '../data/units';
 import { discover, loadCodex, loadPlayer, loadSettings, saveCodex, savePlayer, saveSettings } from '../persist/settings';
 import { BattleView } from '../render/battleView';
@@ -920,6 +920,8 @@ export class GameApp {
       const offers = this.stickerShopOfferIds();
       const hint = this.replacePick?.from === 'shop' || this.replacePick?.from === 'assign'
         ? this.L('replaceHint')
+        : run.phase === 'stickerAssign' && run.eventId === 'witch-oven'
+          ? this.L('ovenChoose')
         : run.phase === 'stickerAssign' && run.eventId
           ? this.L('eventRewardSticker')
           : this.L('stickOneHint');
@@ -1534,7 +1536,7 @@ export class GameApp {
         if (rarity !== 0) return rarity;
         return this.L(a.nameKey).localeCompare(this.L(b.nameKey), loc, { sensitivity: 'base' });
       });
-    const stickerIds = [...orderedStickers(grantableStickers()), ...orderedStickers(libraryHuntStickers())].map((s) => s.id);
+    const stickerIds = [...orderedStickers(grantableStickers()), ...orderedStickers(ovenSweets()), ...orderedStickers(libraryHuntStickers())].map((s) => s.id);
     return `
       <section class="screen screen-codex">
         <div class="codex-wash" aria-hidden="true"></div>
@@ -1701,7 +1703,7 @@ export class GameApp {
           sticker.classList.remove('is-peeled');
           return;
         }
-        if (inst.stickerIds.length >= MAX_STICKERS) {
+        if (inst.stickerIds.length >= MAX_STICKERS && !isOvenSweet(draggedId)) {
           sticker.classList.remove('is-peeled');
           const from = this.run.phase === 'sticker' ? 'shop' : 'assign';
           this.replacePick = { instanceId: inst.instanceId, from, stickerId: draggedId };
@@ -1780,6 +1782,7 @@ export class GameApp {
 
     const after = next.team.find((u) => u.instanceId === instanceId);
     const transformed = Boolean(beforeDef && after && beforeDef !== after.defId);
+    const sweetApply = Boolean(stickerId && isOvenSweet(stickerId));
     const card = this.root.querySelector<HTMLElement>(`.unit-card[data-instance="${instanceId}"]`);
 
     const revealApplied = () => {
@@ -1788,6 +1791,10 @@ export class GameApp {
       this.noteTeam();
       void this.persist();
       this.renderPreservingScroll();
+      if (sweetApply && stickerId) {
+        this.flashOvenSweet(instanceId, stickerId);
+        return;
+      }
       if (!transformed) {
         this.applyFx = { instanceId, stickerId: stickerId! };
         this.playApplyFx();
@@ -1825,7 +1832,48 @@ export class GameApp {
     }
 
     revealApplied();
-    this.shopHoldTimer = window.setTimeout(advance, 1000);
+    this.shopHoldTimer = window.setTimeout(advance, sweetApply ? 1200 : 1000);
+  }
+
+  /** The sweet lands in the rail like a plated sticker, then leaves. No smoke. */
+  private flashOvenSweet(instanceId: string, offerId: string): void {
+    requestAnimationFrame(() => {
+      const card = this.root.querySelector<HTMLElement>(`.unit-card[data-instance="${instanceId}"]`);
+      const rail = card?.querySelector('.sticker-rail');
+      if (!card || !rail) return;
+      const artId = ovenSweetBase(offerId);
+      let slot = rail.querySelector<HTMLElement>('.sticker-slot:not(.filled)');
+      let created = false;
+      if (!slot) {
+        slot = document.createElement('div');
+        slot.dataset.stickerSlot = '3';
+        rail.appendChild(slot);
+        created = true;
+      }
+      slot.classList.add('filled', 'sticker-pop', 'is-new-stick', 'is-oven-flash');
+      slot.dataset.sticker = artId;
+      const img = document.createElement('img');
+      img.src = `./art/stickers/${stickerArtFile(artId)}.png?v=cast173`;
+      img.alt = '';
+      img.draggable = false;
+      slot.appendChild(img);
+      card.classList.add('is-stick-shake');
+      window.setTimeout(() => {
+        card.classList.remove('is-stick-shake');
+        slot?.classList.remove('sticker-pop', 'is-new-stick');
+        slot?.classList.add('is-oven-gone');
+      }, 680);
+      window.setTimeout(() => {
+        if (!slot?.isConnected) return;
+        if (created) {
+          slot.remove();
+          return;
+        }
+        slot.className = 'sticker-slot';
+        delete slot.dataset.sticker;
+        slot.replaceChildren();
+      }, 980);
+    });
   }
 
   private playShopBanf(card: HTMLElement, onReveal: () => void, onDone: () => void): void {

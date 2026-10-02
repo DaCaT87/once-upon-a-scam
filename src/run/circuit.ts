@@ -1,4 +1,5 @@
 import { canAcceptSticker, cloneTeam, computedStats, firstFreeSlot, getUnit, makeSnapshot } from '../core/catalog';
+import { ovenSweetOffer } from '../data/stickers';
 import { mixSeed, SeededRng } from '../core/rng';
 import { simulateBattle } from '../sim/simulation';
 import type { AlleyChoice, CircuitRival, RunState, TeamSnapshot } from '../core/types';
@@ -147,6 +148,13 @@ function stamp(run: RunState): string {
 }
 
 function glueOne(run: RunState): RunState {
+  const sweets = run.pendingStickerIds.filter((id) => ovenSweetOffer(id));
+  if (sweets.length && sweets.length === run.pendingStickerIds.length) {
+    const best = [...sweets].sort((a, b) => (ovenSweetOffer(b)?.amount ?? 0) - (ovenSweetOffer(a)?.amount ?? 0))[0];
+    const host = run.team[0];
+    if (!best || !host) return skipStickers(run);
+    return assignPendingSticker(run, host.instanceId, undefined, best);
+  }
   const sid = run.pendingStickerIds[0];
   const host = run.team.find((u) => canAcceptSticker(u)) ?? run.team[0];
   if (!sid || !host) return skipStickers(run);
