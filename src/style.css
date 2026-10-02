@@ -54,7 +54,15 @@ html.is-fullscreen body {
   background: #100c0a center top / cover no-repeat;
 }
 html.is-menu #stage-fill {
+  left: var(--vv-x, 0px);
+  top: var(--vv-y, 0px);
+  right: auto;
+  bottom: auto;
+  width: calc(var(--design-w) * var(--ui-scale) * 1px);
+  height: calc(var(--design-h) * var(--ui-scale) * 1px);
   background-image: url('/art/ui/bg-home.jpg?v=home16');
+  background-size: contain;
+  background-position: center center;
 }
 html.is-battle #stage-fill {
   background-image: url('/art/ui/arena.png?v=court12');
@@ -246,7 +254,7 @@ html.needs-landscape .landscape-gate {
   z-index: 90;
   margin: 0;
   padding: 32px;
-  background: #100c0a center top / cover no-repeat;
+  background: #100c0a center / contain no-repeat;
   background-image: url('/art/ui/bg-home.jpg?v=home16');
   color: var(--cream);
   text-align: center;
@@ -3832,6 +3840,13 @@ html.is-codex #app {
 .battle-card.is-held .scrap-readout,
 .battle-card:focus-within .scrap-readout {
   display: block;
+}
+/* A phone tap focuses the keyword and would pop the effect box under the card. */
+@media (pointer: coarse) and (max-height: 519px) {
+  .battle-card.is-held .scrap-readout,
+  .battle-card:focus-within .scrap-readout {
+    display: none !important;
+  }
 }
 .battle-slot:has(.battle-card.is-held) {
   z-index: 20;

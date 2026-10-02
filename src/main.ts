@@ -32,9 +32,8 @@ function selfTest(): void {
   }
 }
 
-selfTest();
-
 bindViewportScale();
+selfTest();
 bindLandscapeHold();
 
 const root = document.querySelector<HTMLElement>('#app');

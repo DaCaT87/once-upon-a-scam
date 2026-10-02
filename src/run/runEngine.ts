@@ -1246,8 +1246,8 @@ export function resolveHuntFight(run: RunState): RunState {
 
 export function claimHunt(run: RunState): RunState {
   if (run.eventId !== 'monster-hunt' || run.eventStep !== 'hunt-result') return run;
-  const bossDown = huntKnockedOutIds(run, 'enemy').length > 0;
-  const sid = bossDown && run.huntMonsterId ? huntStickerFor(run.huntMonsterId) : null;
+  const won = run.lastBattle?.winner === 'player';
+  const sid = won && run.huntMonsterId ? huntStickerFor(run.huntMonsterId) : null;
   if (!sid) return finishAlley(run);
   return grantEventStickers(run, [sid]);
 }

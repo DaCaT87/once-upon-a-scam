@@ -841,6 +841,7 @@ export function bindScrapReadouts(root: HTMLElement): void {
   };
 
   root.addEventListener('pointerover', (e) => {
+    if (phoneFace(root)) return;
     const slot = (e.target as HTMLElement | null)?.closest<HTMLElement>('.battle-slot');
     if (!slot || !root.contains(slot)) return;
     const from = e.relatedTarget;

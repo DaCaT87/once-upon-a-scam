@@ -14,10 +14,15 @@ export function applyViewportScale(): void {
   const designW = tallPhone ? 640 : DESIGN_W;
   const scale = tallPhone ? w / designW : Math.min(w / DESIGN_W, h / DESIGN_H);
   const root = document.documentElement;
+  // The menu picture is 16:9. A wider screen keeps that frame whole, centered, instead of cropping it.
+  const menuSpare = !tallPhone && root.classList.contains('is-menu')
+    ? Math.max(0, (w - DESIGN_W * scale) / 2)
+    : 0;
+  const frameMenu = menuSpare > 24;
   root.style.setProperty('--ui-scale', String(scale));
-  root.style.setProperty('--design-w', String(w / scale));
-  root.style.setProperty('--design-h', String(h / scale));
-  root.style.setProperty('--vv-x', `${vv?.offsetLeft ?? 0}px`);
+  root.style.setProperty('--design-w', String(frameMenu ? DESIGN_W : w / scale));
+  root.style.setProperty('--design-h', String(frameMenu ? DESIGN_H : h / scale));
+  root.style.setProperty('--vv-x', `${(vv?.offsetLeft ?? 0) + (frameMenu ? menuSpare : 0)}px`);
   root.style.setProperty('--vv-y', `${(vv?.offsetTop ?? 0) + topGap}px`);
 }
 

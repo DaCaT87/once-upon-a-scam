@@ -4602,12 +4602,33 @@ ev = resolveHuntFight(ev);
     throw new Error('woodsman should enter with his axe, 11 ATK');
   }
 }
-const mawsDown = huntKnockedOutIds(ev, 'enemy').length > 0;
+const huntWon = ev.lastBattle?.winner === 'player';
 ev = claimHunt(ev);
-if (mawsDown) {
+if (huntWon) {
   if (ev.phase !== 'stickerAssign' || ev.pendingStickerIds[0] !== 'endless-hunger') throw new Error('hunt-ko-sticker');
 } else if (ev.phase !== 'formation' || ev.pendingStickerIds.length) {
   throw new Error('hunt-boss-lives-reward');
+}
+{
+  let foolHunt = resolveHuntFight({
+    ...base,
+    phase: 'event',
+    eventId: 'monster-hunt',
+    eventStep: 'preview',
+    huntMonsterId: 'thousand-maws',
+    team: [instanceFromDef('black-hole', 1, 'foolHunt')],
+  });
+  const switched = foolHunt.lastBattle?.events.some((e) => e.type === 'SwitchedSides' && e.fromTeam === 'enemy');
+  if (foolHunt.lastBattle?.winner !== 'player' || !switched) {
+    throw new Error('the fool should pull the hunt boss across and win');
+  }
+  if (huntKnockedOutIds(foolHunt, 'enemy').length !== 0) {
+    throw new Error('the hunt boss should still be alive after changing sides');
+  }
+  foolHunt = claimHunt(foolHunt);
+  if (foolHunt.phase !== 'stickerAssign' || foolHunt.pendingStickerIds[0] !== 'endless-hunger') {
+    throw new Error('a won hunt should pay its sticker even when the boss changes sides');
+  }
 }
 
 {

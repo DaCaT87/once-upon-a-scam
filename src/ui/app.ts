@@ -58,6 +58,7 @@ import type { AlleyChoice, CodexState, EventId, RunState, Settings, UnitInstance
 import { ALLEY_PICK, DATA_VERSION, DRAFT_PICK, MAX_STICKERS, MAX_TEAM, RUN_ROUNDS, STICKER_PICK } from '../core/types';
 import { bindTargetingTips, fitCardSlabs, paintPortraits, rarityLabel, renderDossierOverlay, renderOfferCard, renderStickerCard, renderTeamLane, renderUnitCard, t } from './cards';
 import { bindFullscreenControls, enterFullscreen, exitFullscreen, setLandscapeGateLabel, syncFullscreenChrome, toggleFullscreen } from './fullscreen';
+import { applyViewportScale } from './scale';
 import { fadeOutLight, fadeOutScene, hideVeil, revealLight, revealScene, syncScene, willChangeScene } from './sceneFade';
 
 type Screen = 'menu' | 'options' | 'run' | 'battle' | 'codex';
@@ -256,6 +257,7 @@ export class GameApp {
         if (!this.phonePlay() || e.button !== 0 || this.cardZoom) return;
         const card = this.zoomableCard(e.target);
         if (!card) return;
+        if (e.target instanceof Element && e.target.closest('button, .rule-tip, .sticker-slot')) e.preventDefault();
         this.zoomHold = { x: e.clientX, y: e.clientY, card };
       },
       { capture: true },
@@ -643,6 +645,7 @@ export class GameApp {
     document.documentElement.classList.toggle('is-square', this.screen === 'run');
     document.documentElement.classList.toggle('is-codex', this.screen === 'codex');
     document.documentElement.classList.toggle('is-preamble', this.screen === 'battle');
+    applyViewportScale();
     const huntEvent =
       this.screen === 'run' &&
       this.run?.eventId === 'monster-hunt' &&
