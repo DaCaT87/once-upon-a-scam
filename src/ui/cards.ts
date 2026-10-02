@@ -529,7 +529,8 @@ export function renderUnitCard(
 ): string {
   const def = getUnit(inst.defId);
   const stats = computedStats(inst, { stickersGained: opts?.stickersGained, deathsThisRun: opts?.deathsThisRun });
-  const slots = stickerSlots(locale, inst.stickerIds);
+  const silenced = Boolean(opts?.extraClass?.includes('is-silenced'));
+  const slots = stickerSlots(locale, inst.stickerIds, { spent: silenced });
   const alleyHunt = Boolean(opts?.extraClass?.includes('is-alley-hunt'));
   const huntPlate = alleyHunt || Boolean(opts?.extraClass?.includes('is-hunt-plate'));
   const huntCard = huntPlate || def.tags.includes('hunt');

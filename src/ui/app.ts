@@ -550,7 +550,10 @@ export class GameApp {
         stickerIds: stickerIds.length ? stickerIds : (saved?.stickerIds ?? []),
         permanentMods: saved?.permanentMods ?? { atk: 0, hp: 0, speed: 0 },
       },
-      this.runStatCtx(),
+      {
+        ...this.runStatCtx(),
+        extraClass: card.classList.contains('is-silenced') ? 'is-silenced' : undefined,
+      },
     );
   }
 

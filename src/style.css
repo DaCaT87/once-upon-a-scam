@@ -4499,22 +4499,21 @@ html:has(.battle-wrap.is-ended) .screen-battle {
 html:has(.card-zoom) .scrap-readout {
   display: none !important;
 }
-/* Stickers stay on the enlarged card, on the frame, not over the painting or the board. */
-.card-zoom .unit-card > .sticker-rail {
-  left: 3.2%;
-  top: 6%;
-  width: 13%;
-  gap: 1%;
+/* Silenced effect text keeps the thin red X. Stats and keywords stay clear. */
+.unit-card.is-silenced:not(.battle-card) .ability {
+  position: relative;
 }
-.card-zoom .sticker-slot {
-  width: 100%;
-  height: auto;
-  aspect-ratio: 1;
-}
-.card-zoom .sticker-slot img {
-  width: 100%;
+.unit-card.is-silenced:not(.battle-card) .ability::after {
+  content: "";
+  position: absolute;
+  z-index: 4;
+  left: 50%;
+  top: 0;
+  width: 143%;
   height: 100%;
-  object-fit: contain;
+  transform: translateX(-50%);
+  background: url('/art/ui/spent-x-effect.svg?v=effect1') center / 100% 100% no-repeat;
+  pointer-events: none;
 }
 
 /* Phone shop: the small card is the scrap face. The tap opens the whole card. */
