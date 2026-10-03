@@ -619,7 +619,7 @@ export class GameApp {
     });
     // Wider base so ability text lays out larger before we scale the whole face.
     if (face.classList.contains('unit-card')) face.style.width = '360px';
-    else face.style.width = '240px';
+    else face.style.width = '280px';
     overlay.append(scrim, stage);
     const shut = (e: Event) => {
       e.preventDefault();

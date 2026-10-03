@@ -3751,7 +3751,10 @@ html.is-codex #app {
 }
 html.is-battle .battle-card .scrap-readout,
 html.is-battle .battle-card.is-held .scrap-readout,
-html.is-battle .battle-card:focus-within .scrap-readout {
+html.is-battle .battle-card:focus-within .scrap-readout,
+html.is-hunt .battle-card .scrap-readout,
+html.is-hunt .battle-card.is-held .scrap-readout,
+html.is-hunt .battle-card:focus-within .scrap-readout {
   display: none !important;
 }
 /* A phone tap focuses the keyword and would pop the effect box under the card. */
@@ -4427,8 +4430,8 @@ html:has(.battle-wrap.is-ended) .screen-battle {
   width: 360px;
 }
 .card-zoom .sticker-card {
-  width: 240px;
-  min-height: 270px;
+  width: 280px;
+  min-height: 300px;
   transform: none !important;
 }
 .card-zoom .ability,
@@ -4438,23 +4441,46 @@ html:has(.battle-wrap.is-ended) .screen-battle {
 .card-zoom .sticker-card .poison-rule {
   display: block;
 }
-.card-zoom .ability-rule {
-  font-size: 15px;
-  line-height: 1.35;
+.card-zoom .ability-rule,
+.card-zoom .ability-rule .keyword-term {
+  font-size: 22px;
+  line-height: 1.32;
 }
 .card-zoom .card-name {
-  font-size: 22px;
+  font-size: 26px;
 }
 .card-zoom .rule-row,
 .card-zoom .timing-type,
 .card-zoom .targeting-type {
-  font-size: 14px;
+  font-size: 18px;
+}
+.card-zoom .sticker-card h4 {
+  font-size: 24px;
 }
 .card-zoom .sticker-card p,
-.card-zoom .sticker-card .timing-type,
+.card-zoom .sticker-card .keyword-term,
 .card-zoom .sticker-card .poison-rule {
-  font-size: 15px;
+  font-size: 20px;
   line-height: 1.35;
+}
+.card-zoom .sticker-card .timing-type,
+.card-zoom .sticker-card .poison-rule .timing-type {
+  font-size: 18px;
+}
+.targeting-float.zoom-float {
+  max-width: min(380px, calc(100vw - 16px));
+  font-size: 18px;
+  line-height: 1.35;
+  padding: 10px 12px;
+}
+.targeting-float.zoom-float .tip-name {
+  font-size: 20px;
+}
+.targeting-float.zoom-float .tip-rarity {
+  font-size: 12px;
+}
+.targeting-float.zoom-float .keyword-term {
+  font-size: inherit;
 }
 .card-zoom .scrap-readout,
 html:has(.card-zoom) .scrap-readout {
