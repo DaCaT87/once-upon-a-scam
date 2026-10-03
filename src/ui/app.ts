@@ -530,7 +530,7 @@ export class GameApp {
     return short < 520 && window.matchMedia('(pointer: coarse)').matches;
   }
 
-  /** Phone tap, or desktop right-click: same inspect overlay for cards and stickers. */
+  /** Phone tap, or desktop right-click on a figure: inspect overlay. Stickers on PC stay as they are. */
   private cardInspect(): boolean {
     return this.phonePlay() || window.matchMedia('(pointer: fine)').matches;
   }
@@ -547,6 +547,7 @@ export class GameApp {
     }
     const sticker = target.closest<HTMLElement>('.sticker-card');
     if (!sticker) return null;
+    if (!this.phonePlay()) return null;
     if (inspect && target.closest('button') && !sticker.contains(target)) return null;
     return sticker;
   }

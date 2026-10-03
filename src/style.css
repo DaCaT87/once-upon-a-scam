@@ -4477,15 +4477,19 @@ html:has(.card-zoom) .scrap-readout {
   pointer-events: none;
 }
 
-/* Shop face: no ability text on the small card. Phone tap / desktop right-click opens the full card. */
+/* Shop face: no ability text on the small figure. Phone tap / desktop right-click opens the full card. */
 .screen-recruit .unit-card .ability,
-.screen-sticker .unit-card .ability,
-.screen-recruit .sticker-card p,
-.screen-recruit .sticker-card .timing-type,
-.screen-recruit .sticker-card .poison-rule,
-.screen-sticker .sticker-card p,
-.screen-sticker .sticker-card .timing-type,
-.screen-sticker .sticker-card .poison-rule {
+.screen-sticker .unit-card .ability {
   display: none;
+}
+@media (pointer: coarse) and (max-height: 519px) {
+  .screen-recruit .sticker-card p,
+  .screen-recruit .sticker-card .timing-type,
+  .screen-recruit .sticker-card .poison-rule,
+  .screen-sticker .sticker-card p,
+  .screen-sticker .sticker-card .timing-type,
+  .screen-sticker .sticker-card .poison-rule {
+    display: none;
+  }
 }
 
