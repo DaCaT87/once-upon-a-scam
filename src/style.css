@@ -4400,7 +4400,7 @@ html:has(.battle-wrap.is-ended) .screen-battle {
   }
 }
 
-/* Tapped or clicked scrap card grows in the center. Hunt and the square stay as they were. */
+/* Phone tap / desktop right-click: card or sticker grows in the center. */
 .card-zoom {
   position: fixed;
   inset: 0;
@@ -4422,6 +4422,32 @@ html:has(.battle-wrap.is-ended) .screen-battle {
   position: relative;
   z-index: 1;
   flex: none;
+}
+.card-zoom .unit-card {
+  width: 360px;
+}
+.card-zoom .sticker-card {
+  width: 240px;
+  min-height: 270px;
+  transform: none !important;
+}
+.card-zoom .ability-rule {
+  font-size: 15px;
+  line-height: 1.35;
+}
+.card-zoom .card-name {
+  font-size: 22px;
+}
+.card-zoom .rule-row,
+.card-zoom .timing-type,
+.card-zoom .targeting-type {
+  font-size: 14px;
+}
+.card-zoom .sticker-card p,
+.card-zoom .sticker-card .timing-type,
+.card-zoom .sticker-card .poison-rule {
+  font-size: 15px;
+  line-height: 1.35;
 }
 .card-zoom .scrap-readout,
 html:has(.card-zoom) .scrap-readout {

@@ -254,7 +254,8 @@ export class GameApp {
     this.root.addEventListener(
       'pointerdown',
       (e) => {
-        if (!this.cardInspect() || e.button !== 0 || this.cardZoom) return;
+        // Phone: tap. Desktop: right-click only (handled on contextmenu).
+        if (!this.phonePlay() || e.button !== 0 || this.cardZoom) return;
         const card = this.zoomableCard(e.target);
         if (!card) return;
         if (e.target instanceof Element && e.target.closest('button, .rule-tip, .sticker-slot')) e.preventDefault();
@@ -270,7 +271,7 @@ export class GameApp {
     window.addEventListener('pointerup', (e) => {
       const hold = this.zoomHold;
       this.zoomHold = null;
-      if (!hold || !this.cardInspect()) return;
+      if (!hold || !this.phonePlay()) return;
       if (Math.hypot(e.clientX - hold.x, e.clientY - hold.y) > 14) return;
       const card = hold.card;
       requestAnimationFrame(() => {
@@ -281,6 +282,17 @@ export class GameApp {
     window.addEventListener('pointercancel', () => {
       this.zoomHold = null;
     });
+    this.root.addEventListener(
+      'contextmenu',
+      (e) => {
+        if (this.phonePlay() || this.cardZoom) return;
+        const card = this.zoomableCard(e.target);
+        if (!card) return;
+        e.preventDefault();
+        this.openCardZoom(card);
+      },
+      { capture: true },
+    );
     document.getElementById('credits-stamp')?.addEventListener('click', () => {
       const panel = document.getElementById('credits-panel');
       if (!panel) return;
@@ -513,23 +525,14 @@ export class GameApp {
     return short < 520 && window.matchMedia('(pointer: coarse)').matches;
   }
 
-  /** Scrap board only: desktop inspects a card the same way a phone does. Hunt and the square stay as they were. */
-  private scrapBoardPlay(): boolean {
-    return this.screen === 'battle' && this.battleFieldUp && !this.isHuntBattle();
-  }
-
+  /** Phone tap, or desktop right-click: same inspect overlay for cards and stickers. */
   private cardInspect(): boolean {
-    return this.phonePlay() || this.scrapBoardPlay();
+    return this.phonePlay() || window.matchMedia('(pointer: fine)').matches;
   }
 
   private zoomableCard(target: EventTarget | null): HTMLElement | null {
     if (!(target instanceof Element)) return null;
     if (target.closest('.card-zoom, .dossier-overlay, input, a, [data-act]')) return null;
-    if (this.scrapBoardPlay() && !this.phonePlay()) {
-      const battle = target.closest<HTMLElement>('.battle-card');
-      if (!battle || battle.classList.contains('is-empty')) return null;
-      return battle;
-    }
     const inspect = this.cardInspect();
     if (!inspect && target.closest('.rule-tip, button')) return null;
     const unit = target.closest<HTMLElement>('.unit-card');
@@ -607,6 +610,9 @@ export class GameApp {
     face.querySelectorAll('img').forEach((img) => {
       img.draggable = false;
     });
+    // Wider base so ability text lays out larger before we scale the whole face.
+    if (face.classList.contains('unit-card')) face.style.width = '360px';
+    else face.style.width = '240px';
     overlay.append(scrim, stage);
     const shut = (e: Event) => {
       e.preventDefault();
@@ -626,9 +632,11 @@ export class GameApp {
     const floats = document.querySelectorAll<HTMLElement>('.targeting-float');
     this.zoomFloat = floats[floats.length - 1] ?? null;
     this.zoomFloat?.classList.add('zoom-float');
-    const naturalW = face.offsetWidth || 248;
-    const naturalH = face.offsetHeight || 375;
-    const scale = Math.min((window.innerWidth - 28) / naturalW, (window.innerHeight - 20) / naturalH);
+    const naturalW = face.offsetWidth || 360;
+    const naturalH = face.offsetHeight || 540;
+    // Half the old full-screen fill so the inspect stays readable, not wall-sized.
+    const fill = Math.min((window.innerWidth - 40) / naturalW, (window.innerHeight - 32) / naturalH);
+    const scale = fill * 0.5;
     face.style.transformOrigin = 'top left';
     face.style.transform = `scale(${scale})`;
     stage.style.width = `${naturalW * scale}px`;

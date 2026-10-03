@@ -910,6 +910,12 @@ function fitOneSlab(slab: HTMLElement): void {
   const overflows = () => slab.scrollHeight > slab.clientHeight + 1 || slab.scrollWidth > slab.clientWidth + 1;
   if (!overflows()) return;
 
+  // Inspect zoom uses a wider face; keep the rule readable instead of crushing to shop size.
+  const zoomed = Boolean(slab.closest('.card-zoom-stage'));
+  const ruleFloor = zoomed ? 12 : 5.5;
+  const rowFloor = zoomed ? 11 : 5.5;
+  const nameFloor = zoomed ? 14 : 9;
+
   const shrink = (el: HTMLElement | null, factor: number, floor: number): number => {
     if (!el) return floor;
     const cur = parseFloat(getComputedStyle(el).fontSize);
@@ -922,10 +928,10 @@ function fitOneSlab(slab: HTMLElement): void {
   let guard = 28;
   while (overflows() && guard > 0) {
     guard -= 1;
-    const ruleSize = shrink(rule, 0.94, 5.5);
-    shrink(row, 0.96, 5.5);
-    if (guard < 12) shrink(name, 0.97, 9);
+    const ruleSize = shrink(rule, 0.94, ruleFloor);
+    shrink(row, 0.96, rowFloor);
+    if (guard < 12) shrink(name, 0.97, nameFloor);
     if (rule && ruleSize <= 7) rule.style.lineHeight = '1.12';
-    if (rule && ruleSize <= 5.5 && row && parseFloat(getComputedStyle(row).fontSize) <= 5.5) break;
+    if (rule && ruleSize <= ruleFloor && row && parseFloat(getComputedStyle(row).fontSize) <= rowFloor) break;
   }
 }
