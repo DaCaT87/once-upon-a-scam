@@ -4430,8 +4430,8 @@ html:has(.battle-wrap.is-ended) .screen-battle {
   width: 360px;
 }
 .card-zoom .sticker-card {
-  width: 280px;
-  min-height: 300px;
+  width: 240px;
+  min-height: 270px;
   transform: none !important;
 }
 .card-zoom .ability,
@@ -4441,46 +4441,36 @@ html:has(.battle-wrap.is-ended) .screen-battle {
 .card-zoom .sticker-card .poison-rule {
   display: block;
 }
-.card-zoom .ability-rule,
-.card-zoom .ability-rule .keyword-term {
-  font-size: 22px;
-  line-height: 1.32;
+.card-zoom .ability-rule {
+  font-size: 15px;
+  line-height: 1.35;
 }
 .card-zoom .card-name {
-  font-size: 26px;
+  font-size: 22px;
 }
 .card-zoom .rule-row,
 .card-zoom .timing-type,
 .card-zoom .targeting-type {
-  font-size: 18px;
-}
-.card-zoom .sticker-card h4 {
-  font-size: 24px;
+  font-size: 14px;
 }
 .card-zoom .sticker-card p,
-.card-zoom .sticker-card .keyword-term,
-.card-zoom .sticker-card .poison-rule {
-  font-size: 20px;
-  line-height: 1.35;
-}
 .card-zoom .sticker-card .timing-type,
-.card-zoom .sticker-card .poison-rule .timing-type {
-  font-size: 18px;
-}
-.targeting-float.zoom-float {
-  max-width: min(380px, calc(100vw - 16px));
-  font-size: 18px;
+.card-zoom .sticker-card .poison-rule {
+  font-size: 15px;
   line-height: 1.35;
-  padding: 10px 12px;
 }
-.targeting-float.zoom-float .tip-name {
-  font-size: 20px;
+/* Help cursor only while inspecting the enlarged figure. */
+.unit-card:not(.tip-preview) .rule-tip,
+.unit-card:not(.tip-preview) .stat-ico-wrap,
+.unit-card:not(.tip-preview) .keyword-term,
+.unit-card:not(.tip-preview) .sticker-slot.filled {
+  cursor: default;
 }
-.targeting-float.zoom-float .tip-rarity {
-  font-size: 12px;
-}
-.targeting-float.zoom-float .keyword-term {
-  font-size: inherit;
+.card-zoom .unit-card .rule-tip,
+.card-zoom .unit-card .stat-ico-wrap,
+.card-zoom .unit-card .keyword-term,
+.card-zoom .unit-card .sticker-slot.filled {
+  cursor: help;
 }
 .card-zoom .scrap-readout,
 html:has(.card-zoom) .scrap-readout {

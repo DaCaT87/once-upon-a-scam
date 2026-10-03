@@ -934,9 +934,9 @@ function fitOneSlab(slab: HTMLElement): void {
 
   // Inspect zoom uses a wider face; keep the rule readable instead of crushing to shop size.
   const zoomed = Boolean(slab.closest('.card-zoom-stage'));
-  const ruleFloor = zoomed ? 16 : 5.5;
-  const rowFloor = zoomed ? 14 : 5.5;
-  const nameFloor = zoomed ? 18 : 9;
+  const ruleFloor = zoomed ? 12 : 5.5;
+  const rowFloor = zoomed ? 11 : 5.5;
+  const nameFloor = zoomed ? 14 : 9;
 
   const shrink = (el: HTMLElement | null, factor: number, floor: number): number => {
     if (!el) return floor;
