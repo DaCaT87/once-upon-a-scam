@@ -254,7 +254,7 @@ export class GameApp {
     this.root.addEventListener(
       'pointerdown',
       (e) => {
-        if (!this.phonePlay() || e.button !== 0 || this.cardZoom) return;
+        if (!this.cardInspect() || e.button !== 0 || this.cardZoom) return;
         const card = this.zoomableCard(e.target);
         if (!card) return;
         if (e.target instanceof Element && e.target.closest('button, .rule-tip, .sticker-slot')) e.preventDefault();
@@ -270,7 +270,7 @@ export class GameApp {
     window.addEventListener('pointerup', (e) => {
       const hold = this.zoomHold;
       this.zoomHold = null;
-      if (!hold || !this.phonePlay()) return;
+      if (!hold || !this.cardInspect()) return;
       if (Math.hypot(e.clientX - hold.x, e.clientY - hold.y) > 14) return;
       const card = hold.card;
       requestAnimationFrame(() => {
@@ -513,19 +513,33 @@ export class GameApp {
     return short < 520 && window.matchMedia('(pointer: coarse)').matches;
   }
 
+  /** Scrap board only: desktop inspects a card the same way a phone does. Hunt and the square stay as they were. */
+  private scrapBoardPlay(): boolean {
+    return this.screen === 'battle' && this.battleFieldUp && !this.isHuntBattle();
+  }
+
+  private cardInspect(): boolean {
+    return this.phonePlay() || this.scrapBoardPlay();
+  }
+
   private zoomableCard(target: EventTarget | null): HTMLElement | null {
     if (!(target instanceof Element)) return null;
     if (target.closest('.card-zoom, .dossier-overlay, input, a, [data-act]')) return null;
-    const phone = this.phonePlay();
-    if (!phone && target.closest('.rule-tip, button')) return null;
+    if (this.scrapBoardPlay() && !this.phonePlay()) {
+      const battle = target.closest<HTMLElement>('.battle-card');
+      if (!battle || battle.classList.contains('is-empty')) return null;
+      return battle;
+    }
+    const inspect = this.cardInspect();
+    if (!inspect && target.closest('.rule-tip, button')) return null;
     const unit = target.closest<HTMLElement>('.unit-card');
     if (unit && !unit.classList.contains('is-empty') && !unit.classList.contains('team-slot-empty')) {
-      if (phone && target.closest('button') && !unit.contains(target)) return null;
+      if (inspect && target.closest('button') && !unit.contains(target)) return null;
       return unit;
     }
     const sticker = target.closest<HTMLElement>('.sticker-card');
     if (!sticker) return null;
-    if (phone && target.closest('button') && !sticker.contains(target)) return null;
+    if (inspect && target.closest('button') && !sticker.contains(target)) return null;
     return sticker;
   }
 
@@ -570,7 +584,7 @@ export class GameApp {
   }
 
   private openCardZoom(card: HTMLElement): void {
-    if (!this.phonePlay()) return;
+    if (!this.cardInspect()) return;
     const html = this.zoomCardHtml(card);
     if (!html) return;
     this.closeCardZoom();
