@@ -221,7 +221,7 @@ export class GameApp {
         this.onAction(btn.dataset.act!, btn);
         return;
       }
-      // Library: left click opens the tale. Right click still zooms the card.
+      // Library: left click opens the tale. Right click zooms figures only.
       if (this.screen !== 'codex' || this.cardZoom || this.dossierDefId) return;
       if (target.closest('.rule-tip, .dossier-overlay')) return;
       const card = target.closest<HTMLElement>('.unit-card[data-def]');
@@ -547,6 +547,7 @@ export class GameApp {
     }
     const sticker = target.closest<HTMLElement>('.sticker-card');
     if (!sticker) return null;
+    // Stickers: phone tap-zoom only. PC (shop, library, board) keeps the text on the card.
     if (!this.phonePlay()) return null;
     if (inspect && target.closest('button') && !sticker.contains(target)) return null;
     return sticker;

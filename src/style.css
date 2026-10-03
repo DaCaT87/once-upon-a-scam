@@ -4477,9 +4477,10 @@ html:has(.card-zoom) .scrap-readout {
   pointer-events: none;
 }
 
-/* Shop face: no ability text on the small figure. Phone tap / desktop right-click opens the full card. */
+/* Shop / library face: no ability text on the small figure. Phone tap / desktop right-click opens the full card. */
 .screen-recruit .unit-card .ability,
-.screen-sticker .unit-card .ability {
+.screen-sticker .unit-card .ability,
+.screen-codex .unit-card .ability {
   display: none;
 }
 @media (pointer: coarse) and (max-height: 519px) {
