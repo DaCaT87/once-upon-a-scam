@@ -1,5 +1,5 @@
 import { audio, type MusicCue } from '../audio/engine';
-import { firstFreeSlot, getUnit, killsLeftOnCard, stickerArtFile } from '../core/catalog';
+import { barePrintedSummon, firstFreeSlot, getUnit, killsLeftOnCard, stickerArtFile } from '../core/catalog';
 import { clampPlayerName, PLAYER_NAME_MAX } from '../core/ids';
 import { EVENT_BY_ID, HUNT_MONSTERS, eventHidesRarity, huntStickerFor, lossRewardRarity } from '../data/events';
 import { rarityRank, shopMaxRarity, stickerMaxRarity } from '../data/rarity';
@@ -1448,7 +1448,7 @@ export class GameApp {
               </div>`
             : ''
         }
-        ${showBoss ? `<div class="grid5 event-boss">${renderUnitCard(loc, { instanceId: huntId!, defId: huntId!, slot: 1, stickerIds: [huntStickerFor(huntId!)].filter((id): id is string => Boolean(id)), permanentMods: { atk: 0, hp: 0, speed: 0 } }, { extraClass: 'offer is-hunt-plate', ...stats })}</div>` : ''}
+        ${showBoss ? `<div class="grid5 event-boss">${renderUnitCard(loc, { instanceId: huntId!, defId: huntId!, slot: 1, stickerIds: barePrintedSummon(huntId!) ? [] : [huntStickerFor(huntId!)].filter((id): id is string => Boolean(id)), permanentMods: { atk: 0, hp: 0, speed: 0 } }, { extraClass: 'offer is-hunt-plate', ...stats })}</div>` : ''}
         ${
           showOvenSticker
             ? `<div class="row event-oven-tray">${renderStickerCard(loc, run.pendingStickerIds[0]!, false)}</div>`
@@ -1597,7 +1597,8 @@ export class GameApp {
             .map((u) => {
               const glued = huntStickerFor(u.id);
               const stickerIds = [...(u.startingStickers ?? [])];
-              if (glued && !stickerIds.includes(glued)) stickerIds.push(glued);
+              // Face stickers stay off purple widows / bare cutouts; other hunts still show their glue.
+              if (glued && !stickerIds.includes(glued) && !barePrintedSummon(u.id)) stickerIds.push(glued);
               const inst: UnitInstance = {
                 instanceId: u.id,
                 defId: u.id,

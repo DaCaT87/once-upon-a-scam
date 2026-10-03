@@ -4704,8 +4704,11 @@ if (shopStickers().some((s) => s.id === 'woodsmans-axe')) throw new Error('axe i
     throw new Error('a cocoon card should not wear the widow sticker');
   }
   const widowHuntCard = renderUnitCard('en', applySticker(instanceFromDef('purple-widows', 1, 'widowFace'), 'cocoon'));
-  if (!widowHuntCard.includes('data-sticker="cocoon"')) {
-    throw new Error('widow hunt card should still wear her sticker');
+  if (widowHuntCard.includes('data-sticker="cocoon"')) {
+    throw new Error('purple widows face should not show a sticker rail');
+  }
+  if (!barePrintedSummon('purple-widows') || !widowHuntCard.includes('is-cutout')) {
+    throw new Error('purple widows should be a bare printed cutout');
   }
   const silkFace = renderUnitCard('en', applySticker(instanceFromDef('silk-cocoon', 1, 'silkFace'), 'cocoon'));
   if (silkFace.includes('data-sticker="cocoon"')) {

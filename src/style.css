@@ -4064,20 +4064,17 @@ html.is-codex #app {
 .dossier-portrait {
   width: auto;
   height: auto;
-  max-height: min(62vh, 540px);
-  max-width: min(46vw, 460px);
+  /* Same presence as a normal figure tale — full idle art, no soft crop mask. */
+  max-height: min(72vh, 640px);
+  max-width: min(52vw, 520px);
   object-fit: contain;
   object-position: center center;
   pointer-events: none;
   background: transparent;
   border: 0;
   box-shadow: none;
-  -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='400' height='520' viewBox='0 0 400 520'><defs><filter id='s' x='-12%25' y='-12%25' width='124%25' height='124%25'><feGaussianBlur stdDeviation='3.2'/></filter></defs><path fill='white' filter='url(%23s)' d='M46 10 C100 5 160 16 220 8 C280 2 320 14 354 10 C378 8 392 24 392 48 C397 130 385 200 394 270 C401 340 385 410 392 472 C394 498 378 512 352 512 C290 518 220 505 150 514 C90 521 62 508 48 512 C22 514 8 498 8 472 C3 400 15 330 6 260 C-1 190 13 120 8 48 C6 22 22 8 46 10 Z'/></svg>");
-  mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='400' height='520' viewBox='0 0 400 520'><defs><filter id='s' x='-12%25' y='-12%25' width='124%25' height='124%25'><feGaussianBlur stdDeviation='3.2'/></filter></defs><path fill='white' filter='url(%23s)' d='M46 10 C100 5 160 16 220 8 C280 2 320 14 354 10 C378 8 392 24 392 48 C397 130 385 200 394 270 C401 340 385 410 392 472 C394 498 378 512 352 512 C290 518 220 505 150 514 C90 521 62 508 48 512 C22 514 8 498 8 472 C3 400 15 330 6 260 C-1 190 13 120 8 48 C6 22 22 8 46 10 Z'/></svg>");
-  -webkit-mask-size: 100% 100%;
-  mask-size: 100% 100%;
-  -webkit-mask-repeat: no-repeat;
-  mask-repeat: no-repeat;
+  -webkit-mask-image: none;
+  mask-image: none;
 }
 .screen-codex .unit-card:not(.is-cutout):not(.printed-card) > .card-art {
   background: transparent;
