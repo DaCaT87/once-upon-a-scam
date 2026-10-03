@@ -222,10 +222,26 @@ export function renderTimingLabel(locale: Locale, timing: AbilityTiming): string
   </button>`;
 }
 
-function phoneFace(root: HTMLElement): boolean {
-  if (root.classList.contains('card-zoom-stage')) return false;
+function phonePlay(): boolean {
   const short = Math.min(window.innerWidth, window.innerHeight);
   return short < 520 && window.matchMedia('(pointer: coarse)').matches;
+}
+
+/**
+ * Small figures: no sticker / keyword / stat tips (inspect zoom only).
+ * Desktop sticker cards keep their face text + tips as they are.
+ */
+function tipsMuted(root: HTMLElement, label: HTMLElement | null): boolean {
+  if (root.classList.contains('card-zoom-stage')) return false;
+  if (
+    label &&
+    label.closest('.sticker-card:not(.tip-preview)') &&
+    !label.closest('.unit-card') &&
+    !phonePlay()
+  ) {
+    return false;
+  }
+  return true;
 }
 
 export function bindTargetingTips(root: HTMLElement, localeOf?: () => Locale): void {
@@ -404,8 +420,9 @@ export function bindTargetingTips(root: HTMLElement, localeOf?: () => Locale): v
   root.addEventListener(
     'pointerdown',
     (e) => {
-      if (phoneFace(root)) return;
-      const tip = (e.target as HTMLElement).closest('.rule-tip');
+      if (e.button !== 0) return;
+      const tip = (e.target as HTMLElement).closest<HTMLElement>('.rule-tip');
+      if (tipsMuted(root, tip)) return;
       if (
         tip &&
         !tip.classList.contains('sticker-slot') &&
@@ -421,8 +438,13 @@ export function bindTargetingTips(root: HTMLElement, localeOf?: () => Locale): v
   root.addEventListener(
     'click',
     (e) => {
-      if (phoneFace(root)) return;
       const label = (e.target as HTMLElement).closest<HTMLElement>('.rule-tip');
+      if (tipsMuted(root, label)) {
+        closeAll();
+        hidePeek();
+        hide();
+        return;
+      }
       if (label && root.contains(label)) {
         if (label.classList.contains('sticker-slot')) {
           if (label.closest('.is-replace-pick')) return;
@@ -442,10 +464,10 @@ export function bindTargetingTips(root: HTMLElement, localeOf?: () => Locale): v
   );
 
   root.addEventListener('pointerover', (e) => {
-    if (phoneFace(root)) return;
     if (!window.matchMedia('(hover: hover)').matches) return;
     const label = (e.target as HTMLElement).closest<HTMLElement>('.rule-tip');
     if (!label || !root.contains(label)) return;
+    if (tipsMuted(root, label)) return;
     hovered = label;
     if (label.dataset.previewUnit || label.dataset.previewSticker) {
       const host = peekOrigin(label);

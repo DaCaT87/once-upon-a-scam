@@ -537,19 +537,20 @@ export class GameApp {
 
   private zoomableCard(target: EventTarget | null): HTMLElement | null {
     if (!(target instanceof Element)) return null;
-    if (target.closest('.card-zoom, .dossier-overlay, input, a, [data-act]')) return null;
+    if (target.closest('.card-zoom, .dossier-overlay, input, a')) return null;
+    // HUD / menu actions — not a card face under a control.
+    const act = target.closest<HTMLElement>('[data-act]');
+    if (act && !act.closest('.unit-card, .sticker-card')) return null;
     const inspect = this.cardInspect();
     if (!inspect && target.closest('.rule-tip, button')) return null;
     const unit = target.closest<HTMLElement>('.unit-card');
     if (unit && !unit.classList.contains('is-empty') && !unit.classList.contains('team-slot-empty')) {
-      if (inspect && target.closest('button') && !unit.contains(target)) return null;
       return unit;
     }
     const sticker = target.closest<HTMLElement>('.sticker-card');
     if (!sticker) return null;
-    // Stickers: phone tap-zoom only. PC (shop, library, board) keeps the text on the card.
+    // Stickers: phone tap-zoom only. Desktop keeps the text on the card.
     if (!this.phonePlay()) return null;
-    if (inspect && target.closest('button') && !sticker.contains(target)) return null;
     return sticker;
   }
 
