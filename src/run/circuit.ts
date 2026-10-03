@@ -155,7 +155,8 @@ function glueOne(run: RunState, vice: RivalVice): RunState {
     const best = [...sweets].sort((a, b) => (ovenSweetOffer(b)?.amount ?? 0) - (ovenSweetOffer(a)?.amount ?? 0))[0];
     const host = (best && bestStickerHost(run.team, best, vice)) ?? run.team[0];
     if (!best || !host) return skipStickers(run);
-    return assignPendingSticker(run, host.instanceId, undefined, best);
+    const replace = canAcceptSticker(host) ? undefined : 0;
+    return assignPendingSticker(run, host.instanceId, replace, best);
   }
   const sid = run.pendingStickerIds[0];
   const host = (sid && bestStickerHost(run.team, sid, vice)) ?? run.team.find((u) => canAcceptSticker(u)) ?? run.team[0];

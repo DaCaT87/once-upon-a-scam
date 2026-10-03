@@ -360,12 +360,15 @@ function addPermanentMods(u: UnitInstance, atk: number, hp: number, speed = 0, h
   };
 }
 
-function stripSticker(u: UnitInstance, stickerId: string): UnitInstance {
-  const i = u.stickerIds.indexOf(stickerId);
-  if (i < 0) return u;
+function stripStickerAt(u: UnitInstance, index: number): UnitInstance {
+  if (index < 0 || index >= u.stickerIds.length) return u;
   const stickerIds = [...u.stickerIds];
-  stickerIds.splice(i, 1);
+  stickerIds.splice(index, 1);
   return { ...u, stickerIds };
+}
+
+function stripSticker(u: UnitInstance, stickerId: string): UnitInstance {
+  return stripStickerAt(u, u.stickerIds.indexOf(stickerId));
 }
 
 function persistBattleTeam(
@@ -1013,17 +1016,19 @@ export function assignPendingSticker(
   if (sweet) {
     const host = run.team.find((u) => u.instanceId === instanceId);
     if (!host) return run;
-    const team = cloneTeam(run.team).map((u) =>
-      u.instanceId === instanceId
-        ? {
-            ...u,
-            permanentMods: {
-              ...u.permanentMods,
-              [sweet.stat]: u.permanentMods[sweet.stat] + sweet.amount,
-            },
-          }
-        : u,
-    );
+    if (!canAcceptSticker(host) && replaceIndex == null) return run;
+    const team = cloneTeam(run.team).map((u) => {
+      if (u.instanceId !== instanceId) return u;
+      const peeled = replaceIndex == null ? u : stripStickerAt(u, replaceIndex);
+      const n = getUnit(peeled.defId).passives?.buffTriple ? 3 : 1;
+      return {
+        ...peeled,
+        permanentMods: {
+          ...peeled.permanentMods,
+          [sweet.stat]: peeled.permanentMods[sweet.stat] + sweet.amount * n,
+        },
+      };
+    });
     const next = {
       ...run,
       team,

@@ -275,9 +275,20 @@ export class AudioEngine {
         if (this.ctx.state === 'suspended') void this.ctx.resume();
         this.dropNow(this.resultSrc);
         this.snapBed(this.music * 0.8);
+        const html = this.musicEl;
+        if (html) {
+          this.fadingEl = html;
+          this.fadeHtmlVolume(html, 0.03, 0.12);
+        }
         this.resultSrc = this.startBuf(buf, this.ctx.currentTime + 0.02, false);
         this.resultSrc.onended = () => {
           this.resultSrc = null;
+          const el = this.musicEl;
+          if (!el || !this.playing) return;
+          if (this.cue !== 'menu' && this.cue !== 'square' && this.cue !== 'final') return;
+          const spec = TRACK[this.cue];
+          this.fadingEl = null;
+          this.fadeHtmlVolume(el, this.music * spec.gain, 0.45);
         };
       })
       .catch(() => {});

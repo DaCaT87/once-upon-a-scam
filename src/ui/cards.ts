@@ -1,4 +1,4 @@
-import { computedStats, getSticker, getUnit, hasCardFace, hasStickerArt, hasUnitArt, isScenicArt, nextFormOf, prevFormOf, resolveAbilityTiming, resolveTargeting, stickerArtFile, teamLaneOrder, unitArtFolder, usesPrintedCardFace, type StatContext } from '../core/catalog';
+import { computedStats, getSticker, getUnit, hasCardFace, hasStickerArt, hasUnitArt, isScenicArt, killsLeftOnCard, nextFormOf, prevFormOf, resolveAbilityTiming, resolveTargeting, stickerArtFile, teamLaneOrder, unitArtFolder, usesPrintedCardFace, type StatContext } from '../core/catalog';
 import { translate } from '../data/i18n';
 import { isOvenSweet, ovenSweetOffer } from '../data/stickers';
 import type { AbilityTiming, Locale, PublicUnitView, StickerDef, TargetingType, TeamId, UnitInstance } from '../core/types';
@@ -165,10 +165,11 @@ export function renderRuleRow(locale: Locale, targeting: TargetingType, defId: s
   return `<div class="rule-row">${renderTargetingLabel(locale, targeting)}${timing ? renderTimingLabel(locale, timing) : ''}</div>`;
 }
 
-function renderAbilityText(locale: Locale, rule: string, rewindLeft?: number): string {
+function renderAbilityText(locale: Locale, rule: string, live?: { rewindLeft?: number; killsLeft?: number }): string {
   if (!rule.trim()) return '';
   let html = linkKeywords(locale, rule);
-  if (rewindLeft != null) html = html.replace('{n}', `<b class="rewind-count" data-rewind-left>${rewindLeft}</b>`);
+  if (live?.rewindLeft != null) html = html.replace('{n}', `<b class="rewind-count" data-rewind-left>${live.rewindLeft}</b>`);
+  if (live?.killsLeft != null) html = html.replace('{n}', `<b class="rewind-count" data-kill-left>${live.killsLeft}</b>`);
   return `<div class="ability"><p class="ability-rule">${html}</p></div>`;
 }
 
@@ -179,9 +180,14 @@ export function renderCocoonBattleAbility(locale: Locale, provoke: boolean): str
   return renderAbilityText(locale, text);
 }
 
-export function renderAbility(locale: Locale, defId: string, rewindLeft?: number): string {
-  const left = defId === 'time-master' ? (rewindLeft ?? 3) : undefined;
-  return renderAbilityText(locale, abilityRule(locale, defId), left);
+export function renderAbility(locale: Locale, defId: string, rewindLeft?: number, killTally?: number): string {
+  const live =
+    defId === 'time-master'
+      ? { rewindLeft: rewindLeft ?? 3 }
+      : defId === 'headless-horseman'
+        ? { killsLeft: killsLeftOnCard(defId, killTally) }
+        : undefined;
+  return renderAbilityText(locale, abilityRule(locale, defId), live);
 }
 
 /** Targeting word for a card, after every sticker on it. */
@@ -305,7 +311,7 @@ export function bindTargetingTips(root: HTMLElement, localeOf?: () => Locale): v
       instanceId: `preview-${previewId}`,
       defId: previewId,
       slot: Number(host.dataset.slot) || 1,
-      stickerIds: stickersOnCard(host),
+      stickerIds: previewId === 'silk-cocoon' ? [] : stickersOnCard(host),
       permanentMods: { atk: 0, hp: 0, speed: 0 },
     };
     const wrap = document.createElement('div');
@@ -485,7 +491,7 @@ function portraitHtml(locale: Locale, defId: string, opts?: { clip?: string; loc
   const file = !opts?.figure && clip === 'idle' && hasCardFace(defId) ? 'card' : clip;
   const locked = opts?.locked ? ' data-locked="true"' : '';
   const scenic = isScenicArt(defId) ? ' scenic' : '';
-  const src = `./art/units/${folder}/${file}.png?v=cast200`;
+  const src = `./art/units/${folder}/${file}.png?v=cast208`;
   return `<img class="portrait-art${scenic}" data-unit="${folder}"${locked} src="${src}" alt="${t(locale, getUnit(defId).nameKey)}" draggable="false" />`;
 }
 
@@ -504,7 +510,7 @@ export function renderDossierOverlay(locale: Locale, defId: string): string {
     ? `<button type="button" class="btn ghost" data-act="next-dossier" data-def="${escapeHtml(nextId)}">${escapeHtml(t(locale, 'next'))}</button>`
     : '';
   const art = hasUnitArt(defId)
-    ? `<img class="dossier-portrait" data-unit="${folder}" src="./art/units/${folder}/idle.png?v=cast200" alt="${escapeHtml(name)}" draggable="false" />`
+    ? `<img class="dossier-portrait" data-unit="${folder}" src="./art/units/${folder}/idle.png?v=cast208" alt="${escapeHtml(name)}" draggable="false" />`
     : `<div class="dossier-art-empty" aria-hidden="true"></div>`;
   return `
     <div class="dossier-overlay" role="presentation">
@@ -532,12 +538,12 @@ export function renderUnitCard(
   const def = getUnit(inst.defId);
   const stats = computedStats(inst, { stickersGained: opts?.stickersGained, deathsThisRun: opts?.deathsThisRun });
   const silenced = Boolean(opts?.extraClass?.includes('is-silenced'));
-  const slots = stickerSlots(locale, inst.stickerIds, { spent: silenced });
+  const slots = stickerSlots(locale, def.id === 'silk-cocoon' ? [] : inst.stickerIds, { spent: silenced });
   const alleyHunt = Boolean(opts?.extraClass?.includes('is-alley-hunt'));
   const huntPlate = alleyHunt || Boolean(opts?.extraClass?.includes('is-hunt-plate'));
   const huntCard = huntPlate || def.tags.includes('hunt');
   const printed = usesPrintedCardFace(def.id);
-  const rules = `${renderRuleRow(locale, resolveTargeting(inst), def.id)}${renderAbility(locale, def.id, opts?.rewindLeft)}`;
+  const rules = `${renderRuleRow(locale, resolveTargeting(inst), def.id)}${renderAbility(locale, def.id, opts?.rewindLeft, inst.killTally)}`;
   const plateClass = huntPlate && !printed ? ' is-hunt-plate' : '';
   const huntClass = huntCard && !printed ? ' is-hunt-card' : '';
   const form = def.id === 'pig' || def.id === 'silk-cocoon';
@@ -713,7 +719,7 @@ function scrapReadout(locale: Locale, unit: PublicUnitView, defId: string): stri
   const when = timing ? `<div class="rule-row">${renderTimingLabel(locale, timing)}</div>` : '';
   const rule = defId === 'silk-cocoon'
     ? renderCocoonBattleAbility(locale, Boolean(unit.provoke))
-    : renderAbility(locale, defId, unit.rewindLeft);
+    : renderAbility(locale, defId, unit.rewindLeft, unit.killTally);
   if (!when && !rule) return '';
   return `<div class="scrap-readout">${when}${rule}</div>`;
 }
@@ -737,9 +743,11 @@ export function renderBattleCard(locale: Locale, unit: PublicUnitView): string {
           <div class="stat">${statIcon(locale, 'spd')}<b data-stat="spd">${unit.speed}</b></div>
         </div>
         <div class="rule-row">${renderTargetingLabel(locale, unit.targeting)}</div>
-        ${def.id === 'time-master' && !silenced ? renderAbility(locale, def.id, unit.rewindLeft) : ''}
+        ${(def.id === 'time-master' || def.id === 'headless-horseman') && !silenced
+          ? renderAbility(locale, def.id, unit.rewindLeft, unit.killTally)
+          : ''}
       </div>
-      <div class="sticker-rail">${stickerSlots(locale, unit.stickers, { spent: silenced })}</div>
+      <div class="sticker-rail">${stickerSlots(locale, def.id === 'silk-cocoon' ? [] : unit.stickers, { spent: silenced })}</div>
       ${scrapReadout(locale, unit, def.id)}
     </article>`;
 }

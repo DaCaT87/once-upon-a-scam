@@ -1,3 +1,5 @@
+import { isHandheld } from './fullscreen';
+
 /** Smallest layout the screens were drawn for. Wider or taller screens grow past it. */
 export const DESIGN_W = 1920;
 export const DESIGN_H = 1080;
@@ -6,7 +8,8 @@ export function applyViewportScale(): void {
   const vv = window.visualViewport;
   const rawH = vv?.height ?? window.innerHeight;
   const w = vv?.width ?? window.innerWidth;
-  const topGap = 18;
+  const handheld = isHandheld();
+  const topGap = handheld ? 0 : 18;
   const h = Math.max(1, rawH - topGap);
   const tallPhone = h > w && w < 700;
   // A tall phone cannot show a 1920-wide board without shrinking it to a postage stamp.
@@ -14,11 +17,11 @@ export function applyViewportScale(): void {
   const designW = tallPhone ? 640 : DESIGN_W;
   const scale = tallPhone ? w / designW : Math.min(w / DESIGN_W, h / DESIGN_H);
   const root = document.documentElement;
-  // The menu picture is 16:9. A wider screen keeps that frame whole, centered, instead of cropping it.
-  const menuSpare = !tallPhone && root.classList.contains('is-menu')
-    ? Math.max(0, (w - DESIGN_W * scale) / 2)
-    : 0;
-  const frameMenu = menuSpare > 24;
+  // The menu picture is 16:9. Keep that frame whole so the book is not cropped.
+  const menu = root.classList.contains('is-menu');
+  const menuSpare = !tallPhone && menu ? Math.max(0, (w - DESIGN_W * scale) / 2) : 0;
+  const frameMenu = menu && !tallPhone;
+  root.classList.toggle('is-handheld', handheld);
   root.style.setProperty('--ui-scale', String(scale));
   root.style.setProperty('--design-w', String(frameMenu ? DESIGN_W : w / scale));
   root.style.setProperty('--design-h', String(frameMenu ? DESIGN_H : h / scale));

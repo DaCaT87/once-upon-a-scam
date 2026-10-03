@@ -230,7 +230,7 @@ assertShopCurve();
     crow.hp !== 7 ||
     crow.atk !== 1 ||
     crow.speed !== 0 ||
-    !crow.passives?.provoke ||
+    crow.passives?.provoke ||
     !shove ||
     shove.type !== 'MovedToBack' ||
     shove.fromSlot !== 1 ||
@@ -242,7 +242,7 @@ assertShopCurve();
   ) {
     throw new Error('scary scarecrow did not Fear the hit target to the last slot');
   }
-  if (abilityRule('en', 'scary-scarecrow') !== 'Fear. Taunt.') {
+  if (abilityRule('en', 'scary-scarecrow') !== 'Fear.') {
     throw new Error('scary scarecrow text');
   }
 }
@@ -2203,6 +2203,39 @@ assertShopCurve();
   }
 }
 {
+  if (abilityRule('en', 'headless-horseman') !== 'After {n} KO Become Cursed Horseman.') {
+    throw new Error('headless horseman en');
+  }
+  const hhFace = renderUnitCard('en', instanceFromDef('headless-horseman', 1, 'hhFace'));
+  if (hhFace.includes('EACH KO') || hhFace.includes('timing.onKill')) {
+    throw new Error('headless horseman should not print EACH KO');
+  }
+  const hhLive = renderBattleCard('en', {
+    uid: 'player:hh',
+    defId: 'headless-horseman',
+    team: 'player',
+    slot: 1,
+    nameKey: 'unit.headlessHorseman',
+    rarity: 'silver',
+    atk: getUnit('headless-horseman').atk,
+    hp: getUnit('headless-horseman').hp,
+    maxHp: getUnit('headless-horseman').hp,
+    speed: getUnit('headless-horseman').speed,
+    stickers: [],
+    targeting: getUnit('headless-horseman').targeting,
+    art: getUnit('headless-horseman').art,
+    summoned: false,
+    killTally: 2,
+  });
+  if ((hhLive.match(/data-kill-left/g) ?? []).length < 2 || !hhLive.includes('>3</b>')) {
+    throw new Error('headless horseman scrap parchment should show the live KO count');
+  }
+  const hhZoom = renderUnitCard('en', { ...instanceFromDef('headless-horseman', 1, 'hhZ'), killTally: 4 });
+  if (!hhZoom.includes('data-kill-left') || !hhZoom.includes('>1</b>')) {
+    throw new Error('headless horseman zoom parchment should show the live KO count');
+  }
+}
+{
   const dust = simulateBattle(
     makeSnapshot({
       playerId: 'p',
@@ -3599,8 +3632,14 @@ assertShopCurve();
   if (translate('en', 'timing.scrapEnd') === translate('en', 'timing.battleEnd')) {
     throw new Error('after scrap must not reuse battle end');
   }
-  if (!abilityRule('en', 'cobblers-elves').startsWith(translate('en', 'keywordTransform'))) {
+  if (!abilityRule('en', 'cobblers-elves').includes(translate('en', 'keywordTransform'))) {
     throw new Error('sleeping bear should Transform');
+  }
+  if (!abilityRule('en', 'cobblers-elves').toLowerCase().includes('takes damage')) {
+    throw new Error('sleeping bear should wake on damage');
+  }
+  if (!abilityRule('it', 'cobblers-elves').toLowerCase().includes('subisce danno')) {
+    throw new Error('sleeping bear it should wake on damage');
   }
   for (const unit of UNITS) {
     const key = `lore.${unit.id}`;
@@ -3611,6 +3650,29 @@ assertShopCurve();
   const wake = getUnit('cobblers-elves').ability?.effects[0];
   if (!wake || wake.op !== 'transform' || wake.duration !== 'combat') {
     throw new Error('sleeping bear transform should end with the scrap');
+  }
+  {
+    const dusty = makeSnapshot({
+      playerId: 'p',
+      playerName: 'p',
+      runId: 'r',
+      round: 1,
+      team: [applySticker(instanceFromDef('village-fool', 1, 'ffire'), 'fireball')],
+    });
+    const sleeper = makeSnapshot({
+      playerId: 'e',
+      playerName: 'e',
+      runId: 'r',
+      round: 1,
+      team: [instanceFromDef('cobblers-elves', 1, 'sb-dmg')],
+    });
+    const puff = simulateBattle(dusty, sleeper, 4);
+    const woke = puff.events.find((e) => e.type === 'Transformed' && e.fromId === 'cobblers-elves');
+    const hit = puff.events.find((e) => e.type === 'DamageDealt' && e.kind === 'effect' && e.targetId === 'enemy:sb-dmg');
+    if (!hit) throw new Error('fireball should deal effect damage to the sleeping bear');
+    if (!woke || woke.type !== 'Transformed' || woke.unit.defId !== 'woken-bear') {
+      throw new Error('sleeping bear should wake from damage that is not an attack');
+    }
   }
   let eggRun = createRun('ai', 'tester', 'Egg', 0x71);
   eggRun = { ...eggRun, team: [instanceFromDef('the-egg', 1, 'eg2')] };
@@ -4630,6 +4692,18 @@ if (shopStickers().some((s) => s.id === 'woodsmans-axe')) throw new Error('axe i
   if (cocoonCard.includes('Taunt') || cocoonCard.includes('Same HP')) {
     throw new Error('a plain cocoon should not show Taunt or the HP line');
   }
+  const cocoonWithHuntSticker = renderBattleCard('en', { ...wrapped.unit, stickers: ['cocoon'] });
+  if (cocoonWithHuntSticker.includes('data-sticker="cocoon"')) {
+    throw new Error('a cocoon card should not wear the widow sticker');
+  }
+  const widowHuntCard = renderUnitCard('en', applySticker(instanceFromDef('purple-widows', 1, 'widowFace'), 'cocoon'));
+  if (!widowHuntCard.includes('data-sticker="cocoon"')) {
+    throw new Error('widow hunt card should still wear her sticker');
+  }
+  const silkFace = renderUnitCard('en', applySticker(instanceFromDef('silk-cocoon', 1, 'silkFace'), 'cocoon'));
+  if (silkFace.includes('data-sticker="cocoon"')) {
+    throw new Error('silk cocoon face should not wear the widow sticker');
+  }
   const bossCard = renderBattleCard('en', { ...wrapped.unit, provoke: true });
   if (!bossCard.includes('Taunt') || bossCard.includes('Same HP')) {
     throw new Error('boss-granted cocoon should show Taunt and not the HP line');
@@ -4874,6 +4948,73 @@ if (huntWon) {
   const fed = oven.team.find((u) => u.instanceId === 'ov2');
   if (oven.phase !== 'formation' || !fed || fed.permanentMods.hp !== 6 || fed.stickerIds.some((id) => id.startsWith('health-sweet'))) {
     throw new Error(`oven apply failed phase=${oven.phase} hp=${fed?.permanentMods.hp}`);
+  }
+}
+
+{
+  let ovenChimp: RunState = {
+    ...base,
+    phase: 'stickerAssign',
+    eventId: 'witch-oven',
+    eventStep: 'reward',
+    pendingStickerIds: ['attack-sweet:2', 'health-sweet:6', 'speed-sweet:5'],
+    stickerPickCount: 1,
+    team: [instanceFromDef('three-little-pigs', 1, 'ovChimp')],
+  };
+  ovenChimp = assignPendingSticker(ovenChimp, 'ovChimp', undefined, 'attack-sweet:2');
+  const chimps = ovenChimp.team.find((u) => u.instanceId === 'ovChimp');
+  if (!chimps || chimps.permanentMods.atk !== 6 || computedStats(chimps).atk !== 9) {
+    throw new Error(`oven sweet on chimps should triple atk=${chimps?.permanentMods.atk} shown=${chimps && computedStats(chimps).atk}`);
+  }
+}
+
+{
+  let same = 0;
+  let diff = 0;
+  for (let seed = 1; seed <= 48; seed++) {
+    const origin = createRun('ai', 'tester', 'EventRoll', seed);
+    const first = afterResult({ ...origin, phase: 'result', lastBattle: null, round: 1 });
+    const second = afterResult({
+      ...origin,
+      phase: 'result',
+      lastBattle: null,
+      round: 2,
+      offerCounter: first.offerCounter,
+      huntRaritiesSeen: first.huntRaritiesSeen ?? [],
+    });
+    if (!first.eventId || !second.eventId) throw new Error('alley event missing after a scrap');
+    if (first.eventId === second.eventId) same += 1;
+    else diff += 1;
+  }
+  if (diff === 0) throw new Error(`alley event was not rerolled between rounds same=${same}`);
+}
+
+{
+  let ovenFull: RunState = {
+    ...base,
+    phase: 'stickerAssign',
+    eventId: 'witch-oven',
+    eventStep: 'reward',
+    pendingStickerIds: ['health-sweet:4', 'attack-sweet:1', 'speed-sweet:0'],
+    stickerPickCount: 1,
+    team: [
+      applySticker(
+        applySticker(applySticker(instanceFromDef('farm-boy', 1, 'ovFull'), 'fur-armor'), 'rusty-knife'),
+        'rabbits-foot',
+      ),
+    ],
+  };
+  const blocked = assignPendingSticker(ovenFull, 'ovFull', undefined, 'health-sweet:4');
+  if (blocked !== ovenFull) throw new Error('oven sweet on a full figure should wait for a replace pick');
+  ovenFull = assignPendingSticker(ovenFull, 'ovFull', 1, 'health-sweet:4');
+  const swapped = ovenFull.team.find((u) => u.instanceId === 'ovFull');
+  if (
+    !swapped ||
+    swapped.stickerIds.join(',') !== 'fur-armor,rabbits-foot' ||
+    swapped.permanentMods.hp !== 4 ||
+    swapped.stickerIds.some((id) => id.startsWith('health-sweet'))
+  ) {
+    throw new Error(`oven replace failed stk=${swapped?.stickerIds.join(',')} hp=${swapped?.permanentMods.hp}`);
   }
 }
 
@@ -5322,9 +5463,9 @@ console.log('OK set line');
   if (!goose || !cover || cover.defId === 'puss-in-boots') {
     throw new Error(`guardian should stand in front of a carry, got ${lined.map((u) => `${u.slot}:${u.defId}`).join(',')}`);
   }
-  const taunt = lined.find((u) => u.defId === 'scary-scarecrow');
-  if (!taunt || taunt.slot > 2) {
-    throw new Error(`taunt should stand near the front, slot ${taunt?.slot}`);
+  const crow = lined.find((u) => u.defId === 'scary-scarecrow');
+  if (!crow) {
+    throw new Error('scarecrow should stay in the rival line');
   }
   const circuit = openCircuit(0x51a711, 'Auto Mae');
   if (circuit.length !== 9 || new Set(circuit.map((r) => r.vice)).size !== 9) {

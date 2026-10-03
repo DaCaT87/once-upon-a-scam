@@ -181,6 +181,7 @@ function viewOf(u: Combatant): PublicUnitView {
     silenced: u.silenced,
     provoke: u.passives.provoke || undefined,
     rewindLeft: u.passives.rewind ? u.rewindLeft : undefined,
+    killTally: u.defId === 'headless-horseman' ? u.killTally : undefined,
   };
 }
 
@@ -353,6 +354,8 @@ function condOk(
       return adjacent(state, c).some((a) => a.rarity === 'gold');
     case 'survivedAttack':
       return Boolean(ctx.isAttack) && c.hp > 0 && !c.dead;
+    case 'survived':
+      return c.hp > 0 && !c.dead;
     case 'targetHasHigherAtk':
       return Boolean(ctx.attackTarget && ctx.attackTarget.atk > c.atk);
     case 'targetHasStickers':

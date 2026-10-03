@@ -88,6 +88,7 @@ export type AbilityTiming =
   | 'battleEnd'
   | 'scrapEnd'
   | 'whenHit'
+  | 'whenDamaged'
   | 'onKill'
   | 'allyDied'
   | 'anyDied'
@@ -126,6 +127,7 @@ export type AbilityCondition =
   | { kind: 'sourceIsAttack' }
   | { kind: 'adjacentGold' }
   | { kind: 'survivedAttack' }
+  | { kind: 'survived' }
   | { kind: 'targetHasHigherAtk' }
   | { kind: 'targetHasStickers' };
 
@@ -398,6 +400,8 @@ export interface PublicUnitView {
   provoke?: boolean;
   /** Rewinds still left on this figure. Counts down from rewindUses. */
   rewindLeft?: number;
+  /** Headless Horseman KO tally this run, used to count down the Become text. */
+  killTally?: number;
 }
 
 export type BattleEvent =

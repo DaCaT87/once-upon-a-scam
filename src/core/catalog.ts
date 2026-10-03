@@ -182,9 +182,10 @@ function timingFromAbility(ability: AbilityDef): AbilityTiming | null {
     case 'anyDied':
       return 'anyDied';
     case 'unitKilled':
+      if (ability.effects.some((e) => e.op === 'transform' && e.afterKills)) return null;
       return 'onKill';
     case 'damageReceived':
-      return 'whenHit';
+      return ability.condition?.kind === 'survivedAttack' ? 'whenHit' : 'whenDamaged';
     case 'onRecruit':
       return 'onRecruit';
     case 'onApply':
@@ -248,7 +249,7 @@ export function assertAbilityTiming(): void {
     ['black-duck', null],
     ['pied-piper', 'onHit'],
     ['little-fairy', 'turnStart'],
-    ['cobblers-elves', 'whenHit'],
+    ['cobblers-elves', 'whenDamaged'],
     ['magic-mirror', null],
     ['village-fool', null],
     ['puss-in-boots', 'onAttack'],
@@ -261,7 +262,7 @@ export function assertAbilityTiming(): void {
     ['happy-rat', 'onSticker'],
     ['hunter', 'onKill'],
     ['witch-hunter', 'onHit'],
-    ['headless-horseman', 'onKill'],
+    ['headless-horseman', null],
     ['cursed-horseman', 'onKill'],
     ['patchwork-princess', 'onSticker'],
     ['sir-forget-a-lot', 'scrapEnd'],
@@ -634,6 +635,13 @@ export function usesPrintedCardFace(defId: string): boolean {
 
 export function isScenicArt(defId: string): boolean {
   return hasUnitArt(defId);
+}
+
+/** Remaining KO needed before a Become-after-kills card changes form. */
+export function killsLeftOnCard(defId: string, killTally = 0): number | undefined {
+  const fx = getUnit(defId).ability?.effects.find((e) => e.op === 'transform' && e.afterKills);
+  if (!fx || fx.op !== 'transform' || !fx.afterKills) return undefined;
+  return Math.max(0, fx.afterKills - killTally);
 }
 
 /** Fixed next form when this card becomes / transforms into a known card. */

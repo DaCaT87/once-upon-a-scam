@@ -1,5 +1,5 @@
 import { audio, type MusicCue } from '../audio/engine';
-import { firstFreeSlot, getUnit, stickerArtFile } from '../core/catalog';
+import { firstFreeSlot, getUnit, killsLeftOnCard, stickerArtFile } from '../core/catalog';
 import { clampPlayerName, PLAYER_NAME_MAX } from '../core/ids';
 import { EVENT_BY_ID, HUNT_MONSTERS, eventHidesRarity, huntStickerFor, lossRewardRarity } from '../data/events';
 import { rarityRank, shopMaxRarity, stickerMaxRarity } from '../data/rarity';
@@ -286,7 +286,21 @@ export class GameApp {
       if (!panel) return;
       const copy = document.getElementById('credits-copy');
       if (copy) copy.textContent = this.L('audioNote');
+      const stings = document.getElementById('credits-stings');
+      if (stings) {
+        stings.innerHTML = `
+          <button type="button" class="btn ghost" data-result="player">${this.L('resultWin')}</button>
+          <button type="button" class="btn ghost" data-result="draw">${this.L('resultDraw')}</button>
+          <button type="button" class="btn ghost" data-result="enemy">${this.L('resultLose')}</button>`;
+      }
       panel.hidden = !panel.hidden;
+    });
+    document.getElementById('credits-stings')?.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-result]');
+      const kind = btn?.dataset.result;
+      if (kind !== 'player' && kind !== 'enemy' && kind !== 'draw') return;
+      audio.unlock();
+      audio.playResult(kind);
     });
     bindTargetingTips(this.root, () => this.settings.locale);
   }
@@ -551,6 +565,12 @@ export class GameApp {
         slot: Number(card.dataset.slot) || saved?.slot || 1,
         stickerIds: stickerIds.length ? stickerIds : (saved?.stickerIds ?? []),
         permanentMods: saved?.permanentMods ?? { atk: 0, hp: 0, speed: 0 },
+        killTally: (() => {
+          const n = card.querySelector('[data-kill-left]')?.textContent?.trim();
+          const need = killsLeftOnCard(defId, 0);
+          if (n != null && n !== '' && need != null) return Math.max(0, need - Number(n));
+          return saved?.killTally;
+        })(),
       },
       {
         ...this.runStatCtx(),
@@ -703,6 +723,13 @@ export class GameApp {
     const creditsPanel = document.getElementById('credits-panel');
     const creditsCopy = document.getElementById('credits-copy');
     if (creditsCopy) creditsCopy.textContent = this.L('audioNote');
+    const stings = document.getElementById('credits-stings');
+    if (stings && !stings.childElementCount) {
+      stings.innerHTML = `
+        <button type="button" class="btn ghost" data-result="player">${this.L('resultWin')}</button>
+        <button type="button" class="btn ghost" data-result="draw">${this.L('resultDraw')}</button>
+        <button type="button" class="btn ghost" data-result="enemy">${this.L('resultLose')}</button>`;
+    }
     if (creditsBtn) {
       creditsBtn.hidden = this.screen !== 'menu';
       creditsBtn.textContent = this.L('credits');
@@ -1707,7 +1734,7 @@ export class GameApp {
           sticker.classList.remove('is-peeled');
           return;
         }
-        if (inst.stickerIds.length >= MAX_STICKERS && !isOvenSweet(draggedId)) {
+        if (inst.stickerIds.length >= MAX_STICKERS) {
           sticker.classList.remove('is-peeled');
           const from = this.run.phase === 'sticker' ? 'shop' : 'assign';
           this.replacePick = { instanceId: inst.instanceId, from, stickerId: draggedId };

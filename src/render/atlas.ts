@@ -167,7 +167,7 @@ export function preloadArt(onProgress?: (done: number, total: number) => void): 
   if (readyPromise) return readyPromise;
   const srcs: string[] = [];
   for (const id of UNIT_IDS) {
-    for (const clip of CLIPS) srcs.push(`./art/units/${id}/${clip}.png?v=cast200`);
+    for (const clip of CLIPS) srcs.push(`./art/units/${id}/${clip}.png?v=cast208`);
   }
   for (const id of STICKERS) srcs.push(`./art/stickers/${id}.png?v=cast179`);
   for (const id of UI) srcs.push(`./art/ui/${id}.png${id === 'arena' ? '?v=court2' : ''}`);

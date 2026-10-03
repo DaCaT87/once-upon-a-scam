@@ -1,5 +1,5 @@
 import { audio } from '../audio/engine';
-import { getUnit, slotRange } from '../core/catalog';
+import { getUnit, killsLeftOnCard, slotRange } from '../core/catalog';
 import { translate } from '../data/i18n';
 import type { BattleEvent, DeathStyle, PublicUnitView, Settings, TeamId } from '../core/types';
 import { MAX_TEAM } from '../core/types';
@@ -1046,6 +1046,18 @@ export class BattleView {
         this.applyStickerToCard(ev.unitId, ev.stickerId, silent);
         if (!silent) this.pulse(ev.sourceId);
         return silent ? 0 : 0.34;
+      }
+      case 'KillTallied': {
+        const left = killsLeftOnCard('headless-horseman', ev.now);
+        if (left != null) {
+          this.cardEl(ev.unitId)
+            ?.querySelectorAll('[data-kill-left]')
+            .forEach((count) => {
+              count.textContent = String(left);
+            });
+        }
+        this.pulse(ev.unitId);
+        return silent ? 0 : 0.12;
       }
       case 'Rewound': {
         const tgt = this.actors.get(ev.unitId);
