@@ -25,9 +25,6 @@ const TRACK: Record<HtmlCue, { src: string; from: number; gain: number }> = {
   final: { src: './audio/the-parting.mp3', from: 0, gain: 0.62 },
 };
 
-/** How long the result word stays up with its jingle. Matches the wavs. */
-const RESULT_SEC = { win: 4.4, draw: 4.4, lose: 4.4 } as const;
-
 /** Open file is the short attack plus one pass of the motif. The loop file repeats until the scrap ends. */
 const BATTLE_MUSIC: Record<BattleCue, { open: string; loop: string }> = {
   fight: {
@@ -86,8 +83,6 @@ export class AudioEngine {
   private fadingEl: HTMLAudioElement | null = null;
   private openSrc: AudioBufferSourceNode | null = null;
   private loopSrc: AudioBufferSourceNode | null = null;
-  private resultSrc: AudioBufferSourceNode | null = null;
-  private resultCache: Promise<Record<'win' | 'draw' | 'lose', AudioBuffer>> | null = null;
   private readonly bedCache = new Map<BattleCue, Promise<[AudioBuffer, AudioBuffer]>>();
   private menuCache: Promise<[AudioBuffer, AudioBuffer]> | null = null;
   private readonly sfxBuffers = new Map<SfxName, AudioBuffer>();
@@ -187,7 +182,6 @@ export class AudioEngine {
   leaveSquare(next: BattleCue): void {
     // Decode the scrap bed during the curtain, so the fanfare is ready on the board.
     void this.loadBed(next).catch(() => {});
-    void this.loadResults().catch(() => {});
     const el = this.musicEl;
     if (!el || (this.cue !== 'menu' && this.cue !== 'square')) return;
     this.fadingEl = el;
@@ -254,45 +248,6 @@ export class AudioEngine {
       return this.finishBed();
     }
     return 0;
-  }
-
-  /** Short result tune. Starts only after the scrap piece has gone quiet. */
-  playResult(winner: 'player' | 'enemy' | 'draw'): number {
-    const kind = winner === 'player' ? 'win' : winner === 'draw' ? 'draw' : 'lose';
-    ++this.bedGen;
-    this.dropNow(this.openSrc);
-    this.dropNow(this.loopSrc);
-    this.openSrc = this.loopSrc = null;
-    this.bedLive = false;
-    this.bedPhase = null;
-    this.bedCue = null;
-    const pending = this.playing ? (this.resultCache ?? this.loadResults()) : null;
-    if (!pending) return 2.2;
-    void pending
-      .then((set) => {
-        const buf = set[kind];
-        if (!buf || !this.playing || !this.ctx) return;
-        if (this.ctx.state === 'suspended') void this.ctx.resume();
-        this.dropNow(this.resultSrc);
-        this.snapBed(this.music * 0.8);
-        const html = this.musicEl;
-        if (html) {
-          this.fadingEl = html;
-          this.fadeHtmlVolume(html, 0.03, 0.12);
-        }
-        this.resultSrc = this.startBuf(buf, this.ctx.currentTime + 0.02, false);
-        this.resultSrc.onended = () => {
-          this.resultSrc = null;
-          const el = this.musicEl;
-          if (!el || !this.playing) return;
-          if (this.cue !== 'menu' && this.cue !== 'square' && this.cue !== 'final') return;
-          const spec = TRACK[this.cue];
-          this.fadingEl = null;
-          this.fadeHtmlVolume(el, this.music * spec.gain, 0.45);
-        };
-      })
-      .catch(() => {});
-    return RESULT_SEC[kind];
   }
 
   startMusic(): void {
@@ -490,8 +445,7 @@ export class AudioEngine {
   private stopBedSources(): void {
     this.dropNow(this.openSrc);
     this.dropNow(this.loopSrc);
-    this.dropNow(this.resultSrc);
-    this.openSrc = this.loopSrc = this.resultSrc = null;
+    this.openSrc = this.loopSrc = null;
     this.bedPhase = null;
     this.bedLive = false;
     this.bedCue = null;
@@ -510,7 +464,6 @@ export class AudioEngine {
     this.bedPhase = 'bed';
     this.bedCue = cue;
     this.loaded = cue;
-    void this.loadResults().catch(() => {});
     if (!this.ctx) this.ctx = new AudioContext();
     if (this.ctx.state === 'suspended') await this.ctx.resume();
     let buffers: [AudioBuffer, AudioBuffer];
@@ -560,30 +513,6 @@ export class AudioEngine {
       this.snapBed(this.musicLevel());
     }, Math.round((remain + fadeSec) * 1000) + 40);
     return remain + fadeSec;
-  }
-
-  private loadResults(): Promise<Record<'win' | 'draw' | 'lose', AudioBuffer>> {
-    if (!this.resultCache) {
-      if (!this.ctx) this.ctx = new AudioContext();
-      const ctx = this.ctx;
-      const files = {
-        win: './audio/result-win.wav?v=sting8',
-        draw: './audio/result-draw.wav?v=sting8',
-        lose: './audio/result-lose.wav?v=sting8',
-      } as const;
-      const pending = Promise.all(
-        (Object.keys(files) as ('win' | 'draw' | 'lose')[]).map(async (kind) => {
-          const res = await fetch(files[kind]);
-          if (!res.ok) throw new Error(files[kind]);
-          return [kind, await ctx.decodeAudioData(await res.arrayBuffer())] as const;
-        }),
-      ).then((pairs) => Object.fromEntries(pairs) as Record<'win' | 'draw' | 'lose', AudioBuffer>);
-      pending.catch(() => {
-        if (this.resultCache === pending) this.resultCache = null;
-      });
-      this.resultCache = pending;
-    }
-    return this.resultCache;
   }
 
   /** The square has its own music. Whatever is left of the scrap fades out as the waltz fades in. */

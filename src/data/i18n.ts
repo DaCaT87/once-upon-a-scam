@@ -532,7 +532,7 @@ const en: Record<string, string> = {
   discovered: 'Seen',
   locked: 'Still in the alley',
   audioNote:
-    'Kevin MacLeod (incompetech.com)\nCC BY 4.0\n\nMenu — Fairytale Waltz\nMarket — Enchanted Valley\nFinal standings — The Parting\n\nFreesound\nHit — Punch, Universfield\nAttack — Item Swing, oxidvideos\nKO — Game Character Fall, Universfield\nLucky — Lucky Guitar, sergequadrado\nTransform — Swish, stereogenicstudio\n\nVictory — Victory Bell Success Fanfare, Emand_Edroff (pixabay.com)\nDraw — Funny Cartoon Sound 2, lucadialessandro (pixabay.com)\nDefeat — Violin Lose 4, floraphonic (pixabay.com)',
+    'Kevin MacLeod (incompetech.com)\nCC BY 4.0\n\nMenu — Fairytale Waltz\nMarket — Enchanted Valley\nFinal standings — The Parting\n\nFreesound\nHit — Punch, Universfield\nAttack — Item Swing, oxidvideos\nKO — Game Character Fall, Universfield\nLucky — Lucky Guitar, sergequadrado\nTransform — Swish, stereogenicstudio',
   skipNeedResult: 'The scrap is already decided.',
   mustAssign: 'Every chosen sticker must be pasted before the next scrap.',
   mustPickDraft: 'Choose exactly two.',
@@ -842,7 +842,7 @@ const it: Record<string, string> = {
   discovered: 'Visti',
   locked: 'Ancora in vicolo',
   audioNote:
-    'Kevin MacLeod (incompetech.com)\nCC BY 4.0\n\nMenù — Fairytale Waltz\nPiazza — Enchanted Valley\nClassifica — The Parting\n\nFreesound\nColpo — Punch, Universfield\nAttacco — Item Swing, oxidvideos\nKO — Game Character Fall, Universfield\nFortuna — Lucky Guitar, sergequadrado\nTrasformazione — Swish, stereogenicstudio\n\nVittoria — Victory Bell Success Fanfare, Emand_Edroff (pixabay.com)\nPareggio — Funny Cartoon Sound 2, lucadialessandro (pixabay.com)\nSconfitta — Violin Lose 4, floraphonic (pixabay.com)',
+    'Kevin MacLeod (incompetech.com)\nCC BY 4.0\n\nMenù — Fairytale Waltz\nPiazza — Enchanted Valley\nClassifica — The Parting\n\nFreesound\nColpo — Punch, Universfield\nAttacco — Item Swing, oxidvideos\nKO — Game Character Fall, Universfield\nFortuna — Lucky Guitar, sergequadrado\nTrasformazione — Swish, stereogenicstudio',
   mustAssign: 'Ogni sticker scelto va incollato prima del prossimo scontro.',
   mustPickDraft: 'Scegline esattamente due.',
   recruited: 'Ingaggiato',

@@ -286,21 +286,7 @@ export class GameApp {
       if (!panel) return;
       const copy = document.getElementById('credits-copy');
       if (copy) copy.textContent = this.L('audioNote');
-      const stings = document.getElementById('credits-stings');
-      if (stings) {
-        stings.innerHTML = `
-          <button type="button" class="btn ghost" data-result="player">${this.L('resultWin')}</button>
-          <button type="button" class="btn ghost" data-result="draw">${this.L('resultDraw')}</button>
-          <button type="button" class="btn ghost" data-result="enemy">${this.L('resultLose')}</button>`;
-      }
       panel.hidden = !panel.hidden;
-    });
-    document.getElementById('credits-stings')?.addEventListener('click', (e) => {
-      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-result]');
-      const kind = btn?.dataset.result;
-      if (kind !== 'player' && kind !== 'enemy' && kind !== 'draw') return;
-      audio.unlock();
-      audio.playResult(kind);
     });
     bindTargetingTips(this.root, () => this.settings.locale);
   }
@@ -723,13 +709,6 @@ export class GameApp {
     const creditsPanel = document.getElementById('credits-panel');
     const creditsCopy = document.getElementById('credits-copy');
     if (creditsCopy) creditsCopy.textContent = this.L('audioNote');
-    const stings = document.getElementById('credits-stings');
-    if (stings && !stings.childElementCount) {
-      stings.innerHTML = `
-        <button type="button" class="btn ghost" data-result="player">${this.L('resultWin')}</button>
-        <button type="button" class="btn ghost" data-result="draw">${this.L('resultDraw')}</button>
-        <button type="button" class="btn ghost" data-result="enemy">${this.L('resultLose')}</button>`;
-    }
     if (creditsBtn) {
       creditsBtn.hidden = this.screen !== 'menu';
       creditsBtn.textContent = this.L('credits');
@@ -3692,7 +3671,7 @@ export class GameApp {
       const live = this.root.querySelector<HTMLElement>('#battlefield');
       const still = this.run?.lastBattle;
       if (!live || !still || live.querySelector('.battle-end')) return;
-      this.revealBattleEnd(live, still, 0);
+      this.revealBattleEnd(live, still);
     }, waitMs);
   }
 
@@ -3703,7 +3682,6 @@ export class GameApp {
   private revealBattleEnd(
     field: HTMLElement,
     battle: NonNullable<NonNullable<typeof this.run>['lastBattle']>,
-    stingDelayMs = 0,
   ): void {
     const run = this.run;
     if (!run) return;
@@ -3735,22 +3713,10 @@ export class GameApp {
       row.style.top = `${Math.max(0, y - 140)}px`;
     }
 
-    const beginScore = () => {
-      if (this.screen !== 'battle') return;
-      const stingMs = Math.round(audio.playResult(winner) * 1000);
-      const holdUntil = performance.now() + Math.max(stingMs, 2200);
-      const leave = (tailMs: number) => {
-        window.setTimeout(() => void this.leaveBattleEnd(), Math.max(tailMs, holdUntil - performance.now()));
-      };
-      const steps = Math.abs(to - from);
-      if (steps === 0) {
-        leave(0);
-        return;
-      }
-
+    const steps = Math.abs(to - from);
     const crown = field.querySelector<HTMLElement>('.battle-hud .line-crown');
     const score = crown?.querySelector(':scope > b');
-    if (crown && score) {
+    if (steps > 0 && crown && score) {
       const rising = to > from;
       const roll = document.createElement('span');
       roll.className = 'vp-roll';
@@ -3770,24 +3736,18 @@ export class GameApp {
       const tick = (step: number, stepH: number) => {
         if (step > steps) return;
         strip.style.transform = `translateY(${-step * stepH}px)`;
-        if (step === steps) {
-          leave(900);
-          return;
-        }
+        if (step === steps) return;
         window.setTimeout(() => tick(step + 1, stepH), 420);
       };
       window.requestAnimationFrame(() => {
-        // offsetHeight stays in the stage's own pixels. getBoundingClientRect
-        // is already shrunk by the phone scale, so the roll would stop halfway.
         const stepH = strip.querySelector('b')?.offsetHeight || 128;
         window.setTimeout(() => tick(1, stepH), 480);
       });
-      return;
     }
-      leave(0);
-    };
-    if (stingDelayMs > 0) window.setTimeout(beginScore, stingDelayMs);
-    else beginScore();
+    window.setTimeout(() => {
+      if (this.screen !== 'battle') return;
+      void this.leaveBattleEnd();
+    }, 1000);
   }
 
   private async leaveBattleEnd(): Promise<void> {

@@ -244,18 +244,6 @@ html:not(.is-booting) .boot {
   margin: 0;
   white-space: pre-line;
 }
-.credits-stings {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 12px;
-}
-.credits-stings .btn {
-  flex: 1 1 auto;
-  min-width: 0;
-  padding: 6px 10px;
-  font-size: 15px;
-}
 
 .landscape-gate {
   display: none;
