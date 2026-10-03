@@ -544,7 +544,7 @@ export function renderDossierOverlay(locale: Locale, defId: string): string {
           <h2 id="dossier-title" class="sign">${escapeHtml(name)}</h2>
           <p class="dossier-story">${escapeHtml(lore)}</p>
           <div class="dossier-actions">
-            ${prevId ? `${back}${exit}` : `${exit}${next}`}
+            ${back}${exit}${next}
           </div>
         </div>
       </div>

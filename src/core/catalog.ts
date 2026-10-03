@@ -650,17 +650,39 @@ export function killsLeftOnCard(defId: string, killTally = 0): number | undefine
   return Math.max(0, fx.afterKills - killTally);
 }
 
-/** Fixed next form when this card becomes / transforms into a known card. */
+/** Dossier links when a figure creates a known form without a unitId on the ability. */
+const CREATED_FORM: Record<string, string> = {
+  'purple-widows': 'silk-cocoon',
+};
+
+/**
+ * Fixed next form for the library tale: self-becomes, ambush flip,
+ * or a known created figure (Circe → Pig, Sewer Lord → Garbage Pile, Widows → Cocoon).
+ */
 export function nextFormOf(defId: string): string | null {
   const def = getUnit(defId);
-  if (!def.recruitable) return null;
   const ability = def.ability;
-  if (!ability) return null;
-  const ambush = ability.effects.find((e) => e.op === 'ambush' && e.into);
-  if (ambush?.op === 'ambush' && ambush.into) return ambush.into;
-  if (ability.target !== 'self') return null;
-  const fx = ability.effects.find((e) => e.op === 'transform' && e.unitId);
-  return fx?.op === 'transform' && fx.unitId ? fx.unitId : null;
+  if (ability) {
+    const ambush = ability.effects.find((e) => e.op === 'ambush' && e.into);
+    if (ambush?.op === 'ambush' && ambush.into) return ambush.into;
+
+    // Shop form chain / printed become (recruitable self only — not combat reverse forms).
+    if (def.recruitable && ability.target === 'self') {
+      const fx = ability.effects.find((e) => e.op === 'transform' && e.unitId);
+      if (fx?.op === 'transform' && fx.unitId) return fx.unitId;
+    }
+
+    // Turns another figure into a known form (Circe → Pig).
+    if (ability.target !== 'self') {
+      const into = ability.effects.find((e) => e.op === 'transform' && e.unitId);
+      if (into?.op === 'transform' && into.unitId) return into.unitId;
+    }
+
+    // Spawns a known figure (Sewer Lord → Garbage Pile).
+    const spawn = ability.effects.find((e) => e.op === 'summonFront' && e.unitId);
+    if (spawn?.op === 'summonFront' && spawn.unitId) return spawn.unitId;
+  }
+  return CREATED_FORM[defId] ?? null;
 }
 
 const PREV_FORM = new Map<string, string>();
