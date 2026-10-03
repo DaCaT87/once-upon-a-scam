@@ -4431,6 +4431,13 @@ html:has(.battle-wrap.is-ended) .screen-battle {
   min-height: 270px;
   transform: none !important;
 }
+.card-zoom .ability,
+.card-zoom .ability-rule,
+.card-zoom .sticker-card p,
+.card-zoom .sticker-card .timing-type,
+.card-zoom .sticker-card .poison-rule {
+  display: block;
+}
 .card-zoom .ability-rule {
   font-size: 15px;
   line-height: 1.35;
@@ -4470,17 +4477,15 @@ html:has(.card-zoom) .scrap-readout {
   pointer-events: none;
 }
 
-/* Phone shop: the small card is the scrap face. The tap opens the whole card. */
-@media (pointer: coarse) and (max-height: 519px) {
-  .screen-recruit .unit-card .ability,
-  .screen-sticker .unit-card .ability,
-  .screen-recruit .sticker-card p,
-  .screen-recruit .sticker-card .timing-type,
-  .screen-recruit .sticker-card .poison-rule,
-  .screen-sticker .sticker-card p,
-  .screen-sticker .sticker-card .timing-type,
-  .screen-sticker .sticker-card .poison-rule {
-    display: none;
-  }
+/* Shop face: no ability text on the small card. Phone tap / desktop right-click opens the full card. */
+.screen-recruit .unit-card .ability,
+.screen-sticker .unit-card .ability,
+.screen-recruit .sticker-card p,
+.screen-recruit .sticker-card .timing-type,
+.screen-recruit .sticker-card .poison-rule,
+.screen-sticker .sticker-card p,
+.screen-sticker .sticker-card .timing-type,
+.screen-sticker .sticker-card .poison-rule {
+  display: none;
 }
 
