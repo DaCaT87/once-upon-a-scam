@@ -678,7 +678,8 @@ export class GameApp {
     if (this.run?.phase === 'recruit' && this.run.pendingGoldUnitId) {
       this.recruitReplace = { defId: this.run.pendingGoldUnitId, gold: true };
     }
-    const huntFight = this.screen === 'battle' && this.isHuntBattle();
+    const huntFight =
+      this.screen === 'battle' && (this.isHuntBattle() || this.run?.eventId === 'monster-hunt');
     document.documentElement.classList.toggle('is-menu', this.screen === 'menu' || this.screen === 'options');
     document.documentElement.classList.toggle('is-battle', this.screen === 'battle' && !huntFight);
     document.documentElement.classList.toggle('is-hunt', huntFight);
