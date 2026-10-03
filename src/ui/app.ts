@@ -1597,7 +1597,7 @@ export class GameApp {
             .map((u) => {
               const glued = huntStickerFor(u.id);
               const stickerIds = [...(u.startingStickers ?? [])];
-              // Face stickers stay off purple widows / bare cutouts; other hunts still show their glue.
+              // Hunt bosses keep their glued sticker; cocoon / garbage pile stay bare.
               if (glued && !stickerIds.includes(glued) && !barePrintedSummon(u.id)) stickerIds.push(glued);
               const inst: UnitInstance = {
                 instanceId: u.id,
