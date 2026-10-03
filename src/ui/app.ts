@@ -217,7 +217,16 @@ export class GameApp {
       const target = e.target as HTMLElement;
       const btn = target.closest<HTMLElement>('[data-act]');
       if (btn?.classList.contains('book-page') && target.closest('.rule-tip')) return;
-      if (btn) this.onAction(btn.dataset.act!, btn);
+      if (btn) {
+        this.onAction(btn.dataset.act!, btn);
+        return;
+      }
+      // Library: left click opens the tale. Right click still zooms the card.
+      if (this.screen !== 'codex' || this.cardZoom || this.dossierDefId) return;
+      if (target.closest('.rule-tip, .dossier-overlay')) return;
+      const card = target.closest<HTMLElement>('.unit-card[data-def]');
+      if (!card?.dataset.def) return;
+      this.openDossier(card.dataset.def);
     });
     this.root.addEventListener('dragstart', (e) => {
       if ((e.target as HTMLElement).closest('.btn-fight-art')) e.preventDefault();
@@ -230,10 +239,6 @@ export class GameApp {
       }
       if (target.closest('input, textarea, [contenteditable="true"]')) return;
       e.preventDefault();
-      if (this.screen !== 'codex') return;
-      const card = target.closest<HTMLElement>('.unit-card[data-def]');
-      if (!card?.dataset.def) return;
-      this.openDossier(card.dataset.def);
     });
     window.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape') return;
@@ -254,8 +259,8 @@ export class GameApp {
     this.root.addEventListener(
       'pointerdown',
       (e) => {
-        // Phone: tap. Desktop: right-click only (handled on contextmenu).
-        if (!this.phonePlay() || e.button !== 0 || this.cardZoom) return;
+        // Phone: tap to zoom. Library left tap opens the tale instead.
+        if (!this.phonePlay() || e.button !== 0 || this.cardZoom || this.screen === 'codex') return;
         const card = this.zoomableCard(e.target);
         if (!card) return;
         if (e.target instanceof Element && e.target.closest('button, .rule-tip, .sticker-slot')) e.preventDefault();
