@@ -618,8 +618,8 @@ export class GameApp {
     face.querySelectorAll('img').forEach((img) => {
       img.draggable = false;
     });
-    // Wider base so ability text lays out larger before we scale the whole face.
-    if (face.classList.contains('unit-card')) face.style.width = '360px';
+    // Table-sized face first so ability fits the parchment; then scale the whole card.
+    if (face.classList.contains('unit-card')) face.style.width = 'var(--card-w)';
     else face.style.width = '240px';
     overlay.append(scrim, stage);
     const shut = (e: Event) => {
@@ -640,8 +640,8 @@ export class GameApp {
     const floats = document.querySelectorAll<HTMLElement>('.targeting-float');
     this.zoomFloat = floats[floats.length - 1] ?? null;
     this.zoomFloat?.classList.add('zoom-float');
-    const naturalW = face.offsetWidth || 360;
-    const naturalH = face.offsetHeight || 540;
+    const naturalW = face.offsetWidth || 248;
+    const naturalH = face.offsetHeight || 376;
     // Half the old full-screen fill so the inspect stays readable, not wall-sized.
     const fill = Math.min((window.innerWidth - 40) / naturalW, (window.innerHeight - 32) / naturalH);
     const scale = fill * 0.5;

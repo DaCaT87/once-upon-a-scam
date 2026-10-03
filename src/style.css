@@ -4413,8 +4413,9 @@ html:has(.battle-wrap.is-ended) .screen-battle {
   z-index: 1;
   flex: none;
 }
+/* Same base face as the table — transform scale enlarges art + text together. */
 .card-zoom .unit-card {
-  width: 360px;
+  width: var(--card-w);
 }
 .card-zoom .sticker-card {
   width: 240px;
@@ -4427,46 +4428,6 @@ html:has(.battle-wrap.is-ended) .screen-battle {
 .card-zoom .sticker-card .timing-type,
 .card-zoom .sticker-card .poison-rule {
   display: block;
-}
-.card-zoom .ability-rule {
-  font-size: 15px;
-  line-height: 1.35;
-}
-.card-zoom .card-name {
-  font-size: 22px;
-}
-.card-zoom .rule-row,
-.card-zoom .timing-type,
-.card-zoom .targeting-type {
-  font-size: 14px;
-}
-.card-zoom .sticker-card p,
-.card-zoom .sticker-card .timing-type,
-.card-zoom .sticker-card .poison-rule {
-  font-size: 15px;
-  line-height: 1.35;
-}
-/* Keep glued stickers the same share of the face as on the table (zoom base is wider). */
-.card-zoom .unit-card .sticker-rail {
-  left: -8.1%;
-  top: calc(16% - 14.1%);
-  width: 25.8%;
-  gap: 2%;
-}
-.card-zoom .unit-card .sticker-slot {
-  width: 100%;
-  aspect-ratio: 1;
-  height: auto;
-}
-.card-zoom .unit-card .sticker-slot img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-.card-zoom .unit-card .rarity-mark {
-  width: 18.5%;
-  height: auto;
-  aspect-ratio: 1;
 }
 /* Help cursor only while inspecting the enlarged figure. */
 .unit-card:not(.tip-preview) .rule-tip,

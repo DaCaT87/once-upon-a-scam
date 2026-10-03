@@ -513,7 +513,7 @@ function portraitHtml(locale: Locale, defId: string, opts?: { clip?: string; loc
   const file = !opts?.figure && clip === 'idle' && hasCardFace(defId) ? 'card' : clip;
   const locked = opts?.locked ? ' data-locked="true"' : '';
   const scenic = isScenicArt(defId) ? ' scenic' : '';
-  const src = `./art/units/${folder}/${file}.png?v=cast209`;
+  const src = `./art/units/${folder}/${file}.png?v=cast210`;
   return `<img class="portrait-art${scenic}" data-unit="${folder}"${locked} src="${src}" alt="${t(locale, getUnit(defId).nameKey)}" draggable="false" />`;
 }
 
@@ -532,7 +532,7 @@ export function renderDossierOverlay(locale: Locale, defId: string): string {
     ? `<button type="button" class="btn ghost" data-act="next-dossier" data-def="${escapeHtml(nextId)}">${escapeHtml(t(locale, 'next'))}</button>`
     : '';
   const art = hasUnitArt(defId)
-    ? `<img class="dossier-portrait" data-unit="${folder}" src="./art/units/${folder}/idle.png?v=cast208" alt="${escapeHtml(name)}" draggable="false" />`
+    ? `<img class="dossier-portrait" data-unit="${folder}" src="./art/units/${folder}/idle.png?v=cast210" alt="${escapeHtml(name)}" draggable="false" />`
     : `<div class="dossier-art-empty" aria-hidden="true"></div>`;
   return `
     <div class="dossier-overlay" role="presentation">
@@ -936,11 +936,10 @@ function fitOneSlab(slab: HTMLElement): void {
   const overflows = () => slab.scrollHeight > slab.clientHeight + 1 || slab.scrollWidth > slab.clientWidth + 1;
   if (!overflows()) return;
 
-  // Inspect zoom uses a wider face; keep the rule readable instead of crushing to shop size.
-  const zoomed = Boolean(slab.closest('.card-zoom-stage'));
-  const ruleFloor = zoomed ? 12 : 5.5;
-  const rowFloor = zoomed ? 11 : 5.5;
-  const nameFloor = zoomed ? 14 : 9;
+  // Zoom uses the same face as the table, then CSS scale — fit here so nothing clips.
+  const ruleFloor = 5.5;
+  const rowFloor = 5.5;
+  const nameFloor = 9;
 
   const shrink = (el: HTMLElement | null, factor: number, floor: number): number => {
     if (!el) return floor;
