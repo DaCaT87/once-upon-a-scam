@@ -1,4 +1,4 @@
-import { computedStats, getSticker, getUnit, hasCardFace, hasStickerArt, hasUnitArt, isScenicArt, killsLeftOnCard, nextFormOf, prevFormOf, resolveAbilityTiming, resolveTargeting, stickerArtFile, teamLaneOrder, unitArtFolder, usesPrintedCardFace, type StatContext } from '../core/catalog';
+import { barePrintedSummon, computedStats, getSticker, getUnit, hasCardFace, hasStickerArt, hasUnitArt, isScenicArt, killsLeftOnCard, nextFormOf, prevFormOf, resolveAbilityTiming, resolveTargeting, stickerArtFile, teamLaneOrder, unitArtFolder, usesPrintedCardFace, type StatContext } from '../core/catalog';
 import { translate } from '../data/i18n';
 import { isOvenSweet, ovenSweetOffer } from '../data/stickers';
 import type { AbilityTiming, Locale, PublicUnitView, StickerDef, TargetingType, TeamId, UnitInstance } from '../core/types';
@@ -327,7 +327,7 @@ export function bindTargetingTips(root: HTMLElement, localeOf?: () => Locale): v
       instanceId: `preview-${previewId}`,
       defId: previewId,
       slot: Number(host.dataset.slot) || 1,
-      stickerIds: previewId === 'silk-cocoon' ? [] : stickersOnCard(host),
+      stickerIds: barePrintedSummon(previewId) ? [] : stickersOnCard(host),
       permanentMods: { atk: 0, hp: 0, speed: 0 },
     };
     const wrap = document.createElement('div');
@@ -513,7 +513,7 @@ function portraitHtml(locale: Locale, defId: string, opts?: { clip?: string; loc
   const file = !opts?.figure && clip === 'idle' && hasCardFace(defId) ? 'card' : clip;
   const locked = opts?.locked ? ' data-locked="true"' : '';
   const scenic = isScenicArt(defId) ? ' scenic' : '';
-  const src = `./art/units/${folder}/${file}.png?v=cast208`;
+  const src = `./art/units/${folder}/${file}.png?v=cast209`;
   return `<img class="portrait-art${scenic}" data-unit="${folder}"${locked} src="${src}" alt="${t(locale, getUnit(defId).nameKey)}" draggable="false" />`;
 }
 
@@ -560,7 +560,8 @@ export function renderUnitCard(
   const def = getUnit(inst.defId);
   const stats = computedStats(inst, { stickersGained: opts?.stickersGained, deathsThisRun: opts?.deathsThisRun });
   const silenced = Boolean(opts?.extraClass?.includes('is-silenced'));
-  const slots = stickerSlots(locale, def.id === 'silk-cocoon' ? [] : inst.stickerIds, { spent: silenced });
+  const bare = barePrintedSummon(def.id);
+  const slots = stickerSlots(locale, bare ? [] : inst.stickerIds, { spent: silenced });
   const alleyHunt = Boolean(opts?.extraClass?.includes('is-alley-hunt'));
   const huntPlate = alleyHunt || Boolean(opts?.extraClass?.includes('is-hunt-plate'));
   const huntCard = huntPlate || def.tags.includes('hunt');
@@ -569,16 +570,17 @@ export function renderUnitCard(
   const plateClass = huntPlate && !printed ? ' is-hunt-plate' : '';
   const huntClass = huntCard && !printed ? ' is-hunt-card' : '';
   const form = def.id === 'pig' || def.id === 'silk-cocoon';
+  const cutout = printed && (def.tags.includes('hunt') || bare);
   const extra = (opts?.extraClass ?? '')
     .split(/\s+/)
     .filter((c) => c && !(printed && (c === 'is-hunt-plate' || c === 'is-hunt-card' || c === 'is-alley-hunt')))
     .join(' ');
   return `
-    <article class="unit-card rarity-${def.rarity}${form ? ' is-form' : ''}${printed ? ' printed-card' : ''}${printed && (def.tags.includes('hunt') || def.id === 'silk-cocoon') ? ' is-cutout' : ''} ${opts?.selected ? 'selected' : ''} ${extra}${plateClass}${huntClass}"
+    <article class="unit-card rarity-${def.rarity}${form ? ' is-form' : ''}${printed ? ' printed-card' : ''}${cutout ? ' is-cutout' : ''} ${opts?.selected ? 'selected' : ''} ${extra}${plateClass}${huntClass}"
       role="button" tabindex="0"
       data-instance="${inst.instanceId}" data-def="${inst.defId}" data-slot="${inst.slot}">
       <div class="card-art">${portraitHtml(locale, def.id, opts)}</div>
-      ${form ? '' : rarityMark(locale, def.rarity, huntCard && !printed)}
+      ${form || bare ? '' : rarityMark(locale, def.rarity, huntCard && !printed)}
       <div class="card-slab">
         <h3 class="card-name">${t(locale, def.nameKey)}</h3>
         <div class="stats">
@@ -751,12 +753,14 @@ export function renderBattleCard(locale: Locale, unit: PublicUnitView): string {
   const silenced = Boolean(unit.silenced);
   const huntCard = def.tags.includes('hunt');
   const printed = usesPrintedCardFace(def.id);
+  const bare = barePrintedSummon(def.id);
+  const cutout = printed && (def.tags.includes('hunt') || bare);
   const rarity = def.id === 'pig' ? unit.rarity : def.rarity;
   return `
-    <article class="unit-card battle-card rarity-${rarity}${printed ? ' printed-card' : ''}${printed && (def.tags.includes('hunt') || def.id === 'silk-cocoon') ? ' is-cutout' : ''}${huntCard && !printed ? ' is-hunt-card' : ''}${unit.summoned ? ' is-summon' : ''}${silenced ? ' is-silenced' : ''}"
+    <article class="unit-card battle-card rarity-${rarity}${printed ? ' printed-card' : ''}${cutout ? ' is-cutout' : ''}${huntCard && !printed ? ' is-hunt-card' : ''}${unit.summoned ? ' is-summon' : ''}${silenced ? ' is-silenced' : ''}"
       data-uid="${unit.uid}" data-def="${unit.defId}" data-team="${unit.team}" data-slot="${unit.slot}">
       <div class="card-art">${portraitHtml(locale, def.id)}</div>
-      ${rarityMark(locale, rarity, huntCard && !printed)}
+      ${bare ? '' : rarityMark(locale, rarity, huntCard && !printed)}
       <div class="card-slab">
         <h3 class="card-name">${t(locale, def.nameKey)}</h3>
         <div class="stats">
@@ -769,7 +773,7 @@ export function renderBattleCard(locale: Locale, unit: PublicUnitView): string {
           ? renderAbility(locale, def.id, unit.rewindLeft, unit.killTally)
           : ''}
       </div>
-      <div class="sticker-rail">${stickerSlots(locale, def.id === 'silk-cocoon' ? [] : unit.stickers, { spent: silenced })}</div>
+      <div class="sticker-rail">${stickerSlots(locale, bare ? [] : unit.stickers, { spent: silenced })}</div>
       ${scrapReadout(locale, unit, def.id)}
     </article>`;
 }

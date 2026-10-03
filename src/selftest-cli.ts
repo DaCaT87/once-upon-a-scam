@@ -2,7 +2,7 @@ import { autoPlayRun } from './run/autoPlay';
 import { buildOpponent } from './ai/buildAI';
 import { formLine, ensureFullLine, diamondChance } from './ai/brain';
 import { openCircuit } from './run/circuit';
-import { applySticker, assertAbilityTiming, assertCompactSlots, baseFormOf, computedStats, getSticker, getUnit, hasCardFace, hasPrintedCard, hasStickerArt, hasUnitArt, instanceFromDef, makeSnapshot, nextFormOf, offerStickers, offerUnits, prevFormOf, resolveTargeting, usesPrintedCardFace } from './core/catalog';
+import { applySticker, assertAbilityTiming, assertCompactSlots, barePrintedSummon, baseFormOf, computedStats, getSticker, getUnit, hasCardFace, hasPrintedCard, hasStickerArt, hasUnitArt, instanceFromDef, makeSnapshot, nextFormOf, offerStickers, offerUnits, prevFormOf, resolveTargeting, usesPrintedCardFace } from './core/catalog';
 import { assertShopCurve } from './data/rarity';
 import { HUNT_MONSTERS, huntMonstersFor, huntStickerFor } from './data/events';
 import { STICKERS, grantableStickers, libraryHuntStickers, shopStickers } from './data/stickers';
@@ -4427,6 +4427,13 @@ if (!assertDeterministic(a, b, 12345)) throw new Error('determinism failed');
   const pile = getUnit('garbage-pile');
   if (pile.rarity !== 'gold' || pile.hp !== 10 || pile.atk !== 0 || pile.speed !== 0 || pile.targeting !== 'pacifist' || !pile.passives?.provoke) {
     throw new Error('garbage pile should be a gold pacifist taunt');
+  }
+  if (!barePrintedSummon('garbage-pile') || !usesPrintedCardFace('garbage-pile')) {
+    throw new Error('garbage pile should use a bare printed cutout face');
+  }
+  const pileFace = renderUnitCard('en', applySticker(instanceFromDef('garbage-pile', 1, 'pileFace'), 'fur-armor'));
+  if (!pileFace.includes('printed-card') || !pileFace.includes('is-cutout') || pileFace.includes('data-sticker="fur-armor"') || pileFace.includes('rarity-mark')) {
+    throw new Error('garbage pile face should be a cutout with no sticker rail or HTML rarity gem');
   }
   const lordCard = renderUnitCard('en', instanceFromDef('sewer-lord', 1, 'pileCard'));
   if (!lordCard.includes('START OF SCRAP') || !lordCard.includes('Spawn') || !lordCard.includes('Garbage Pile') || !lordCard.includes('in the first 3 slots') || !lordCard.includes('These figures are created.')) {

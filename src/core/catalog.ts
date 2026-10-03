@@ -616,6 +616,7 @@ const PRINTED_CARD_FOLDERS = new Set([
   'thousand-maws',
   'mad-woodsman',
   'sewer-lord',
+  'garbage-pile',
   'purple-widows',
   'silk-cocoon',
   'greed-fang',
@@ -623,6 +624,11 @@ const PRINTED_CARD_FOLDERS = new Set([
 
 export function hasPrintedCard(defId: string): boolean {
   return PRINTED_CARD_FOLDERS.has(unitArtFolder(defId));
+}
+
+/** Summons with a full printed cutout face and no sticker rail (cocoon, garbage pile). */
+export function barePrintedSummon(defId: string): boolean {
+  return defId === 'silk-cocoon' || defId === 'garbage-pile';
 }
 
 const FRAMED_HUNT_CARDS = new Set(['thousand-maws', 'purple-widows', 'sewer-lord', 'mad-woodsman', 'greed-fang']);
