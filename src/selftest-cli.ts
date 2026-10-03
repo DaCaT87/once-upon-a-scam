@@ -1,5 +1,7 @@
 import { autoPlayRun } from './run/autoPlay';
 import { buildOpponent } from './ai/buildAI';
+import { formLine, ensureFullLine, diamondChance } from './ai/brain';
+import { openCircuit } from './run/circuit';
 import { applySticker, assertAbilityTiming, assertCompactSlots, baseFormOf, computedStats, getSticker, getUnit, hasCardFace, hasPrintedCard, hasStickerArt, hasUnitArt, instanceFromDef, makeSnapshot, nextFormOf, offerStickers, offerUnits, prevFormOf, resolveTargeting, usesPrintedCardFace } from './core/catalog';
 import { assertShopCurve } from './data/rarity';
 import { HUNT_MONSTERS, huntMonstersFor, huntStickerFor } from './data/events';
@@ -164,7 +166,7 @@ assertShopCurve();
   const scrap = simulateBattle(witch, marked, 3);
   if (
     !scrap.events.some(
-      (e) => e.type === 'DamageDealt' && e.kind === 'attack' && e.sourceId === 'player:w1' && e.amount === 4,
+      (e) => e.type === 'DamageDealt' && e.kind === 'attack' && e.sourceId === 'player:w1' && e.amount === 2,
     )
   ) {
     throw new Error('witch hunter sticker atk failed');
@@ -188,10 +190,19 @@ assertShopCurve();
   const scrap = simulateBattle(witch, marked, 3);
   if (
     !scrap.events.some(
-      (e) => e.type === 'DamageDealt' && e.kind === 'attack' && e.sourceId === 'player:w2' && e.amount === 6,
+      (e) => e.type === 'DamageDealt' && e.kind === 'attack' && e.sourceId === 'player:w2' && e.amount === 2,
     )
   ) {
     throw new Error('witch hunter two-sticker atk failed');
+  }
+}
+{
+  const hunter = getUnit('witch-hunter');
+  if (hunter.hp !== 6 || hunter.atk !== 1 || !hunter.passives?.doubleVsStickers) {
+    throw new Error('witch hunter stats');
+  }
+  if (abilityRule('en', 'witch-hunter') !== 'Double damage to figures with stickers.') {
+    throw new Error('witch hunter en');
   }
 }
 {
@@ -207,13 +218,19 @@ assertShopCurve();
     playerName: 'e',
     runId: 'r',
     round: 1,
-    team: [instanceFromDef('village-fool', 1, 'vfA'), instanceFromDef('village-fool', 2, 'vfB')],
+    team: [instanceFromDef('farm-boy', 1, 'fbA'), instanceFromDef('village-fool', 2, 'vfB')],
   });
   const scrap = simulateBattle(field, row, 4);
-  const shove = scrap.events.find((e) => e.type === 'MovedToBack' && e.unitId === 'enemy:vfA');
+  const shove = scrap.events.find((e) => e.type === 'MovedToBack' && e.unitId === 'enemy:fbA');
   const slide = scrap.events.find((e) => e.type === 'MovedForward' && e.unitId === 'enemy:vfB');
+  const crow = getUnit('scary-scarecrow');
   if (
-    getUnit('scary-scarecrow').targeting !== 'brawler' ||
+    crow.targeting !== 'brawler' ||
+    crow.rarity !== 'bronze' ||
+    crow.hp !== 7 ||
+    crow.atk !== 1 ||
+    crow.speed !== 0 ||
+    !crow.passives?.provoke ||
     !shove ||
     shove.type !== 'MovedToBack' ||
     shove.fromSlot !== 1 ||
@@ -223,7 +240,10 @@ assertShopCurve();
     slide.fromSlot !== 2 ||
     slide.toSlot !== 1
   ) {
-    throw new Error('scary scarecrow did not send the front foe to the last slot');
+    throw new Error('scary scarecrow did not Fear the hit target to the last slot');
+  }
+  if (abilityRule('en', 'scary-scarecrow') !== 'Fear. Taunt.') {
+    throw new Error('scary scarecrow text');
   }
 }
 {
@@ -866,7 +886,14 @@ assertShopCurve();
   });
   const scrap = simulateBattle(full, marked, 9);
   const steal = scrap.events.find((e) => e.type === 'StoleSticker');
-  if (!steal || steal.type !== 'StoleSticker' || steal.applied || steal.stickerId !== 'fur-armor') {
+  if (
+    !steal ||
+    steal.type !== 'StoleSticker' ||
+    !steal.applied ||
+    steal.stickerId !== 'fur-armor' ||
+    !steal.replacedId ||
+    !['rusty-knife', 'rabbits-foot', 'spiked-shield'].includes(steal.replacedId)
+  ) {
     throw new Error(`aladdin full steal failed applied=${steal && steal.type === 'StoleSticker' ? steal.applied : 'none'}`);
   }
 }
@@ -1864,7 +1891,7 @@ assertShopCurve();
   if (getUnit('anubis').rarity !== 'diamond') throw new Error('anubis rarity');
   if (translate('en', 'unit.anubis') !== 'Ash Sorcerer') throw new Error('ash sorcerer en name');
   if (translate('it', 'unit.anubis') !== 'Stregone della cenere') throw new Error('ash sorcerer it name');
-  if (getUnit('anubis').targeting !== 'hitman') throw new Error('ash sorcerer targeting');
+  if (getUnit('anubis').targeting !== 'sneak') throw new Error('ash sorcerer targeting');
   if (!hasUnitArt('anubis') || !hasCardFace('anubis')) throw new Error('anubis art');
 }
 {
@@ -1967,6 +1994,12 @@ assertShopCurve();
   }
   if (abilityRule('it', 'black-hole') !== 'La figura che mi mette KO cambia lato.') {
     throw new Error('the fool it rule');
+  }
+  if (translate('en', 'stk.heartseekerArrow.d') !== 'The hit figure switches sides.') {
+    throw new Error('heartseeker should match the fool');
+  }
+  if (translate('it', 'stk.heartseekerArrow.d') !== 'La figura colpita cambia lato.') {
+    throw new Error('heartseeker it should match the fool');
   }
   if (getUnit('black-hole').targeting !== 'pacifist') throw new Error('the fool targeting');
   if (getUnit('black-hole').hp !== 1 || getUnit('black-hole').atk !== 0 || getUnit('black-hole').speed !== 0) {
@@ -2144,6 +2177,30 @@ assertShopCurve();
   if (!hasUnitArt('time-master') || !hasCardFace('time-master') || !hasPrintedCard('time-master')) {
     throw new Error('time master art');
   }
+  const tmLive = renderBattleCard('en', {
+    uid: 'player:tm',
+    defId: 'time-master',
+    team: 'player',
+    slot: 1,
+    nameKey: 'unit.timeMaster',
+    rarity: 'diamond',
+    atk: 0,
+    hp: 10,
+    maxHp: 10,
+    speed: 9,
+    stickers: [],
+    targeting: 'pacifist',
+    art: getUnit('time-master').art,
+    summoned: false,
+    rewindLeft: 2,
+  });
+  if ((tmLive.match(/data-rewind-left/g) ?? []).length < 2 || !tmLive.includes('>2</b>')) {
+    throw new Error('time master scrap parchment should show the live rewind count');
+  }
+  const tmZoom = renderUnitCard('en', instanceFromDef('time-master', 1, 'tmZ'), { rewindLeft: 1 });
+  if (!tmZoom.includes('data-rewind-left') || !tmZoom.includes('>1</b>')) {
+    throw new Error('time master zoom parchment should show the live rewind count');
+  }
 }
 {
   const dust = simulateBattle(
@@ -2304,7 +2361,7 @@ assertShopCurve();
   if (translate('en', 'stk.bandageRoll') !== 'Life Potion') throw new Error('life potion en name');
   if (translate('it', 'stk.bandageRoll') !== 'Pozione della Vita') throw new Error('life potion it name');
   if (translate('en', 'stk.boomStick') !== 'Revenge Bomb') throw new Error('revenge bomb en name');
-  if (translate('it', 'stk.boomStick') !== 'Revenge Bomb') throw new Error('revenge bomb it name');
+  if (translate('it', 'stk.boomStick') !== 'Bomba della vendetta') throw new Error('revenge bomb it name');
   for (const id of ['fireball', 'lightning-bolt', 'shower-of-arrows', 'dragons-breath', 'revenge-bomb'] as const) {
     if (!getSticker(id).ability?.once) throw new Error(`${id} should be once per scrap`);
   }
@@ -2332,8 +2389,8 @@ assertShopCurve();
   if (missingArt.length) throw new Error(`missing sticker art ${missingArt.join(',')}`);
   const diamonds = grantableStickers().filter((s) => s.rarity === 'diamond');
   if (
-    diamonds.length !== 3 ||
-    !['reapers-scythe', 'void-heart', 'ares-helm'].every((id) => diamonds.some((s) => s.id === id))
+    diamonds.length !== 4 ||
+    !['reapers-scythe', 'void-heart', 'ares-helm', 'heartseeker-arrow'].every((id) => diamonds.some((s) => s.id === id))
   ) {
     throw new Error(`diamond stickers ${diamonds.map((s) => s.id).join(',')}`);
   }
@@ -3072,15 +3129,71 @@ assertShopCurve();
   if (!shieldCard.includes('Thorn 1')) throw new Error('sticker card missing Thorn 1');
 }
 {
-  const seek = simulateBattle(
+  const scaled = computedStats(applySticker(instanceFromDef('farm-boy', 1, 'scale1'), 'scales-of-balance'));
+  if (scaled.hp !== 6 || scaled.atk !== 6 || scaled.speed !== 6) {
+    throw new Error(`three-pan scale stats hp=${scaled.hp} atk=${scaled.atk} spd=${scaled.speed}`);
+  }
+  if (translate('en', 'stk.threePanScale.d') !== "This figure's HP, ATK, and Speed equal the highest one.") {
+    throw new Error('three-pan scale copy');
+  }
+  if (translate('it', 'stk.threePanScale') !== 'Bilancia dell’equilibrio') throw new Error('scales of balance it name');
+}
+{
+  const recruited = simulateBattle(
+    makeSnapshot({
+      playerId: 'p',
+      playerName: 'p',
+      runId: 'r',
+      round: 1,
+      team: [applySticker(instanceFromDef('farm-boy', 1, 'hsAtk'), 'heartseeker-arrow')],
+    }),
+    makeSnapshot({
+      playerId: 'e',
+      playerName: 'e',
+      runId: 'r',
+      round: 1,
+      team: [instanceFromDef('village-fool', 1, 'hsFool')],
+    }),
+    52,
+  );
+  if (
+    !recruited.events.some(
+      (e) => e.type === 'SwitchedSides' && e.unitId === 'enemy:hsFool' && e.team === 'player',
+    )
+  ) {
+    throw new Error('heartseeker should bring the hit figure over when there is room');
+  }
+  const killed = simulateBattle(
+    makeSnapshot({
+      playerId: 'p',
+      playerName: 'p',
+      runId: 'r',
+      round: 1,
+      team: [applySticker(instanceFromDef('farm-boy', 1, 'hsKill'), 'heartseeker-arrow')],
+    }),
+    makeSnapshot({
+      playerId: 'e',
+      playerName: 'e',
+      runId: 'r',
+      round: 1,
+      team: [instanceFromDef('pig', 1, 'hsPig')],
+    }),
+    52,
+  );
+  if (killed.events.some((e) => e.type === 'SwitchedSides')) {
+    throw new Error('heartseeker should not recruit a figure the hit knocks out');
+  }
+  const full = simulateBattle(
     makeSnapshot({
       playerId: 'p',
       playerName: 'p',
       runId: 'r',
       round: 1,
       team: [
-        applySticker(applySticker(instanceFromDef('farm-boy', 1, 'hsAtk'), 'heartseeker-arrow'), 'rabbits-foot'),
-        instanceFromDef('happy-rat', 2, 'hsAlly'),
+        applySticker(instanceFromDef('farm-boy', 1, 'hsFull'), 'heartseeker-arrow'),
+        instanceFromDef('happy-rat', 2, 'hsA'),
+        instanceFromDef('paper-dove', 3, 'hsB'),
+        instanceFromDef('village-fool', 4, 'hsC'),
       ],
     }),
     makeSnapshot({
@@ -3088,35 +3201,12 @@ assertShopCurve();
       playerName: 'e',
       runId: 'r',
       round: 1,
-      team: [instanceFromDef('farm-boy', 1, 'hsFoe')],
+      team: [instanceFromDef('village-fool', 1, 'hsFoe')],
     }),
     52,
   );
-  const foeHits = seek.events.filter((e) => e.type === 'AttackStarted' && e.unitId === 'enemy:hsFoe');
-  if (!foeHits.some((e) => e.targetId === 'player:hsAlly') || foeHits.some((e) => e.targetId === 'player:hsAtk')) {
-    throw new Error(`heartseeker redirect ${foeHits.map((e) => (e.type === 'AttackStarted' ? e.targetId : '')).join(',')}`);
-  }
-}
-{
-  const only = simulateBattle(
-    makeSnapshot({
-      playerId: 'p',
-      playerName: 'p',
-      runId: 'r',
-      round: 1,
-      team: [applySticker(applySticker(instanceFromDef('farm-boy', 1, 'hsSolo'), 'heartseeker-arrow'), 'rabbits-foot')],
-    }),
-    makeSnapshot({
-      playerId: 'e',
-      playerName: 'e',
-      runId: 'r',
-      round: 1,
-      team: [instanceFromDef('farm-boy', 1, 'hsSoloFoe')],
-    }),
-    53,
-  );
-  if (!only.events.some((e) => e.type === 'AttackStarted' && e.unitId === 'enemy:hsSoloFoe' && e.targetId === 'player:hsSolo')) {
-    throw new Error('heartseeker must still hit when no other target');
+  if (full.events.some((e) => e.type === 'SwitchedSides' && e.unitId === 'enemy:hsFoe')) {
+    throw new Error('heartseeker should not switch when the side is full');
   }
 }
 {
@@ -3163,7 +3253,13 @@ assertShopCurve();
     throw new Error('gingerbread targeting');
   }
   if (getUnit('tiny-brave-mouse').targeting !== 'brawler') throw new Error('mouse targeting');
-  if (getUnit('puss-in-boots').targeting !== 'hitman') throw new Error('puss targeting');
+  if (getUnit('puss-in-boots').targeting !== 'sneak') throw new Error('puss targeting');
+  if (getUnit('puss-in-boots').rarity !== 'silver' || getUnit('puss-in-boots').speed !== 9) {
+    throw new Error('puss silver speed');
+  }
+  if (getUnit('puss-in-boots').ability?.effects[0]?.op !== 'copyOneCombatSticker') {
+    throw new Error('puss must keep copy sticker');
+  }
   const bat = getUnit('vampire-bat');
   if (bat.targeting !== 'hitman' || bat.hp !== 5 || bat.atk !== 2 || bat.speed !== 7 || bat.ability?.trigger !== 'damageDealt') {
     throw new Error(`vampire bat ${bat.hp}/${bat.atk}/${bat.speed} ${bat.targeting} ${bat.ability?.trigger}`);
@@ -3226,7 +3322,7 @@ assertShopCurve();
   ) {
     throw new Error('patchwork princess stats');
   }
-  if (getUnit('magic-mirror').targeting !== 'pacifist' || getUnit('magic-mirror').atk !== 2) {
+  if (getUnit('magic-mirror').targeting !== 'brawler' || getUnit('magic-mirror').atk !== 2) {
     throw new Error('goose targeting');
   }
   if (getUnit('village-fool').targeting !== 'pacifist' || getUnit('village-fool').atk !== 0 || getUnit('village-fool').speed !== 0) {
@@ -3299,9 +3395,7 @@ assertShopCurve();
   }
   for (const u of UNITS) {
     if (u.targeting !== 'pacifist') continue;
-    // Guard Goose keeps ATK for the counter hit; every other Pacifist stays at 0.
-    const wantAtk = u.id === 'magic-mirror' ? 2 : 0;
-    if (u.atk !== wantAtk) throw new Error(`pacifist ${u.id} atk ${u.atk}`);
+    if (u.atk !== 0) throw new Error(`pacifist ${u.id} atk ${u.atk}`);
     const wantSpeed =
       u.id === 'little-fairy' || u.id === 'time-master' || u.id === 'gingerbread-man' ? 9 : u.id === 'patchwork-princess' ? 3 : 0;
     if (u.speed !== wantSpeed) throw new Error(`pacifist ${u.id} spd ${u.speed}`);
@@ -3724,6 +3818,7 @@ assertShopCurve();
       round: 1,
       team: [
         applySticker(applySticker(instanceFromDef('farm-boy', 1, 'two'), 'knights-crest'), 'knights-crest'),
+        instanceFromDef('happy-rat', 2, 'hrTwo'),
       ],
     }),
     crow(),
@@ -3748,8 +3843,28 @@ assertShopCurve();
     13,
   );
   const split = repliesBefore(both.events, 'enemy:kcrow');
-  if (split.length !== 2 || !split.includes('player:ggb') || !split.includes('player:fbc')) {
-    throw new Error(`two different guardians should each counter once, got ${split.join(',')}`);
+  if (split.length !== 1 || split[0] !== 'player:ggb') {
+    throw new Error(`guardian should not counter for itself, got ${split.join(',')}`);
+  }
+  const selfOnly = simulateBattle(
+    makeSnapshot({
+      playerId: 'p',
+      playerName: 'p',
+      runId: 'r',
+      round: 1,
+      team: [instanceFromDef('magic-mirror', 1, 'ggSelf')],
+    }),
+    makeSnapshot({
+      playerId: 'e',
+      playerName: 'e',
+      runId: 'r',
+      round: 1,
+      team: [instanceFromDef('paper-dove', 1, 'pdSelf')],
+    }),
+    13,
+  );
+  if (repliesBefore(selfOnly.events, 'enemy:pdSelf').length !== 0) {
+    throw new Error('guardian should not counter when this figure is attacked');
   }
 }
 {
@@ -3826,6 +3941,22 @@ assertShopCurve();
 {
   let run = createRun('ai', 'tester', 'Horseman', 0x82);
   run = { ...run, team: [instanceFromDef('headless-horseman', 1, 'hh1')] };
+  for (let n = 1; n <= 4; n++) {
+    run = resolveFight(
+      run,
+      makeSnapshot({
+        playerId: 'e',
+        playerName: 'e',
+        runId: 'r',
+        round: 1,
+        team: [instanceFromDef('paper-dove', 1, `pdh${n}`)],
+      }),
+    );
+    const mid = run.team.find((u) => u.instanceId === 'hh1');
+    if (!mid || mid.defId !== 'headless-horseman' || mid.killTally !== n) {
+      throw new Error(`horseman mid n=${n} form=${mid?.defId} kills=${mid?.killTally}`);
+    }
+  }
   run = resolveFight(
     run,
     makeSnapshot({
@@ -3833,15 +3964,31 @@ assertShopCurve();
       playerName: 'e',
       runId: 'r',
       round: 1,
-      team: [instanceFromDef('paper-dove', 1, 'pdh1'), instanceFromDef('paper-dove', 2, 'pdh2')],
+      team: [instanceFromDef('paper-dove', 1, 'pdh5')],
     }),
   );
   const horse = run.team.find((u) => u.instanceId === 'hh1');
-  const harvest = run.lastBattle?.events.filter(
-    (e) => e.type === 'StatChanged' && e.unitId === 'player:hh1' && e.stat === 'atk' && e.amount === 1 && e.permanent,
+  if (!horse || horse.defId !== 'cursed-horseman' || horse.killTally !== 5) {
+    throw new Error(`horseman become form=${horse?.defId} kills=${horse?.killTally}`);
+  }
+  if (!hasUnitArt('cursed-horseman') || !hasCardFace('cursed-horseman')) {
+    throw new Error('cursed horseman art');
+  }
+  run = resolveFight(
+    { ...run, team: [horse] },
+    makeSnapshot({
+      playerId: 'e',
+      playerName: 'e',
+      runId: 'r',
+      round: 1,
+      team: [instanceFromDef('paper-dove', 1, 'pdh6')],
+    }),
   );
-  if (!horse || horse.permanentMods.atk !== 2 || harvest?.length !== 2) {
-    throw new Error(`horseman permanent stacks atk=${horse?.permanentMods.atk} n=${harvest?.length}`);
+  const doubled = run.lastBattle?.events.filter(
+    (e) => e.type === 'StatChanged' && e.unitId === 'player:hh1' && e.stat === 'atk' && !e.permanent,
+  );
+  if (!doubled?.length || doubled[0]?.type !== 'StatChanged' || doubled[0].now !== 8) {
+    throw new Error(`cursed horseman double atk now=${doubled?.[0] && doubled[0].type === 'StatChanged' ? doubled[0].now : 'none'}`);
   }
 }
 const a = buildOpponent(6, 0x51a7e, 0.7);
@@ -4282,7 +4429,7 @@ if (!assertDeterministic(a, b, 12345)) throw new Error('determinism failed');
   if (!mythGlued.includes('START OF SCRAP') || !mythGlued.includes('Exhaust')) {
     throw new Error('mythic treasure hover should show battle start');
   }
-  const diamonds = new Set(['reapers-scythe', 'void-heart', 'ares-helm']);
+  const diamonds = new Set(grantableStickers().filter((s) => s.rarity === 'diamond').map((s) => s.id));
   const fangFight = simulateBattle(
     makeSnapshot({
       playerId: 'p',
@@ -4717,15 +4864,15 @@ if (huntWon) {
   oven = eventSelectUnit(oven, 'ov1');
   if (
     oven.phase !== 'stickerAssign' ||
-    oven.pendingStickerIds.join(',') !== 'heartbeat-sweet:6,strength-sweet:2,flash-sweet:5' ||
+    oven.pendingStickerIds.join(',') !== 'health-sweet:6,attack-sweet:2,speed-sweet:5' ||
     oven.team.some((u) => u.instanceId === 'ov1') ||
     (oven.lostTales?.length ?? 0) !== talesBefore
   ) {
     throw new Error(`oven failed phase=${oven.phase} step=${oven.eventStep} pending=${oven.pendingStickerIds.join(',')}`);
   }
-  oven = assignPendingSticker(oven, 'ov2', undefined, 'heartbeat-sweet:6');
+  oven = assignPendingSticker(oven, 'ov2', undefined, 'health-sweet:6');
   const fed = oven.team.find((u) => u.instanceId === 'ov2');
-  if (oven.phase !== 'formation' || !fed || fed.permanentMods.hp !== 6 || fed.stickerIds.some((id) => id.startsWith('heartbeat-sweet'))) {
+  if (oven.phase !== 'formation' || !fed || fed.permanentMods.hp !== 6 || fed.stickerIds.some((id) => id.startsWith('health-sweet'))) {
     throw new Error(`oven apply failed phase=${oven.phase} hp=${fed?.permanentMods.hp}`);
   }
 }
@@ -4744,7 +4891,7 @@ if (huntWon) {
   const grown = ovenDup.team[0]!;
   grown.permanentMods = { ...grown.permanentMods, hp: 3 };
   ovenDup = eventSelectUnit(ovenDup, 'od1');
-  if (ovenDup.phase !== 'stickerAssign' || !ovenDup.pendingStickerIds.includes('heartbeat-sweet:9')) {
+  if (ovenDup.phase !== 'stickerAssign' || !ovenDup.pendingStickerIds.includes('health-sweet:9')) {
     throw new Error(`oven should ignore glued stickers and keep printed growth, pending=${ovenDup.pendingStickerIds.join(',')}`);
   }
 }
@@ -5159,6 +5306,41 @@ console.log('OK pacifist stalemate');
 }
 console.log('OK set line');
 
+{
+  const lined = formLine([
+    instanceFromDef('puss-in-boots', 1, 'aiPuss'),
+    instanceFromDef('magic-mirror', 2, 'aiGoose'),
+    instanceFromDef('farm-boy', 3, 'aiBoy'),
+    instanceFromDef('scary-scarecrow', 4, 'aiCrow'),
+  ]);
+  const last = lined.find((u) => u.slot === 4);
+  if (last?.defId !== 'puss-in-boots') {
+    throw new Error(`sneak should stand last, got ${lined.map((u) => `${u.slot}:${u.defId}`).join(',')}`);
+  }
+  const goose = lined.find((u) => u.defId === 'magic-mirror');
+  const cover = goose ? lined.find((u) => u.slot === goose.slot + 1) : undefined;
+  if (!goose || !cover || cover.defId === 'puss-in-boots') {
+    throw new Error(`guardian should stand in front of a carry, got ${lined.map((u) => `${u.slot}:${u.defId}`).join(',')}`);
+  }
+  const taunt = lined.find((u) => u.defId === 'scary-scarecrow');
+  if (!taunt || taunt.slot > 2) {
+    throw new Error(`taunt should stand near the front, slot ${taunt?.slot}`);
+  }
+  const circuit = openCircuit(0x51a711, 'Auto Mae');
+  if (circuit.length !== 9 || new Set(circuit.map((r) => r.vice)).size !== 9) {
+    throw new Error('each rival should keep a distinct vice');
+  }
+  const filled = ensureFullLine(
+    [instanceFromDef('farm-boy', 1, 'fillA'), instanceFromDef('village-fool', 2, 'fillB')],
+    { seed: 3, round: 2, vice: 'tank' },
+  );
+  if (filled.length !== 4) throw new Error(`rivals should fill to 4, got ${filled.length}`);
+  if (diamondChance(5, 'hunt', 6) !== 0 || diamondChance(9, 'hunt', 6) <= 0) {
+    throw new Error('diamond seats should wait until mid-run');
+  }
+}
+console.log('OK rival brain');
+
 const run = autoPlayRun(0x51a711);
 if (run.phase !== 'final' || run.history.length !== 10) {
   throw new Error(`autoplay failed phase=${run.phase} hist=${run.history.length}`);
@@ -5176,6 +5358,9 @@ if (!run.circuit || run.circuit.length !== 9) throw new Error('circuit should be
   for (const rival of run.circuit) {
     if (rival.wins + rival.losses + rival.draws !== 10) {
       throw new Error(`rival ${rival.playerName} played ${rival.wins + rival.losses + rival.draws} scraps`);
+    }
+    if (rival.team.length !== 4) {
+      throw new Error(`rival ${rival.playerName} fielded ${rival.team.length}`);
     }
   }
 }

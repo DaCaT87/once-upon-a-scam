@@ -26,8 +26,8 @@ const RECRUIT_MIX: Record<number, readonly Rarity[]> = {
 const STICKER_MIX: Record<number, readonly Rarity[]> = {
   1: ['bronze', 'bronze', 'bronze'],
   2: ['bronze', 'bronze', 'bronze'],
-  3: ['bronze', 'bronze', 'silver'],
-  4: ['bronze', 'silver', 'silver'],
+  3: ['bronze', 'bronze', 'bronze'],
+  4: ['bronze', 'bronze', 'silver'],
   5: ['bronze', 'silver', 'gold'],
   6: ['silver', 'silver', 'gold'],
   7: ['silver', 'gold', 'gold'],
@@ -131,7 +131,7 @@ export function assertShopCurve(): void {
   }
   if (
     stickerMaxRarity(1) !== 'bronze' || stickerMaxRarity(2) !== 'bronze' ||
-    stickerMaxRarity(3) !== 'silver' || stickerMaxRarity(5) !== 'gold' ||
+    stickerMaxRarity(3) !== 'bronze' || stickerMaxRarity(5) !== 'gold' ||
     stickerMaxRarity(7) !== 'gold' || stickerMaxRarity(8) !== 'platinum'
   ) {
     throw new Error('sticker-max');
@@ -142,7 +142,7 @@ export function assertShopCurve(): void {
     throw new Error(`shop-unit-totals b=${units.bronze} s=${units.silver} g=${units.gold} p=${units.platinum}`);
   }
   const stickers = countMix(STICKER_MIX, [1, 2, 3, 4, 5, 6, 7, 8, 9]);
-  if (stickers.bronze !== 10 || stickers.silver !== 8 || stickers.gold !== 6 || stickers.platinum !== 3 || stickers.diamond !== 0) {
+  if (stickers.bronze !== 12 || stickers.silver !== 6 || stickers.gold !== 6 || stickers.platinum !== 3 || stickers.diamond !== 0) {
     throw new Error(`shop-sticker-totals b=${stickers.bronze} s=${stickers.silver} g=${stickers.gold} p=${stickers.platinum}`);
   }
   if (lampRarity(1) !== 'silver' || lampRarity(4) !== 'diamond') throw new Error('lamp-rarity');

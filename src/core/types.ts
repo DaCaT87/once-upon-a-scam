@@ -1,5 +1,5 @@
-export const DATA_VERSION = '1.6.90';
-export const SIMULATOR_VERSION = '1.0.6';
+export const DATA_VERSION = '1.6.95';
+export const SIMULATOR_VERSION = '1.0.7';
 export const MAX_TEAM = 4;
 export const MAX_STICKERS = 3;
 export const RUN_ROUNDS = 10;
@@ -10,6 +10,19 @@ export const RECRUIT_PICK = 2;
 export const STICKER_OFFER = 3;
 export const STICKER_PICK = 1;
 export const ALLEY_PICK = 2;
+
+export const RIVAL_VICES = [
+  'tank',
+  'sneak',
+  'sticker',
+  'hunt',
+  'brawler',
+  'clone',
+  'tempo',
+  'guardian',
+  'oven',
+] as const;
+export type RivalVice = (typeof RIVAL_VICES)[number];
 
 export type Rarity = 'bronze' | 'silver' | 'gold' | 'platinum' | 'diamond';
 export type ShopLevel = 1 | 2 | 3 | 4 | 5;
@@ -117,7 +130,7 @@ export type AbilityCondition =
   | { kind: 'targetHasStickers' };
 
 export type EffectOp =
-  | { op: 'modStat'; stat: 'atk' | 'maxHp' | 'hp' | 'speed'; amount: number; duration: 'combat' | 'permanent' }
+  | { op: 'modStat'; stat: 'atk' | 'maxHp' | 'hp' | 'speed'; amount: number; duration: 'combat' | 'permanent'; double?: boolean }
   | { op: 'damage'; amount: number; trueDamage?: boolean; pctOf?: 'hp' | 'maxHp'; pct?: number; roundUp?: boolean }
   | { op: 'heal'; amount: number }
   | { op: 'healToFull' }
@@ -125,7 +138,7 @@ export type EffectOp =
   | { op: 'summonFront'; unitId: string }
   | { op: 'summonFallen' }
   | { op: 'stealStat'; stat: 'atk' | 'speed'; amount: number }
-  | { op: 'transform'; unitId?: string; randomShop?: boolean; randomShopUp?: boolean; randomRarity?: Rarity; duration?: 'combat' | 'permanent'; untilTurnEnd?: boolean; revive?: boolean }
+  | { op: 'transform'; unitId?: string; randomShop?: boolean; randomShopUp?: boolean; randomRarity?: Rarity; duration?: 'combat' | 'permanent'; untilTurnEnd?: boolean; revive?: boolean; afterKills?: number; afterFear?: number }
   | { op: 'exhaustSticker'; stickerId: string }
   | { op: 'grantDiamondStickers' }
   | { op: 'exhaustUnit'; giftBehind?: boolean }
@@ -142,7 +155,7 @@ export type EffectOp =
   | { op: 'moveBack' }
   | { op: 'moveToLastSlot' }
   | { op: 'charmAttack' }
-  | { op: 'switchSides' }
+  | { op: 'switchSides'; immediate?: boolean }
   | { op: 'wrapCocoon' }
   | { op: 'becomeCocoon' }
   | { op: 'pullCocoon' }
@@ -178,6 +191,7 @@ export interface Passives {
   steadfast?: boolean;
   bonusIfTargetHigherAtk?: number;
   atkPerTargetSticker?: number;
+  doubleVsStickers?: boolean;
   bonusVsLowHp?: number;
   cheatDeath?: boolean;
   healBelowHalf?: number;
@@ -196,6 +210,8 @@ export interface Passives {
   /** Extra attacks granted only if this team lost the previous scrap. */
   extraAttacksIfLostLastRound?: number;
   heartseeker?: boolean;
+  /** HP, ATK, and Speed all match whichever of the three is highest. */
+  matchHighest?: boolean;
   grantGoldUnitOnRecruit?: boolean;
   grantShopStickerOnRecruit?: boolean;
   grantStickerOnRecruit?: Rarity;
@@ -338,6 +354,8 @@ export interface SnapshotUnit {
   stickerIds: string[];
   permanentMods: PermanentMods;
   baseStats: { atk: number; hp: number; speed: number };
+  killTally?: number;
+  fearTally?: number;
 }
 
 export interface TeamSnapshot {
@@ -408,7 +426,9 @@ export type BattleEvent =
   | { type: 'SwitchedSides'; unitId: string; fromTeam: TeamId; team: TeamId; slot: number }
   | { type: 'TauntGranted'; unitId: string }
   | { type: 'AteSticker'; unitId: string; stickerId: string; atk: number; hp: number }
-  | { type: 'StoleSticker'; thiefId: string; victimId: string; stickerId: string; applied: boolean }
+  | { type: 'StoleSticker'; thiefId: string; victimId: string; stickerId: string; applied: boolean; replacedId?: string }
+  | { type: 'KillTallied'; unitId: string; now: number }
+  | { type: 'FearTallied'; unitId: string; now: number }
   | { type: 'EarnedSticker'; unitId: string; stickerId: string }
   | { type: 'GrantedSticker'; unitId: string; stickerId: string }
   | { type: 'GainedCombatSticker'; unitId: string; stickerId: string; sourceId: string }
@@ -447,6 +467,10 @@ export interface UnitInstance {
   slot: number;
   stickerIds: string[];
   permanentMods: PermanentMods;
+  /** Kills this run toward a Become, such as Headless Horseman. */
+  killTally?: number;
+  /** Fears this run toward a Become, such as Scary Scarecrow. */
+  fearTally?: number;
 }
 
 export type RunPhase =
@@ -548,6 +572,8 @@ export interface CircuitRival {
   lostTales: LostTale[];
   lostLastRound: boolean;
   pendingStickerIds: string[];
+  /** How this rival likes to spend the alley. Missing on old saves. */
+  vice?: RivalVice;
 }
 
 export interface CompletedRun {

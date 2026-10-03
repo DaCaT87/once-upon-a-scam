@@ -79,7 +79,7 @@ root.innerHTML = `
       const name = t(locale, unit.nameKey);
       return `<figure>
         <div class="card">
-          <img src="./art/units/${folder}/idle.png?v=cast180" alt="${name}" draggable="false" />
+          <img src="./art/units/${folder}/idle.png?v=cast200" alt="${name}" draggable="false" />
         </div>
         <figcaption>${name}</figcaption>
       </figure>`;

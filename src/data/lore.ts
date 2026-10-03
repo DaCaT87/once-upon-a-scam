@@ -53,6 +53,8 @@ export const LORE_EN: Record<string, string> = {
     'He counts charms the way other men count sins. The more you wear, the surer he is that you were the witch all along.',
   'lore.headless-horseman':
     'The pumpkin is a courtesy to the living. When a neck ends under his blade, he drinks the whole night back into himself.',
+  'lore.cursed-horseman':
+    'Five necks later the pumpkin is a lie. The horse remembers the curse, and every kill doubles the swing.',
   'lore.patchwork-princess':
     'Sewn from leftover gowns and leftover vows. Show her a charm and she will stitch the same one onto a friend, if anyone can hold it.',
   'lore.sir-forget-a-lot':
@@ -66,7 +68,7 @@ export const LORE_EN: Record<string, string> = {
   'lore.glass-knight':
     'Beautiful, brief, and sharp when he breaks. The last thing his killer feels is the whole of that bright edge coming home.',
   'lore.scary-scarecrow':
-    'The crows learned to wait. He strikes whoever stands first, then the field itself shoves them to the back of the row.',
+    'It waits in the row with a slow swing. Whoever strikes it learns the field has a back.',
   'lore.old-gatekeeper':
     'He kept a door that nobody uses anymore. The thorns still remember their job, and so does the man who grew them.',
   'lore.wish-pinata':
@@ -200,6 +202,8 @@ export const LORE_IT: Record<string, string> = {
     'Conta gli amuleti come altri contano i peccati. Più ne porti, più è certo che la strega fossi tu.',
   'lore.headless-horseman':
     'La zucca è una cortesia per i vivi. Quando un collo finisce sotto la lama, si beve indietro tutta la notte.',
+  'lore.cursed-horseman':
+    'Dopo cinque colli la zucca è una bugia. Il cavallo ricorda la maledizione, e ogni KO raddoppia il colpo.',
   'lore.patchwork-princess':
     'Cucita con abiti avanzati e promesse avanzate. Mostrale un amuleto e lei ne cuce uno uguale su un’amica, se qualcuno può tenerlo.',
   'lore.sir-forget-a-lot':
@@ -213,7 +217,7 @@ export const LORE_IT: Record<string, string> = {
   'lore.glass-knight':
     'Bello, breve, e tagliente quando si rompe. L’ultima cosa che sente chi lo spezza è tutto quel filo luminoso che torna a casa.',
   'lore.scary-scarecrow':
-    'I corvi hanno imparato ad aspettare. Colpisce chi sta davanti, poi è il campo stesso a spingerlo in fondo alla fila.',
+    'Aspetta in fila con un colpo lento. Chi lo colpisce impara che il campo ha un fondo.',
   'lore.old-gatekeeper':
     'Custodiva una porta che nessuno usa più. Le spine ricordano ancora il mestiere, e lo ricorda anche l’uomo che le ha fatte crescere.',
   'lore.wish-pinata':

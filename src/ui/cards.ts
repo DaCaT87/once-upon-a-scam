@@ -102,6 +102,7 @@ function linkKeywords(locale: Locale, text: string): string {
     ['keywordFlockOfRavens', 'keywordFlockOfRavensD', 'flock-of-ravens'],
     ['keywordKingOfRavens', 'keywordKingOfRavensD', 'king-of-crows'],
     ['keywordBigBadWolf', 'keywordBigBadWolfD', 'big-bad-wolf'],
+    ['keywordCursedHorseman', 'keywordCursedHorsemanD', 'cursed-horseman'],
     ['keywordWokenBear', 'keywordWokenBearD', 'woken-bear'],
     ['keywordJackInTheBox', 'keywordJackInTheBoxD', 'sprung-jack'],
     ['keywordMimic', 'keywordMimicD', 'sprung-mimic'],
@@ -484,7 +485,7 @@ function portraitHtml(locale: Locale, defId: string, opts?: { clip?: string; loc
   const file = !opts?.figure && clip === 'idle' && hasCardFace(defId) ? 'card' : clip;
   const locked = opts?.locked ? ' data-locked="true"' : '';
   const scenic = isScenicArt(defId) ? ' scenic' : '';
-  const src = `./art/units/${folder}/${file}.png?v=cast180`;
+  const src = `./art/units/${folder}/${file}.png?v=cast200`;
   return `<img class="portrait-art${scenic}" data-unit="${folder}"${locked} src="${src}" alt="${t(locale, getUnit(defId).nameKey)}" draggable="false" />`;
 }
 
@@ -503,7 +504,7 @@ export function renderDossierOverlay(locale: Locale, defId: string): string {
     ? `<button type="button" class="btn ghost" data-act="next-dossier" data-def="${escapeHtml(nextId)}">${escapeHtml(t(locale, 'next'))}</button>`
     : '';
   const art = hasUnitArt(defId)
-    ? `<img class="dossier-portrait" data-unit="${folder}" src="./art/units/${folder}/idle.png?v=cast180" alt="${escapeHtml(name)}" draggable="false" />`
+    ? `<img class="dossier-portrait" data-unit="${folder}" src="./art/units/${folder}/idle.png?v=cast200" alt="${escapeHtml(name)}" draggable="false" />`
     : `<div class="dossier-art-empty" aria-hidden="true"></div>`;
   return `
     <div class="dossier-overlay" role="presentation">
@@ -526,7 +527,7 @@ export function renderDossierOverlay(locale: Locale, defId: string): string {
 export function renderUnitCard(
   locale: Locale,
   inst: UnitInstance,
-  opts?: { selected?: boolean; extraClass?: string; clip?: string; locked?: boolean } & StatContext,
+  opts?: { selected?: boolean; extraClass?: string; clip?: string; locked?: boolean; rewindLeft?: number } & StatContext,
 ): string {
   const def = getUnit(inst.defId);
   const stats = computedStats(inst, { stickersGained: opts?.stickersGained, deathsThisRun: opts?.deathsThisRun });
@@ -536,7 +537,7 @@ export function renderUnitCard(
   const huntPlate = alleyHunt || Boolean(opts?.extraClass?.includes('is-hunt-plate'));
   const huntCard = huntPlate || def.tags.includes('hunt');
   const printed = usesPrintedCardFace(def.id);
-  const rules = `${renderRuleRow(locale, resolveTargeting(inst), def.id)}${renderAbility(locale, def.id)}`;
+  const rules = `${renderRuleRow(locale, resolveTargeting(inst), def.id)}${renderAbility(locale, def.id, opts?.rewindLeft)}`;
   const plateClass = huntPlate && !printed ? ' is-hunt-plate' : '';
   const huntClass = huntCard && !printed ? ' is-hunt-card' : '';
   const form = def.id === 'pig' || def.id === 'silk-cocoon';
@@ -682,7 +683,7 @@ function stickerSlots(locale: Locale, stickerIds: string[], opts?: { spent?: boo
       const tip = stickerRulesPlain(locale, s);
       const spent = t(locale, 'stickerSpent');
       const img = hasStickerArt(s.id)
-        ? `<img src="./art/stickers/${stickerArtFile(s.id)}.png?v=cast173" alt="${escapeHtml(name)}" draggable="false" />`
+        ? `<img src="./art/stickers/${stickerArtFile(s.id)}.png?v=cast179" alt="${escapeHtml(name)}" draggable="false" />`
         : '';
       const aria = allSpent
         ? `${escapeHtml(name)}. ${escapeHtml(rarityName)}. ${escapeHtml(tip)}. ${escapeHtml(spent)}`
@@ -736,6 +737,7 @@ export function renderBattleCard(locale: Locale, unit: PublicUnitView): string {
           <div class="stat">${statIcon(locale, 'spd')}<b data-stat="spd">${unit.speed}</b></div>
         </div>
         <div class="rule-row">${renderTargetingLabel(locale, unit.targeting)}</div>
+        ${def.id === 'time-master' && !silenced ? renderAbility(locale, def.id, unit.rewindLeft) : ''}
       </div>
       <div class="sticker-rail">${stickerSlots(locale, unit.stickers, { spent: silenced })}</div>
       ${scrapReadout(locale, unit, def.id)}
@@ -753,7 +755,7 @@ export function renderEmptySlot(locale: Locale, team: TeamId, slot: number): str
 export function renderStickerCard(locale: Locale, id: string, picked: boolean, extraClass = ''): string {
   const s = getSticker(id);
   const art = hasStickerArt(id)
-    ? `<img class="sticker-art" src="./art/stickers/${stickerArtFile(id)}.png?v=cast173" alt="${t(locale, s.nameKey)}" draggable="false" />`
+    ? `<img class="sticker-art" src="./art/stickers/${stickerArtFile(id)}.png?v=cast179" alt="${t(locale, s.nameKey)}" draggable="false" />`
     : '<div class="sticker-art is-empty" aria-hidden="true"></div>';
   const monster = s.frame === 'monster' ? ' monster' : '';
   const sweet = isOvenSweet(id);

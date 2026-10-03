@@ -632,7 +632,8 @@ html.needs-landscape .landscape-gate {
   object-position: center center;
   transform: none;
 }
-.unit-card .portrait-art[data-unit="headless-horseman"] {
+.unit-card .portrait-art[data-unit="headless-horseman"],
+.unit-card .portrait-art[data-unit="cursed-horseman"] {
   object-fit: cover;
   object-position: center center;
   transform: none;
@@ -709,7 +710,7 @@ html.needs-landscape .landscape-gate {
 }
 .unit-card .portrait-art[data-unit="scary-scarecrow"] {
   object-fit: cover;
-  object-position: center center;
+  object-position: center 32%;
   transform: none;
 }
 .unit-card .portrait-art[data-unit="miss-misfortune"] {

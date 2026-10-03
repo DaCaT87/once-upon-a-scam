@@ -555,6 +555,10 @@ export class GameApp {
       {
         ...this.runStatCtx(),
         extraClass: card.classList.contains('is-silenced') ? 'is-silenced' : undefined,
+        rewindLeft: (() => {
+          const n = card.querySelector('[data-rewind-left]')?.textContent?.trim();
+          return n != null && n !== '' ? Number(n) : undefined;
+        })(),
       },
     );
   }
@@ -887,7 +891,7 @@ export class GameApp {
             <span class="recruit-round">${this.recruitRoundHtml(run.round, victoryPointsOf(run))}</span>
           </div>
           <div class="choice-table">
-            ${plate('recruit', './art/ui/plate-recruit.png?v=recruit15', this.L('alleyRecruit'), this.L('alleyRecruitD'), {
+            ${plate('recruit', './art/ui/plate-recruit.png?v=recruit18', this.L('alleyRecruit'), this.L('alleyRecruitD'), {
               extraClass: 'is-event-plain is-alley-full-plate',
             })}
             ${plate('sticker', './art/ui/plate-sticker.png?v=alley3', this.L('alleySticker'), this.L('alleyStickerD'), {
@@ -1733,7 +1737,7 @@ export class GameApp {
         this.ghost = document.createElement('div');
         this.ghost.className = 'ghost-sticker';
         const img = document.createElement('img');
-        img.src = `./art/stickers/${stickerArtFile(sid)}.png?v=cast155`;
+        img.src = `./art/stickers/${stickerArtFile(sid)}.png?v=cast179`;
         img.alt = '';
         img.draggable = false;
         img.style.width = `${Math.max(48, rect.width)}px`;
@@ -1853,7 +1857,7 @@ export class GameApp {
       slot.classList.add('filled', 'sticker-pop', 'is-new-stick', 'is-oven-flash');
       slot.dataset.sticker = artId;
       const img = document.createElement('img');
-      img.src = `./art/stickers/${stickerArtFile(artId)}.png?v=cast173`;
+      img.src = `./art/stickers/${stickerArtFile(artId)}.png?v=cast179`;
       img.alt = '';
       img.draggable = false;
       slot.appendChild(img);
@@ -2090,7 +2094,7 @@ export class GameApp {
           card.classList.add('is-peeled');
           this.ghost.className = 'ghost-sticker';
           const img = document.createElement('img');
-          img.src = `./art/stickers/${stickerArtFile(sid)}.png?v=cast155`;
+          img.src = `./art/stickers/${stickerArtFile(sid)}.png?v=cast179`;
           img.alt = '';
           img.draggable = false;
           img.style.width = `${Math.max(48, rect.width)}px`;
@@ -2243,7 +2247,7 @@ export class GameApp {
         this.ghost = document.createElement('div');
         this.ghost.className = 'ghost-sticker';
         const img = document.createElement('img');
-        img.src = `./art/stickers/${stickerArtFile(stickerId)}.png?v=cast155`;
+        img.src = `./art/stickers/${stickerArtFile(stickerId)}.png?v=cast179`;
         img.alt = '';
         img.draggable = false;
         img.style.width = `${Math.max(48, rect.width)}px`;

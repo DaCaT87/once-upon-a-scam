@@ -82,10 +82,16 @@ interface Combatant {
   cooldownLeft: number;
   /** Rewinds still left. Counts down on each use, not on turns. */
   rewindLeft: number;
+  /** Kills this run toward a Become. */
+  killTally: number;
+  /** Fears this run toward a Become. */
+  fearTally: number;
   /** Set when Cooldown starts during this figure’s own turn, so that turn does not count. */
   cooldownDefer: boolean;
   /** Poison gained this scrap, so End of Scrap can put the covered sticker back. */
   poisonUndo: { slot: number; restore: string | null }[];
+  /** Stat boost from Scales of Balance, so peeling it can put the lower stats back. */
+  equalizeGain?: { atk: number; hp: number; speed: number };
   ravenFlockHp?: number;
   pigRevert?: {
     defId: string;
@@ -152,6 +158,8 @@ interface SimState {
   attackSerial: number;
   /** `${wave}:${uid}` figures that already countered this incoming attack. */
   guardianAnswered: Set<string>;
+  /** The figure currently being attacked, so Guardian does not reply for itself. */
+  guardianProtectUid: string | null;
 }
 
 function viewOf(u: Combatant): PublicUnitView {
@@ -194,6 +202,19 @@ function collectAbilities(snapUnit: TeamSnapshot['units'][number]): AbilityState
   return list;
 }
 
+function equalizeGainOf(
+  su: TeamSnapshot['units'][number],
+  stats: { atk: number; hp: number; speed: number },
+  statCtx: StatContext,
+): Combatant['equalizeGain'] {
+  if (!su.stickerIds.some((id) => getSticker(id).passives?.matchHighest)) return undefined;
+  const bare = computedStats(
+    { ...su, stickerIds: su.stickerIds.filter((id) => !getSticker(id).passives?.matchHighest) },
+    statCtx,
+  );
+  return { atk: stats.atk - bare.atk, hp: stats.hp - bare.hp, speed: stats.speed - bare.speed };
+}
+
 function hydrate(snap: TeamSnapshot, team: TeamId): Combatant[] {
   const statCtx = { stickersGained: snap.stickersGained ?? 0, deathsThisRun: snap.deathsThisRun ?? 0 };
   return snap.units.map((su) => {
@@ -234,8 +255,11 @@ function hydrate(snap: TeamSnapshot, team: TeamId): Combatant[] {
       cheatDeathUsed: false,
       cooldownLeft: 0,
       rewindLeft: passives.rewindUses ?? 0,
+      killTally: su.killTally ?? 0,
+      fearTally: su.fearTally ?? 0,
       cooldownDefer: false,
       poisonUndo: [],
+      equalizeGain: equalizeGainOf(su, stats, statCtx),
     };
     return c;
   });
@@ -463,6 +487,20 @@ function applyOp(state: SimState, source: Combatant, target: Combatant, op: Effe
   switch (op.op) {
     case 'modStat': {
       const permanent = op.duration === 'permanent';
+      if (op.double && op.stat === 'atk') {
+        const before = target.atk;
+        target.atk = clampStat('atk', target.atk * 2);
+        const amount = target.atk - before;
+        emit(state, {
+          type: 'StatChanged',
+          unitId: target.uid,
+          stat: 'atk',
+          amount,
+          now: target.atk,
+          permanent,
+        });
+        break;
+      }
       const amount = scaleBuff(target, op.amount, permanent);
       if (op.stat === 'atk') {
         target.atk = clampStat('atk', target.atk + amount);
@@ -554,6 +592,12 @@ function applyOp(state: SimState, source: Combatant, target: Combatant, op: Effe
       break;
     }
     case 'transform':
+      if (op.afterFear) break;
+      if (op.afterKills) {
+        target.killTally = (target.killTally ?? 0) + 1;
+        emit(state, { type: 'KillTallied', unitId: target.uid, now: target.killTally });
+        if (target.killTally < op.afterKills) break;
+      }
       transformCombatant(state, target, op);
       break;
     case 'revertToBase':
@@ -605,14 +649,15 @@ function applyOp(state: SimState, source: Combatant, target: Combatant, op: Effe
       moveTowardBack(state, target);
       break;
     case 'moveToLastSlot':
-      moveToLastSlot(state, target);
+      if (moveToLastSlot(state, target)) tallyFear(state, source);
       break;
     case 'charmAttack':
       emit(state, { type: 'ConfusedSkip', unitId: target.uid });
       charmIntoAllyAttack(state, target);
       break;
     case 'switchSides':
-      state.pendingSideSwitches.push({ sourceId: source.uid, targetId: target.uid });
+      if (op.immediate) switchCombatSides(state, source, target);
+      else state.pendingSideSwitches.push({ sourceId: source.uid, targetId: target.uid });
       break;
     case 'wrapCocoon':
       wrapCocoon(state, source, target);
@@ -648,12 +693,14 @@ function applyOp(state: SimState, source: Combatant, target: Combatant, op: Effe
       break;
     }
     case 'counterAttack': {
+      // Guardian only covers the figure immediately behind, never itself.
+      if (source.uid === state.guardianProtectUid) break;
       // Innate Guardian plus Knight's Crest, or two crests, is still one reply.
       const key = `${state.guardianWave}:${source.uid}`;
       if (state.guardianAnswered.has(key)) break;
       state.guardianAnswered.add(key);
       emit(state, { type: 'Log', message: `guardian:${source.uid}` });
-      // Pacifists do not start fights, but a guardian still hits back when struck.
+      // Pacifists do not start fights, but a guardian still hits back for the ally behind.
       strike(state, source, target, true);
       break;
     }
@@ -688,9 +735,9 @@ function applyOp(state: SimState, source: Combatant, target: Combatant, op: Effe
       grantDiamondStickers(state, source);
       break;
     case 'exhaustUnit': {
-      const atk = Math.max(0, source.atk);
-      const hp = Math.max(0, source.maxHp);
-      const behind = op.giftBehind ? rightAlly(state, source) : undefined;
+      const atk = Math.max(0, target.atk);
+      const hp = Math.max(0, target.maxHp);
+      const behind = op.giftBehind ? rightAlly(state, target) : undefined;
       if (behind) {
         if (atk) applyOp(state, source, behind, { op: 'modStat', stat: 'atk', amount: atk, duration: 'combat' }, kind);
         if (hp) {
@@ -700,12 +747,18 @@ function applyOp(state: SimState, source: Combatant, target: Combatant, op: Effe
       }
       emit(state, {
         type: 'ExhaustedUnit',
-        unitId: source.uid,
+        unitId: target.uid,
         recipientId: behind?.uid ?? null,
         atk,
         hp,
       });
-      if (behind) emit(state, { type: 'Log', message: `melt:${source.uid}` });
+      if (behind) emit(state, { type: 'Log', message: `melt:${target.uid}` });
+      if (!target.dead) {
+        target.dead = true;
+        target.dying = false;
+        target.hp = 0;
+        compactLine(state, target.team);
+      }
       break;
     }
     case 'silence':
@@ -1108,6 +1161,7 @@ function applyCombatSticker(state: SimState, target: Combatant, stickerId: strin
   if (target.stickerEffectsSuppressed) return;
   const snap = combatSnap(target);
   const n = stickerEffectScale(snap, stickerId);
+  if (st.passives?.matchHighest) raiseMatchHighest(state, target);
   if (st.passives?.doubleStats) {
     // Chimps: Mirror doubles then ×3 → multiply by 6 (add 5× current).
     const gain = target.passives.buffTriple ? 5 : 1;
@@ -1144,6 +1198,34 @@ function applyCombatSticker(state: SimState, target: Combatant, stickerId: strin
   }
 }
 
+function raiseMatchHighest(state: SimState, target: Combatant): void {
+  if (target.equalizeGain) return;
+  const top = Math.max(target.atk, target.maxHp, target.speed);
+  const atk = top - target.atk;
+  const speed = top - target.speed;
+  const hp = top - target.maxHp;
+  target.equalizeGain = { atk, hp, speed };
+  if (atk) applyOp(state, target, target, { op: 'modStat', stat: 'atk', amount: atk, duration: 'combat' }, 'effect');
+  if (speed) applyOp(state, target, target, { op: 'modStat', stat: 'speed', amount: speed, duration: 'combat' }, 'effect');
+  if (hp) {
+    applyOp(state, target, target, { op: 'modStat', stat: 'maxHp', amount: hp, duration: 'combat' }, 'effect');
+    applyOp(state, target, target, { op: 'modStat', stat: 'hp', amount: hp, duration: 'combat' }, 'effect');
+  }
+}
+
+function undoMatchHighest(state: SimState, target: Combatant): void {
+  if (target.stickers.some((id) => getSticker(id).passives?.matchHighest)) return;
+  const gain = target.equalizeGain;
+  if (!gain) return;
+  target.equalizeGain = undefined;
+  if (gain.atk) nudgeCombatStat(state, target, 'atk', -gain.atk);
+  if (gain.speed) nudgeCombatStat(state, target, 'speed', -gain.speed);
+  if (gain.hp) {
+    nudgeCombatStat(state, target, 'maxHp', -gain.hp);
+    nudgeCombatStat(state, target, 'hp', -gain.hp);
+  }
+}
+
 function canAcceptCombatSticker(target: Combatant): boolean {
   if (target.dead || target.dying || target.hp <= 0) return false;
   if (getUnit(target.defId).passives?.eatStickers) return true;
@@ -1157,8 +1239,18 @@ function stealCombatSticker(state: SimState, thief: Combatant, victim: Combatant
   const sid = victim.stickers.splice(stolenAt, 1)[0];
   if (!sid) return;
   forgetPoisonSlot(victim, stolenAt);
-  const applied = canAcceptCombatSticker(thief);
-  emit(state, { type: 'StoleSticker', thiefId: thief.uid, victimId: victim.uid, stickerId: sid, applied });
+  let replacedId: string | undefined;
+  let applied = canAcceptCombatSticker(thief);
+  if (!applied && !thief.dead && !thief.dying && thief.hp > 0 && thief.stickers.length) {
+    const dropAt = state.rng.int(thief.stickers.length);
+    replacedId = thief.stickers.splice(dropAt, 1)[0];
+    if (replacedId) {
+      forgetPoisonSlot(thief, dropAt);
+      if (!thief.stickerEffectsSuppressed) reverseCombatSticker(state, thief, replacedId);
+      applied = true;
+    }
+  }
+  emit(state, { type: 'StoleSticker', thiefId: thief.uid, victimId: victim.uid, stickerId: sid, applied, replacedId });
   if (!victim.stickerEffectsSuppressed) reverseCombatSticker(state, victim, sid);
   if (applied) applyCombatSticker(state, thief, sid);
 }
@@ -1312,6 +1404,7 @@ function reverseCombatSticker(state: SimState, target: Combatant, stickerId: str
   const st = getSticker(stickerId);
   const ghost = { ...combatSnap(target), stickerIds: [...target.stickers, stickerId] };
   const n = stickerEffectScale(ghost, stickerId);
+  if (st.passives?.matchHighest) undoMatchHighest(state, target);
   if (st.passives?.doubleStats) {
     // Mirror Mirror had multiplied live stats on apply; undo that multiplier.
     const hadTriple = Boolean(mergePassives(ghost).buffTriple);
@@ -1540,11 +1633,11 @@ function swapCombatSlots(state: SimState, a: Combatant, b: Combatant): void {
   emit(state, { type: 'SlotsSwapped', aId: a.uid, bId: b.uid });
 }
 
-function moveToLastSlot(state: SimState, target: Combatant): void {
-  if (target.dead || target.dying || target.hp <= 0) return;
+function moveToLastSlot(state: SimState, target: Combatant): boolean {
+  if (target.dead || target.dying || target.hp <= 0) return false;
   const line = living(state, target.team).slice().sort((a, b) => a.slot - b.slot || a.uid.localeCompare(b.uid));
   const last = line[line.length - 1];
-  if (!last || last.uid === target.uid) return;
+  if (!last || last.uid === target.uid) return false;
   const fromSlot = target.slot;
   const toSlot = last.slot;
   for (const u of line) {
@@ -1557,6 +1650,17 @@ function moveToLastSlot(state: SimState, target: Combatant): void {
   target.slot = toSlot;
   emit(state, { type: 'Log', message: `fear:${target.uid}` });
   emit(state, { type: 'MovedToBack', unitId: target.uid, fromSlot, toSlot });
+  return true;
+}
+
+function tallyFear(state: SimState, source: Combatant): void {
+  const fx = source.abilities
+    .flatMap((ab) => ab.def.effects)
+    .find((e) => e.op === 'transform' && e.afterFear);
+  if (!fx || fx.op !== 'transform' || !fx.afterFear) return;
+  source.fearTally = (source.fearTally ?? 0) + 1;
+  emit(state, { type: 'FearTallied', unitId: source.uid, now: source.fearTally });
+  if (source.fearTally >= fx.afterFear) transformCombatant(state, source, fx);
 }
 
 function moveTowardBack(state: SimState, target: Combatant): void {
@@ -1630,6 +1734,8 @@ function trySummon(state: SimState, source: Combatant, unitId: string): void {
     cheatDeathUsed: false,
     cooldownLeft: 0,
     rewindLeft: def.passives?.rewindUses ?? 0,
+    killTally: 0,
+    fearTally: 0,
     cooldownDefer: false,
     poisonUndo: [],
   };
@@ -1698,6 +1804,8 @@ function trySummonFallen(state: SimState, source: Combatant): void {
     cheatDeathUsed: false,
     cooldownLeft: 0,
     rewindLeft: passives.rewindUses ?? 0,
+    killTally: 0,
+    fearTally: 0,
     cooldownDefer: false,
     poisonUndo: [],
   };
@@ -1781,7 +1889,17 @@ function dealDamage(
   kind: 'attack' | 'effect' | 'thorns' | 'reflect',
   trueDamage = false,
 ): void {
-  if (target.dead || target.dying || amount <= 0) return;
+  if (target.dead || target.dying) return;
+  if (amount <= 0) {
+    if (kind === 'attack' && source) {
+      fireAbilities(state, 'damageDealt', (c) => c.uid === source.uid, {
+        attackTarget: target,
+        attacker: source,
+        isAttack: true,
+      });
+    }
+    return;
+  }
   if (blockedBySteadfast(source, target, kind)) return;
   if (kind === 'attack' && !trueDamage && target.passives.evade) {
     const others = living(state, target.team).filter((a) => a.uid !== target.uid);
@@ -1810,6 +1928,13 @@ function dealDamage(
   if (dmg <= 0) {
     emit(state, { type: 'DamageReceived', unitId: target.uid, amount: 0, sourceId: source?.uid ?? null, absorbed: true });
     noteAttackContact(state, source, target, kind);
+    if (kind === 'attack' && source) {
+      fireAbilities(state, 'damageDealt', (c) => c.uid === source.uid, {
+        attackTarget: target,
+        attacker: source,
+        isAttack: true,
+      });
+    }
     return;
   }
   const hpBefore = target.hp;
@@ -2062,6 +2187,17 @@ function refusesToAttack(u: Combatant): boolean {
   return u.targeting === 'pacifist' || isAmbushWaiting(u);
 }
 
+function canSwing(u: Combatant): boolean {
+  if (refusesToAttack(u) || u.dead) return false;
+  if (u.atk > 0) return true;
+  return u.abilities.some(
+    (ab) =>
+      ab.def.trigger === 'damageDealt' ||
+      ab.def.trigger === 'attackStarted' ||
+      ab.def.trigger === 'afterAttack',
+  );
+}
+
 function extraAttacksThisTurn(state: SimState, u: Combatant): number {
   let n = u.passives.extraAttacks ?? 0;
   if (state.lostLastRound[u.team]) n += u.passives.extraAttacksIfLostLastRound ?? 0;
@@ -2069,7 +2205,7 @@ function extraAttacksThisTurn(state: SimState, u: Combatant): number {
 }
 
 function resolveAttack(state: SimState, u: Combatant, target: Combatant): void {
-  if (refusesToAttack(u) || u.dead || target.dead || u.atk <= 0) return;
+  if (!canSwing(u) || target.dead) return;
   if (u.team !== target.team) {
     if (target.passives.provoke) {
       emit(state, { type: 'Log', message: `taunt:${target.uid}` });
@@ -2077,7 +2213,9 @@ function resolveAttack(state: SimState, u: Combatant, target: Combatant): void {
     state.attackCancelled = false;
     state.pendingAmbush = null;
     const prevWave = state.guardianWave;
+    const prevProtect = state.guardianProtectUid;
     state.guardianWave = ++state.attackSerial;
+    state.guardianProtectUid = target.uid;
     fireAbilities(
       state,
       'whenTargeted',
@@ -2089,6 +2227,7 @@ function resolveAttack(state: SimState, u: Combatant, target: Combatant): void {
       },
     );
     state.guardianWave = prevWave;
+    state.guardianProtectUid = prevProtect;
     if (state.attackCancelled) {
       state.attackCancelled = false;
       const pend = state.pendingAmbush;
@@ -2113,7 +2252,8 @@ function resolveAttack(state: SimState, u: Combatant, target: Combatant): void {
 }
 
 function strike(state: SimState, u: Combatant, target: Combatant, allowPacifist = false): void {
-  if ((!allowPacifist && refusesToAttack(u)) || u.dead || target.dead || u.atk <= 0) return;
+  if ((!allowPacifist && refusesToAttack(u)) || u.dead || target.dead) return;
+  if (u.atk <= 0 && !allowPacifist && !canSwing(u)) return;
   u.lastTargetId = target.uid;
   emit(state, { type: 'BeforeAttack', unitId: u.uid, targetId: target.uid });
   fireAbilities(state, 'beforeAttack', (c) => c.uid === u.uid, { attackTarget: target, attacker: u, isAttack: true });
@@ -2125,10 +2265,8 @@ function strike(state: SimState, u: Combatant, target: Combatant, allowPacifist 
     applyOp(state, u, target, { op: 'modStat', stat: 'atk', amount: -curse, duration: 'combat' }, 'effect');
     emit(state, { type: 'Log', message: `curse:${target.uid}:${curse}` });
   }
-  if (u.passives.heartseeker && u.team !== target.team && !target.avoidUids.includes(u.uid)) {
-    target.avoidUids.push(u.uid);
-  }
-  const dmg = Math.max(1, u.atk + attackDamageBonus(state, u, target));
+  const dmg = Math.max(0, u.atk + attackDamageBonus(state, u, target))
+    * (u.passives.doubleVsStickers && target.stickers.length ? 2 : 1);
   dealDamage(state, u, target, dmg, 'attack', false);
   u.attacksDone += 1;
   fireAbilities(state, 'afterAttack', (c) => c.uid === u.uid, { attackTarget: target, attacker: u, isAttack: true });
@@ -2137,7 +2275,7 @@ function strike(state: SimState, u: Combatant, target: Combatant, allowPacifist 
 }
 
 function performAttack(state: SimState, u: Combatant): void {
-  if (refusesToAttack(u) || u.atk <= 0) return;
+  if (!canSwing(u)) return;
   if ((u.passives.drunkChance ?? 0) > 0) {
     const roll = state.rng.next();
     if (roll < 0.25) {
@@ -2347,6 +2485,7 @@ export function simulateBattle(a: TeamSnapshot, b: TeamSnapshot, seed: number): 
     guardianWave: 0,
     attackSerial: 0,
     guardianAnswered: new Set(),
+    guardianProtectUid: null,
   };
 
   refreshChampionAtk(state);

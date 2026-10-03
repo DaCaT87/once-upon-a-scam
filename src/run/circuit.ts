@@ -1,9 +1,19 @@
-import { canAcceptSticker, cloneTeam, computedStats, firstFreeSlot, getUnit, makeSnapshot } from '../core/catalog';
+import { canAcceptSticker, cloneTeam, firstFreeSlot, getUnit, makeSnapshot } from '../core/catalog';
 import { ovenSweetOffer } from '../data/stickers';
 import { mixSeed, SeededRng } from '../core/rng';
 import { simulateBattle } from '../sim/simulation';
-import type { AlleyChoice, CircuitRival, RunState, TeamSnapshot } from '../core/types';
-import { DRAFT_PICK, MAX_TEAM, RUN_ROUNDS } from '../core/types';
+import type { CircuitRival, RivalVice, RunState, TeamSnapshot } from '../core/types';
+import { MAX_TEAM, RUN_ROUNDS } from '../core/types';
+import {
+  alleyPickFor,
+  bestStickerHost,
+  ensureFullLine,
+  formLine,
+  pickDraft,
+  pickStickerOffer,
+  recruitScore,
+  viceAt,
+} from '../ai/brain';
 import {
   afterResult,
   applyBattleSide,
@@ -54,25 +64,12 @@ const NAMES = [
   'Marq Bess',
 ];
 
-function power(defId: string): number {
-  const def = getUnit(defId);
-  const rank = { bronze: 0, silver: 8, gold: 18, platinum: 26, diamond: 40 }[def.rarity];
-  return def.atk * 3 + def.hp * 2 + def.speed * 2 + rank + (def.ability ? 5 : 0);
-}
-
-function formLine(team: RunState['team']): RunState['team'] {
-  return team
-    .map((u) => ({ u, stats: computedStats(u) }))
-    .sort((a, b) => b.stats.hp - a.stats.hp || b.stats.atk - a.stats.atk)
-    .map((row, i) => ({ ...row.u, slot: i + 1 }));
-}
-
 function weakest(team: RunState['team']): RunState['team'][number] | undefined {
-  return team.slice().sort((a, b) => computedStats(a).hp - computedStats(b).hp || computedStats(a).atk - computedStats(b).atk)[0];
+  return team.slice().sort((a, b) => recruitScore(a.defId, team) - recruitScore(b.defId, team))[0];
 }
 
-function strongest(team: RunState['team']): RunState['team'][number] | undefined {
-  return team.slice().sort((a, b) => computedStats(b).hp - computedStats(a).hp || computedStats(b).atk - computedStats(a).atk)[0];
+function strongest(team: RunState['team'], vice: RivalVice = 'brawler'): RunState['team'][number] | undefined {
+  return team.slice().sort((a, b) => recruitScore(b.defId, team, vice) - recruitScore(a.defId, team, vice))[0];
 }
 
 function copyTales(tales: CircuitRival['lostTales']): CircuitRival['lostTales'] {
@@ -84,12 +81,16 @@ function copyTales(tales: CircuitRival['lostTales']): CircuitRival['lostTales'] 
 }
 
 export function rivalSnapshot(rival: CircuitRival, round: number): TeamSnapshot {
+  const team =
+    round <= 1
+      ? rival.team
+      : ensureFullLine(rival.team, { seed: rival.seed, round, vice: rival.vice, wins: rival.wins });
   const snap = makeSnapshot({
     playerId: rival.playerId,
     playerName: rival.playerName,
     runId: rival.playerId,
     round,
-    team: rival.team.length ? rival.team : [],
+    team: team.length ? team : [],
     lostLastRound: rival.lostLastRound,
     lossesThisRun: rival.losses,
     stickersGained: rival.stickersGained,
@@ -114,7 +115,7 @@ export function circuitOpponent(run: RunState): TeamSnapshot | null {
   return rivalSnapshot(rival, run.round);
 }
 
-function takeRival(run: RunState, seed: number, name: string, id: string): CircuitRival {
+function takeRival(run: RunState, seed: number, name: string, id: string, vice: RivalVice): CircuitRival {
   return {
     playerId: id,
     playerName: name,
@@ -130,6 +131,7 @@ function takeRival(run: RunState, seed: number, name: string, id: string): Circu
     lostTales: copyTales(run.lostTales ?? []),
     lostLastRound: false,
     pendingStickerIds: [],
+    vice,
   };
 }
 
@@ -147,39 +149,39 @@ function stamp(run: RunState): string {
   ].join('/');
 }
 
-function glueOne(run: RunState): RunState {
+function glueOne(run: RunState, vice: RivalVice): RunState {
   const sweets = run.pendingStickerIds.filter((id) => ovenSweetOffer(id));
   if (sweets.length && sweets.length === run.pendingStickerIds.length) {
     const best = [...sweets].sort((a, b) => (ovenSweetOffer(b)?.amount ?? 0) - (ovenSweetOffer(a)?.amount ?? 0))[0];
-    const host = run.team[0];
+    const host = (best && bestStickerHost(run.team, best, vice)) ?? run.team[0];
     if (!best || !host) return skipStickers(run);
     return assignPendingSticker(run, host.instanceId, undefined, best);
   }
   const sid = run.pendingStickerIds[0];
-  const host = run.team.find((u) => canAcceptSticker(u)) ?? run.team[0];
+  const host = (sid && bestStickerHost(run.team, sid, vice)) ?? run.team.find((u) => canAcceptSticker(u)) ?? run.team[0];
   if (!sid || !host) return skipStickers(run);
   const replace = canAcceptSticker(host) ? undefined : 0;
   return assignPendingSticker(run, host.instanceId, replace, sid);
 }
 
-function playGifts(run: RunState): RunState {
+function playGifts(run: RunState, vice: RivalVice): RunState {
   let guard = 0;
   while (run.phase === 'stickerAssign' && guard++ < 8) {
-    const next = glueOne(run);
+    const next = glueOne(run, vice);
     if (stamp(next) === stamp(run)) return skipStickers(run);
     run = next;
   }
   return run.phase === 'stickerAssign' ? skipStickers(run) : run;
 }
 
-function takeRecruit(run: RunState): RunState {
+function takeRecruit(run: RunState, vice: RivalVice): RunState {
   if (run.pendingGoldUnitId && run.eventId === 'book-of-lost-tales') {
     const open = run.team.filter((u) => !getUnit(u.defId).passives?.grantGoldUnitOnRecruit);
     const victim = weakest(open.length ? open : run.team);
     if (!victim) return skipRecruit(run);
     return seatGoldUnit(run, victim.slot);
   }
-  const ranked = run.recruitOffers.slice().sort((a, b) => power(b) - power(a));
+  const ranked = run.recruitOffers.slice().sort((a, b) => recruitScore(b, run.team, vice) - recruitScore(a, run.team, vice));
   let guard = 0;
   while (run.phase === 'recruit' && ranked.length && guard++ < 4) {
     const id = ranked.shift()!;
@@ -192,7 +194,7 @@ function takeRecruit(run: RunState): RunState {
       continue;
     }
     const weak = weakest(run.team);
-    if (!weak || power(id) <= power(weak.defId)) break;
+    if (!weak || recruitScore(id, run.team, vice) <= recruitScore(weak.defId, run.team, vice)) break;
     const next = replaceRecruit(run, id, weak.slot);
     if (next === run) break;
     run = next;
@@ -201,17 +203,17 @@ function takeRecruit(run: RunState): RunState {
   return done.phase === 'recruit' ? skipRecruit(run) : done;
 }
 
-function takeSticker(run: RunState): RunState {
-  const sid = run.stickerOffers[0];
+function takeSticker(run: RunState, vice: RivalVice): RunState {
+  const sid = pickStickerOffer(run.team, run.stickerOffers, vice);
   if (sid && run.team.length) {
-    const host = run.team.find((u) => canAcceptSticker(u)) ?? run.team[0]!;
+    const host = bestStickerHost(run.team, sid, vice) ?? run.team[0]!;
     const replace = canAcceptSticker(host) ? undefined : 0;
     run = applyShopSticker(run, sid, host.instanceId, replace);
   }
   return settleStickerShop(run);
 }
 
-function stepEvent(run: RunState): RunState {
+function stepEvent(run: RunState, vice: RivalVice): RunState {
   if (eventIsBlocked(run)) return skipEmptyEvent(run);
   const id = run.eventId;
   if (id === 'monster-hunt') {
@@ -222,7 +224,7 @@ function stepEvent(run: RunState): RunState {
     if (run.eventOffers.includes('book-picked')) return settleBookChoice(run);
     const ready = ensureBookOffers(run);
     if (ready.team.length < MAX_TEAM) return claimBookUnit(ready, firstFreeSlot(ready.team));
-    const host = ready.team.find((u) => canAcceptSticker(u)) ?? ready.team[0];
+    const host = ready.team.find((u) => canAcceptSticker(u)) ?? run.team[0];
     if (host) return claimBookSticker(ready, host.instanceId, host.stickerIds.length >= 3 ? 0 : undefined);
     const weak = weakest(ready.team);
     if (weak) return replaceBookUnit(ready, weak.slot);
@@ -234,7 +236,10 @@ function stepEvent(run: RunState): RunState {
       const weak = weakest(run.team);
       return weak ? replaceEventUnit(run, weak.slot) : throwEventReward(run);
     }
-    if (run.eventStep === 'well-kind') return pickEventKind(run, run.team.length > 1 ? 'unit' : 'sticker');
+    if (run.eventStep === 'well-kind') {
+      const kind = vice === 'sticker' || run.team.length <= 1 ? 'sticker' : 'unit';
+      return pickEventKind(run, kind);
+    }
     if (run.eventStep === 'well-sticker') {
       const inst = run.eventPicks[0];
       const unit = run.team.find((u) => u.instanceId === inst);
@@ -253,11 +258,13 @@ function stepEvent(run: RunState): RunState {
   }
   if (id === 'witch-oven') {
     if (run.eventStep === 'oven-apply') {
-      const host = run.team.find((u) => canAcceptSticker(u));
+      const sid = run.pendingStickerIds[0];
+      const host = (sid && bestStickerHost(run.team, sid, vice)) ?? run.team.find((u) => canAcceptSticker(u));
       if (host && run.pendingStickerIds.length) return eventSelectUnit(run, host.instanceId);
       return ovenDiscardSticker(run);
     }
-    const donor = run.team.find((u) => u.stickerIds.length) ?? run.team[0];
+    const donor =
+      run.team.slice().sort((a, b) => b.stickerIds.length - a.stickerIds.length)[0] ?? run.team[0];
     if (!donor) return skipEmptyEvent(run);
     return eventSelectUnit(run, donor.instanceId);
   }
@@ -267,30 +274,23 @@ function stepEvent(run: RunState): RunState {
       const weak = weakest(run.team);
       return weak ? replaceEventUnit(run, weak.slot) : throwEventReward(run);
     }
-    const strong = strongest(run.team);
+    const strong = strongest(run.team, vice);
     if (!strong) return skipEmptyEvent(run);
     return eventSelectUnit(run, strong.instanceId);
   }
   return skipEmptyEvent(run);
 }
 
-function alleyPick(run: RunState): AlleyChoice {
-  const done = run.alleyDone ?? [];
-  if (!done.includes('recruit') && run.team.length < MAX_TEAM) return 'recruit';
-  if (!done.includes('sticker')) return 'sticker';
-  return 'event';
-}
-
-function stepRival(run: RunState): RunState {
-  if (run.phase === 'stickerAssign') return glueOne(run);
+function stepRival(run: RunState, vice: RivalVice): RunState {
+  if (run.phase === 'stickerAssign') return glueOne(run, vice);
   if (run.phase === 'postFight') {
-    const pick = alleyPick(run);
+    const pick = alleyPickFor(run, vice);
     const next = chooseAlley(run, pick);
     return next === run ? passAlley(run) : next;
   }
-  if (run.phase === 'recruit') return takeRecruit(run);
-  if (run.phase === 'sticker') return takeSticker(run);
-  if (run.phase === 'event') return stepEvent(run);
+  if (run.phase === 'recruit') return takeRecruit(run, vice);
+  if (run.phase === 'sticker') return takeSticker(run, vice);
+  if (run.phase === 'event') return stepEvent(run, vice);
   if (run.phase === 'result') return afterResult(run);
   return run;
 }
@@ -309,13 +309,13 @@ function forceLeave(run: RunState): RunState {
   return run;
 }
 
-function playAlley(start: RunState): RunState {
+function playAlley(start: RunState, vice: RivalVice): RunState {
   let run = start;
   const round = run.round;
   let stuck = 0;
   for (let i = 0; i < 64 && run.round === round && run.phase !== 'formation'; i++) {
     const mark = stamp(run);
-    let next = stepRival(run);
+    let next = stepRival(run, vice);
     if (stamp(next) === mark) {
       stuck += 1;
       next = forceLeave(run);
@@ -326,7 +326,7 @@ function playAlley(start: RunState): RunState {
     run = next;
     if (stuck > 3) break;
   }
-  return { ...run, team: formLine(run.team) };
+  return { ...run, team: ensureFullLine(run.team, { seed: run.seed, round: run.round, vice }) };
 }
 
 function shellFromRival(rival: CircuitRival, round: number): RunState {
@@ -366,30 +366,36 @@ function shellFromRival(rival: CircuitRival, round: number): RunState {
 }
 
 function writeBack(rival: CircuitRival, run: RunState): CircuitRival {
+  const vice = rival.vice ?? 'brawler';
   return {
     ...rival,
-    team: formLine(run.team),
+    team: ensureFullLine(run.team, { seed: rival.seed, round: Math.max(2, run.round), vice, wins: rival.wins }),
     offerCounter: run.offerCounter,
     stickersGained: run.stickersGained ?? rival.stickersGained,
     deathsThisRun: run.deathsThisRun ?? rival.deathsThisRun,
     lostTales: copyTales(run.lostTales ?? []),
     pendingStickerIds: [],
+    vice: rival.vice,
   };
 }
 
 function growRival(rival: CircuitRival, round: number): CircuitRival {
+  const vice = rival.vice ?? 'brawler';
   let run = shellFromRival(rival, round);
   if (rival.pendingStickerIds.length) {
-    run = playGifts({
-      ...run,
-      phase: 'stickerAssign',
-      pendingStickerIds: [...rival.pendingStickerIds],
-      stickerPickCount: rival.pendingStickerIds.length,
-      eventId: null,
-    });
+    run = playGifts(
+      {
+        ...run,
+        phase: 'stickerAssign',
+        pendingStickerIds: [...rival.pendingStickerIds],
+        stickerPickCount: rival.pendingStickerIds.length,
+        eventId: null,
+      },
+      vice,
+    );
   }
   if (run.phase === 'result') run = afterResult(run);
-  if (run.phase !== 'formation') run = playAlley(run);
+  if (run.phase !== 'formation') run = playAlley(run, vice);
   return writeBack(rival, run);
 }
 
@@ -458,19 +464,20 @@ export function settleCircuit(run: RunState, enemy: TeamSnapshot): RunState {
   return { ...run, circuit, circuitPlayed: run.round };
 }
 
-function draftOne(seed: number, name: string, id: string): CircuitRival {
+function draftOne(seed: number, name: string, id: string, vice: RivalVice): CircuitRival {
   let run = bareRun('ai', id, name, seed);
-  const ranked = run.draftOffers.slice().sort((a, b) => power(b) - power(a));
-  for (const defId of ranked.slice(0, DRAFT_PICK)) run = toggleDraftPick(run, defId);
+  for (const defId of pickDraft(run.draftOffers, vice)) run = toggleDraftPick(run, defId);
   run = confirmDraft(run);
-  if (run.phase === 'stickerAssign') run = playGifts(run);
-  return takeRival(run, seed, name, id);
+  if (run.phase === 'stickerAssign') run = playGifts(run, vice);
+  return takeRival(run, seed, name, id, vice);
 }
 
-/** Nine rivals, seated once from this run's seed. */
+/** Nine rivals, seated once from this run's seed. Each seat keeps a vice. */
 export function openCircuit(seed: number, playerName: string): CircuitRival[] {
   const rng = new SeededRng(mixSeed(seed, 0xc10));
   const pool = NAMES.filter((name) => name.trim().toLowerCase() !== playerName.trim().toLowerCase());
   const names = rng.pickN(pool, 9);
-  return names.map((name, i) => draftOne(mixSeed(seed, i + 1, 0xc11), name, `rival_${(seed >>> 0).toString(16)}_${i}`));
+  return names.map((name, i) =>
+    draftOne(mixSeed(seed, i + 1, 0xc11), name, `rival_${(seed >>> 0).toString(16)}_${i}`, viceAt(i)),
+  );
 }

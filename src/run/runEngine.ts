@@ -26,8 +26,9 @@ import { clampPlayerName, makeId } from '../core/ids';
 import { mixSeed } from '../core/rng';
 import { SeededRng } from '../core/rng';
 import { simulateBattle } from '../sim/simulation';
-import type { AlleyChoice, BattleResult, EventId, LostTale, Rarity, RunMode, RunState, TeamSnapshot, UnitInstance } from '../core/types';
+import type { AlleyChoice, BattleResult, EventId, LostTale, Rarity, RivalVice, RunMode, RunState, TeamSnapshot, UnitInstance } from '../core/types';
 import { growCircuit, openCircuit, settleCircuit } from './circuit';
+import { isRivalVice, viceAt } from '../ai/brain';
 import { ALLEY_PICK, DATA_VERSION, DRAFT_OFFER, DRAFT_PICK, MAX_TEAM, RECRUIT_OFFER, RECRUIT_PICK, STICKER_OFFER, STICKER_PICK } from '../core/types';
 
 export function victoryPointsOf(run: { victoryPoints?: number; wins: number; history?: { winner?: string }[] }): number {
@@ -83,7 +84,7 @@ export function migrateRun(run: RunState): RunState {
   const legacyBag = stickersOf(Array.isArray(saved.stickerBag) ? saved.stickerBag : []);
   delete saved.stickerBag;
   if (saved.circuit) {
-    saved.circuit = saved.circuit.map((rival) => {
+    saved.circuit = saved.circuit.map((rival, i) => {
       const copy = { ...rival } as typeof rival & { stickerBag?: string[] };
       delete copy.stickerBag;
       return {
@@ -98,6 +99,9 @@ export function migrateRun(run: RunState): RunState {
           defId: remapUnitId(tale.defId),
           stickerIds: stickersOf(tale.stickerIds),
         })),
+        vice: isRivalVice((copy as { vice?: unknown }).vice)
+          ? (copy as { vice: RivalVice }).vice
+          : viceAt(i),
       };
     });
   }
@@ -414,6 +418,18 @@ function persistBattleTeam(
         stickersGained += 1;
       }
     }
+    if (ev.type === 'FearTallied') {
+      const id = sideOf(ev.unitId);
+      if (id) {
+        team = team.map((u) => (u.instanceId === id ? { ...u, fearTally: ev.now } : u));
+      }
+    }
+    if (ev.type === 'KillTallied') {
+      const id = sideOf(ev.unitId);
+      if (id) {
+        team = team.map((u) => (u.instanceId === id ? { ...u, killTally: ev.now } : u));
+      }
+    }
     if (ev.type === 'StoleSticker') {
       const victim = sideOf(ev.victimId);
       if (victim) {
@@ -423,10 +439,14 @@ function persistBattleTeam(
         const thief = sideOf(ev.thiefId);
         if (thief) {
           const holder = team.find((u) => u.instanceId === thief);
-          if (holder && canAcceptSticker(holder) && !eatsStickers(holder.defId)) {
+          if (holder && !eatsStickers(holder.defId)) {
             const fromId = holder.defId;
-            team = team.map((u) => (u.instanceId === thief ? applySticker(u, ev.stickerId) : u));
-            team = shareStickerOnApply(team, thief, ev.stickerId, fromId);
+            let next = holder;
+            if (ev.replacedId) next = stripSticker(next, ev.replacedId);
+            if (canAcceptSticker(next)) {
+              team = team.map((u) => (u.instanceId === thief ? applySticker(next, ev.stickerId) : u));
+              team = shareStickerOnApply(team, thief, ev.stickerId, fromId);
+            }
           }
           stickersGained += 1;
         }
@@ -1581,9 +1601,9 @@ function resolveOven(run: RunState, instanceId: string): RunState {
     eventId: 'witch-oven',
     eventStep: 'reward',
     pendingStickerIds: [
-      `heartbeat-sweet:${figureOwnStat(victim, 'hp')}`,
-      `strength-sweet:${figureOwnStat(victim, 'atk')}`,
-      `flash-sweet:${figureOwnStat(victim, 'speed')}`,
+      `health-sweet:${figureOwnStat(victim, 'hp')}`,
+      `attack-sweet:${figureOwnStat(victim, 'atk')}`,
+      `speed-sweet:${figureOwnStat(victim, 'speed')}`,
     ],
     stickerPickCount: 1,
     stickerOffers: [],

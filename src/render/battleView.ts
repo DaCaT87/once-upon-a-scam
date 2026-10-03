@@ -1053,8 +1053,11 @@ export class BattleView {
           tgt.death = ev.death;
           this.beginDeathRewind(tgt, ev.hp, translate(this.settings.locale, 'fx.rewind'), 'is-rewind', silent);
         }
-        const count = this.cardEl(ev.masterId)?.querySelector('[data-rewind-left]');
-        if (count) count.textContent = String(ev.rewindLeft);
+        this.cardEl(ev.masterId)
+          ?.querySelectorAll('[data-rewind-left]')
+          .forEach((count) => {
+            count.textContent = String(ev.rewindLeft);
+          });
         return silent ? 0 : clipDuration('death') * 2;
       }
       case 'Revived': {

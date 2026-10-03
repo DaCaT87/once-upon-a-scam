@@ -120,6 +120,12 @@ export function computedStats(
       speed *= mirror;
     }
   }
+  if (inst.stickerIds.some((id) => getSticker(id).passives?.matchHighest)) {
+    const top = Math.max(atk, hp, speed);
+    atk = top;
+    hp = top;
+    speed = top;
+  }
   return { atk: clampStat('atk', atk), hp: clampStat('maxHp', hp), speed: clampStat('speed', speed) };
 }
 
@@ -142,6 +148,7 @@ export function mergePassives(inst: UnitInstance | SnapshotUnit): Passives {
     out.steadfast = Boolean(out.steadfast || p.steadfast);
     out.bonusIfTargetHigherAtk = (out.bonusIfTargetHigherAtk ?? 0) + (p.bonusIfTargetHigherAtk ?? 0);
     out.atkPerTargetSticker = (out.atkPerTargetSticker ?? 0) + (p.atkPerTargetSticker ?? 0);
+    out.doubleVsStickers = Boolean(out.doubleVsStickers || p.doubleVsStickers);
     out.bonusVsLowHp = (out.bonusVsLowHp ?? 0) + (p.bonusVsLowHp ?? 0);
     out.cheatDeath = Boolean(out.cheatDeath || p.cheatDeath);
     out.reflectDamageTaken = Boolean(out.reflectDamageTaken || p.reflectDamageTaken);
@@ -150,6 +157,7 @@ export function mergePassives(inst: UnitInstance | SnapshotUnit): Passives {
     out.extraAttacks = (out.extraAttacks ?? 0) + (p.extraAttacks ?? 0);
     out.extraAttacksIfLostLastRound = (out.extraAttacksIfLostLastRound ?? 0) + (p.extraAttacksIfLostLastRound ?? 0);
     out.heartseeker = Boolean(out.heartseeker || p.heartseeker);
+    out.matchHighest = Boolean(out.matchHighest || p.matchHighest);
     out.curseAtk = (out.curseAtk ?? 0) + (p.curseAtk ?? 0);
     out.teamActsFirst = Boolean(out.teamActsFirst || p.teamActsFirst);
     out.silence = Boolean(out.silence || p.silence);
@@ -205,6 +213,7 @@ function timingFromAbility(ability: AbilityDef): AbilityTiming | null {
 function timingFromPassives(passives?: Passives): AbilityTiming | null {
   if (!passives) return null;
   if (passives.lifesteal || passives.bonusIfTargetHigherAtk || passives.atkPerTargetSticker || passives.curseAtk) return 'onAttack';
+  if (passives.doubleVsStickers) return 'onHit';
   if (passives.thorns || passives.firstHitReduce || passives.reflectDamageTaken) return 'whenHit';
   if (passives.silence || passives.teamActsFirst) return 'battleStart';
   if (passives.championAtk) return 'onAttack';
@@ -251,15 +260,16 @@ export function assertAbilityTiming(): void {
     ['sprung-jack', null],
     ['happy-rat', 'onSticker'],
     ['hunter', 'onKill'],
-    ['witch-hunter', 'onAttack'],
+    ['witch-hunter', 'onHit'],
     ['headless-horseman', 'onKill'],
+    ['cursed-horseman', 'onKill'],
     ['patchwork-princess', 'onSticker'],
     ['sir-forget-a-lot', 'scrapEnd'],
     ['royal-herald', 'onRecruit'],
     ['cursed-doll', 'whenHit'],
     ['miss-misfortune', null],
     ['glass-knight', 'onDeath'],
-    ['scary-scarecrow', 'onAttack'],
+    ['scary-scarecrow', 'onHit'],
     ['old-gatekeeper', null],
     ['wish-pinata', 'onDeath'],
     ['aladdin', 'onAttack'],
@@ -326,7 +336,8 @@ export function assertAbilityTiming(): void {
     ['bloodied-crown', 'onKill'],
     ['lucky-charm', null],
     ['vampires-appetite', 'onKill'],
-    ['heartseeker-arrow', null],
+    ['heartseeker-arrow', 'onHit'],
+    ['scales-of-balance', null],
     ['snipers-sight', null],
     ['platinum-plated', 'onSticker'],
     ['hearth-spirit', null],
@@ -424,6 +435,8 @@ export function makeSnapshot(args: {
           stickerIds: [...u.stickerIds],
           permanentMods: { ...u.permanentMods },
           baseStats: { atk: def.atk, hp: def.hp, speed: def.speed },
+          ...(u.killTally ? { killTally: u.killTally } : {}),
+          ...(u.fearTally ? { fearTally: u.fearTally } : {}),
         };
       }),
     createdAt: 0,
@@ -441,6 +454,8 @@ export function snapshotToTeam(snap: TeamSnapshot): UnitInstance[] {
     slot: u.slot,
     stickerIds: [...u.stickerIds],
     permanentMods: { ...u.permanentMods },
+    ...(u.killTally ? { killTally: u.killTally } : {}),
+    ...(u.fearTally ? { fearTally: u.fearTally } : {}),
   }));
 }
 
@@ -476,6 +491,7 @@ const UNIT_ART_FOLDERS = new Set([
   'cursed-doll',
   'glass-knight',
   'headless-horseman',
+  'cursed-horseman',
   'patchwork-princess',
   'patchwork-monster',
   'the-collector',
@@ -537,6 +553,7 @@ const CARD_FACE_FOLDERS = new Set([
   'wish-pinata',
   'glass-knight',
   'headless-horseman',
+  'cursed-horseman',
   'gingerbread-man',
   'prince-charming',
   'witch-hunter',
@@ -692,6 +709,7 @@ const STICKER_ART_FILES = new Set([
   'lucky-charm',
   'vampires-appetite',
   'heartseeker-arrow',
+  'scales-of-balance',
   'snipers-sight',
   'platinum-plated',
   'hearth-spirit',
@@ -716,9 +734,9 @@ const STICKER_ART_FILES = new Set([
   'poison',
   'filth',
   'cocoon',
-  'heartbeat-sweet',
-  'strength-sweet',
-  'flash-sweet',
+  'health-sweet',
+  'attack-sweet',
+  'speed-sweet',
 ]);
 
 export function hasStickerArt(id: string): boolean {

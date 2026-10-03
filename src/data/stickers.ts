@@ -180,7 +180,21 @@ export const STICKERS: StickerDef[] = [
     },
     archetypes: ['attack'],
   },
-  { id: 'heartseeker-arrow', nameKey: 'stk.heartseekerArrow', descKey: 'stk.heartseekerArrow.d', family: 'keyword', rarity: 'gold', icon: 'bow', passives: { heartseeker: true }, archetypes: ['attack'] },
+  {
+    id: 'heartseeker-arrow',
+    nameKey: 'stk.heartseekerArrow',
+    descKey: 'stk.heartseekerArrow.d',
+    family: 'trigger',
+    rarity: 'diamond',
+    icon: 'bow',
+    ability: {
+      id: 'heartseeker-arrow.d',
+      trigger: 'damageDealt',
+      target: 'attackTarget',
+      effects: [{ op: 'switchSides', immediate: true }],
+    },
+    archetypes: ['attack'],
+  },
   {
     id: 'snipers-sight',
     nameKey: 'stk.snipersSight',
@@ -255,6 +269,16 @@ export const STICKERS: StickerDef[] = [
     rarity: 'platinum',
     icon: 'bow',
     passives: { doubleStats: true },
+    archetypes: ['buff'],
+  },
+  {
+    id: 'scales-of-balance',
+    nameKey: 'stk.threePanScale',
+    descKey: 'stk.threePanScale.d',
+    family: 'keyword',
+    rarity: 'gold',
+    icon: 'badge',
+    passives: { matchHighest: true },
     archetypes: ['buff'],
   },
   plated('diamond-plated', 'stk.diamondPlated', 'stk.diamondPlated.d', 'platinum', 'diamond'),
@@ -455,9 +479,9 @@ export const STICKERS: StickerDef[] = [
     },
     archetypes: ['attack'],
   },
-  { id: 'heartbeat-sweet', nameKey: 'stk.heartbeatSweet', descKey: 'stk.heartbeatSweet.d', family: 'stat', rarity: 'bronze', icon: 'heart', archetypes: ['tank'] },
-  { id: 'strength-sweet', nameKey: 'stk.strengthSweet', descKey: 'stk.strengthSweet.d', family: 'stat', rarity: 'bronze', icon: 'fists', archetypes: ['attack'] },
-  { id: 'flash-sweet', nameKey: 'stk.flashSweet', descKey: 'stk.flashSweet.d', family: 'stat', rarity: 'bronze', icon: 'cup', archetypes: ['speed'] },
+  { id: 'health-sweet', nameKey: 'stk.healthSweet', descKey: 'stk.healthSweet.d', family: 'stat', rarity: 'bronze', icon: 'heart', archetypes: ['tank'] },
+  { id: 'attack-sweet', nameKey: 'stk.attackSweet', descKey: 'stk.attackSweet.d', family: 'stat', rarity: 'bronze', icon: 'fists', archetypes: ['attack'] },
+  { id: 'speed-sweet', nameKey: 'stk.speedSweet', descKey: 'stk.speedSweet.d', family: 'stat', rarity: 'bronze', icon: 'cup', archetypes: ['speed'] },
 ];
 
 const RARITY_RANK: Record<Rarity, number> = {
@@ -476,9 +500,9 @@ STICKERS.sort((a, b) => {
 export const STICKER_BY_ID = new Map(STICKERS.map((s) => [s.id, s]));
 
 const OVEN_SWEETS = {
-  'heartbeat-sweet': 'hp',
-  'strength-sweet': 'atk',
-  'flash-sweet': 'speed',
+  'health-sweet': 'hp',
+  'attack-sweet': 'atk',
+  'speed-sweet': 'speed',
 } as const;
 
 export type OvenSweetId = keyof typeof OVEN_SWEETS;
@@ -487,7 +511,7 @@ export function isOvenSweet(id: string): boolean {
   return Object.prototype.hasOwnProperty.call(OVEN_SWEETS, id.split(':')[0]);
 }
 
-/** `heartbeat-sweet:6` is one baked offer. A bare id is the library card. */
+/** `health-sweet:6` is one baked offer. A bare id is the library card. */
 export function ovenSweetOffer(id: string): { id: OvenSweetId; stat: 'hp' | 'atk' | 'speed'; amount: number } | null {
   const [base, raw] = id.split(':');
   if (!base || !Object.prototype.hasOwnProperty.call(OVEN_SWEETS, base)) return null;

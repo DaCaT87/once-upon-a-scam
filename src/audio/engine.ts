@@ -26,7 +26,7 @@ const TRACK: Record<HtmlCue, { src: string; from: number; gain: number }> = {
 };
 
 /** How long the result word stays up with its jingle. Matches the wavs. */
-const RESULT_SEC = { win: 6.75, draw: 5, lose: 3.55 } as const;
+const RESULT_SEC = { win: 4.4, draw: 4.4, lose: 4.4 } as const;
 
 /** Open file is the short attack plus one pass of the motif. The loop file repeats until the scrap ends. */
 const BATTLE_MUSIC: Record<BattleCue, { open: string; loop: string }> = {
@@ -556,9 +556,9 @@ export class AudioEngine {
       if (!this.ctx) this.ctx = new AudioContext();
       const ctx = this.ctx;
       const files = {
-        win: './audio/result-win.wav?v=sting5',
-        draw: './audio/result-draw.wav?v=sting7',
-        lose: './audio/result-lose.wav?v=sting3',
+        win: './audio/result-win.wav?v=sting8',
+        draw: './audio/result-draw.wav?v=sting8',
+        lose: './audio/result-lose.wav?v=sting8',
       } as const;
       const pending = Promise.all(
         (Object.keys(files) as ('win' | 'draw' | 'lose')[]).map(async (kind) => {

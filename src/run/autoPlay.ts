@@ -8,12 +8,11 @@ import {
   placeRecruit,
   replaceRecruit,
   resolveFight,
+  seatGoldUnit,
   skipStickers,
   toggleDraftPick,
 } from './runEngine';
 import { circuitOpponent } from './circuit';
-import { buildOpponent } from '../ai/buildAI';
-import { mixSeed } from '../core/rng';
 import { DRAFT_PICK, MAX_TEAM } from '../core/types';
 import type { RunState } from '../core/types';
 
@@ -25,11 +24,14 @@ export function autoPlayRun(seed = 0x51a711): RunState {
   if (run.phase === 'stickerAssign') run = skipStickers(run);
   if (run.team.length !== teamSizeForRound(1)) throw new Error('autoplay-draft-size');
   for (let r = 1; r <= 10; r++) {
-    const enemy = buildOpponent(run.round, mixSeed(seed, run.round, 99), 0.6);
+    const enemy = circuitOpponent(run);
+    if (!enemy) throw new Error(`autoplay-missing-rival-${run.round}`);
     if (run.team.length < DRAFT_PICK || run.team.length > MAX_TEAM) {
       throw new Error(`autoplay-player-size-${run.round}`);
     }
-    if (enemy.units.length !== teamSizeForRound(run.round)) throw new Error(`autoplay-enemy-size-${run.round}`);
+    if (enemy.units.length < 1 || enemy.units.length > MAX_TEAM) {
+      throw new Error(`autoplay-enemy-size-${run.round}-${enemy.units.length}`);
+    }
     run = resolveFight(run, enemy);
     if (run.round >= 10) {
       run = afterResult(run);
@@ -47,6 +49,15 @@ export function autoPlayRun(seed = 0x51a711): RunState {
         } else {
           const victim = run.team[0];
           if (victim) run = replaceRecruit(run, id, victim.slot);
+        }
+        if (run.pendingGoldUnitId) {
+          const goldSlot = firstFreeSlot(run.team);
+          if (run.team.length < MAX_TEAM && goldSlot >= 1 && goldSlot <= MAX_TEAM) {
+            run = seatGoldUnit(run, goldSlot);
+          } else {
+            const goldVictim = run.team[0];
+            if (goldVictim) run = seatGoldUnit(run, goldVictim.slot);
+          }
         }
       }
       run = finishRecruit(run);
