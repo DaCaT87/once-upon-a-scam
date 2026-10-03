@@ -174,8 +174,8 @@ export const STICKERS: StickerDef[] = [
       trigger: 'unitKilled',
       target: 'self',
       effects: [
-        { op: 'modStat', stat: 'maxHp', amount: 5, duration: 'combat' },
-        { op: 'modStat', stat: 'hp', amount: 5, duration: 'combat' },
+        { op: 'modStat', stat: 'maxHp', amount: 2, duration: 'permanent' },
+        { op: 'modStat', stat: 'hp', amount: 2, duration: 'permanent' },
       ],
     },
     archetypes: ['attack'],
