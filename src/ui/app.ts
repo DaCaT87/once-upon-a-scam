@@ -594,6 +594,20 @@ export class GameApp {
     );
   }
 
+  /** Zoom rebuilds the face; keep Once-stickers gray with the same red cross. */
+  private copySpentStickers(from: HTMLElement, to: HTMLElement): void {
+    const src = [...from.querySelectorAll<HTMLElement>(':scope > .sticker-rail .sticker-slot')];
+    const dst = [...to.querySelectorAll<HTMLElement>(':scope > .sticker-rail .sticker-slot')];
+    for (let i = 0; i < dst.length; i++) {
+      const a = src[i];
+      const b = dst[i];
+      if (!a || !b) continue;
+      if (a.classList.contains('is-spent') || a.classList.contains('is-graying')) {
+        b.classList.add('is-spent', 'is-spent-still');
+      }
+    }
+  }
+
   private openCardZoom(card: HTMLElement): void {
     if (!this.cardInspect()) return;
     const html = this.zoomCardHtml(card);
@@ -618,6 +632,7 @@ export class GameApp {
     face.querySelectorAll('img').forEach((img) => {
       img.draggable = false;
     });
+    this.copySpentStickers(card, face);
     // Table-sized face first so ability fits the parchment; then scale the whole card.
     if (face.classList.contains('unit-card')) face.style.width = 'var(--card-w)';
     else face.style.width = '240px';

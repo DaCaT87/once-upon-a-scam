@@ -782,7 +782,8 @@ export class BattleView {
         if (!silent && (ev.kind === 'thorns' || ev.kind === 'reflect') && !this.peekPrevLog(`revenge:${ev.targetId}:`)) {
           return 0.34;
         }
-        return ev.kind === 'attack' ? 0.22 : 0.12;
+        // Effect hits (fireball, bolt, breath…) keep the shake and −HP on screen.
+        return ev.kind === 'attack' ? 0.22 : 0.32;
       }
       case 'Healed': {
         const tgt = this.actors.get(ev.unitId);
