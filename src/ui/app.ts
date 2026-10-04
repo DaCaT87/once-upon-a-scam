@@ -1,5 +1,5 @@
 import { audio, type MusicCue } from '../audio/engine';
-import { barePrintedSummon, firstFreeSlot, getUnit, killsLeftOnCard, nextFormOf, stickerArtFile } from '../core/catalog';
+import { barePrintedSummon, firstFreeSlot, getUnit, killsLeftOnCard, libraryListsCreatedForm, nextFormOf, stickerArtFile } from '../core/catalog';
 import { clampPlayerName, PLAYER_NAME_MAX } from '../core/ids';
 import { EVENT_BY_ID, HUNT_MONSTERS, eventHidesRarity, huntStickerFor, lossRewardRarity } from '../data/events';
 import { rarityRank, shopMaxRarity, stickerMaxRarity } from '../data/rarity';
@@ -1586,7 +1586,7 @@ export class GameApp {
       ...UNITS.filter((u) => u.recruitable).slice().sort(byBook),
       ...UNITS.filter((u) => u.tags.includes('hunt')).slice().sort(byBook),
     ];
-    // Created forms (Pig, Cocoon, Garbage Pile, …) sit right after their maker — always bare.
+    // Pig and ambush flips sit after their maker. Cocoon / Garbage Pile stay peek / Next only.
     const units: (typeof UNITS)[number][] = [];
     const seen = new Set<string>();
     for (const u of baseUnits) {
@@ -1594,11 +1594,9 @@ export class GameApp {
       seen.add(u.id);
       units.push(u);
       const nextId = nextFormOf(u.id);
-      if (!nextId || seen.has(nextId)) continue;
-      const next = getUnit(nextId);
-      if (next.recruitable || next.tags.includes('hunt')) continue;
+      if (!nextId || seen.has(nextId) || !libraryListsCreatedForm(nextId)) continue;
       seen.add(nextId);
-      units.push(next);
+      units.push(getUnit(nextId));
     }
     const orderedStickers = (list: ReturnType<typeof grantableStickers>) =>
       list.slice().sort((a, b) => {

@@ -2,7 +2,7 @@ import { autoPlayRun } from './run/autoPlay';
 import { buildOpponent } from './ai/buildAI';
 import { formLine, ensureFullLine, diamondChance } from './ai/brain';
 import { openCircuit } from './run/circuit';
-import { applySticker, assertAbilityTiming, assertCompactSlots, barePrintedSummon, baseFormOf, computedStats, getSticker, getUnit, hasCardFace, hasPrintedCard, hasStickerArt, hasUnitArt, idlePacifist, instanceFromDef, makeSnapshot, nextFormOf, offerStickers, offerUnits, prevFormOf, resolveTargeting, usesPrintedCardFace, wakesToFight } from './core/catalog';
+import { applySticker, assertAbilityTiming, assertCompactSlots, barePrintedSummon, baseFormOf, computedStats, getSticker, getUnit, hasCardFace, hasPrintedCard, hasStickerArt, hasUnitArt, idlePacifist, instanceFromDef, libraryListsCreatedForm, makeSnapshot, nextFormOf, offerStickers, offerUnits, prevFormOf, resolveTargeting, usesPrintedCardFace, wakesToFight } from './core/catalog';
 import { assertShopCurve } from './data/rarity';
 import { HUNT_MONSTERS, huntMonstersFor, huntStickerFor } from './data/events';
 import { STICKERS, grantableStickers, libraryHuntStickers, shopStickers } from './data/stickers';
@@ -3489,6 +3489,10 @@ assertShopCurve();
   if (nextFormOf('circe') !== 'pig') throw new Error('circe next form');
   if (nextFormOf('sewer-lord') !== 'garbage-pile') throw new Error('sewer lord next form');
   if (nextFormOf('purple-widows') !== 'silk-cocoon') throw new Error('widows next form');
+  if (libraryListsCreatedForm('silk-cocoon') || libraryListsCreatedForm('garbage-pile')) {
+    throw new Error('cocoon and garbage pile must not be extra library tiles');
+  }
+  if (!libraryListsCreatedForm('pig')) throw new Error('pig should still sit after Circe in the library');
   if (prevFormOf('pig') !== 'circe') throw new Error('pig prev form');
   if (prevFormOf('garbage-pile') !== 'sewer-lord') throw new Error('garbage pile prev form');
   if (prevFormOf('silk-cocoon') !== 'purple-widows') throw new Error('cocoon prev form');
