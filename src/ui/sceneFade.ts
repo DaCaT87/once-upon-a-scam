@@ -70,7 +70,7 @@ export function willChangeScene(page: string): boolean {
   return shown !== null && page !== shown;
 }
 
-/** Remember this screen without flashing the veil. The scrap curtain covers that swap. */
+/** Remember this screen without flashing the veil. */
 export function syncScene(page?: string): void {
   shown = page ?? sceneKey();
 }
@@ -86,11 +86,11 @@ export async function fadeOutScene(ms = 360): Promise<void> {
 }
 
 /** Uncover the screen that was just painted. */
-export function revealScene(page: string): void {
+export function revealScene(page: string, ms = 500): void {
   shown = page;
   const veil = veilEl();
   if (!veil) return;
-  void ramp(1, 0, 500).then(() => {
+  void ramp(1, 0, ms).then(() => {
     if (shown !== page) return;
     const live = veilEl();
     if (live) live.style.pointerEvents = 'none';

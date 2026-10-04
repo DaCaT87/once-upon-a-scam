@@ -12,6 +12,11 @@ const SIDE_SWITCH_TOTAL = SLIDE_DUR + SIDE_FLIP_DUR;
 /** Fool laugh: shake, then a full second of stillness before the card goes. */
 const LAUGH_SHAKE = 0.75;
 const LAUGH_HOLD = 1;
+/**
+ * Theatre curtain intro. Kept in place — paintCurtain / velvet wings still exist —
+ * but the live scrap skips it: Fight fades through black, then the field.
+ */
+const SCRAP_CURTAIN = false;
 /** Curtain intro: black → closed hold → our panels travel fully off → music → cards. */
 const CURTAIN_BLACK = 0.3;
 /** Closed cloth, before it parts. */
@@ -178,6 +183,7 @@ export class BattleView {
       if (ev.type === 'BattleStarted' || ev.type === 'UnitSpawned') this.i += 1;
       else break;
     }
+    if (!SCRAP_CURTAIN) this.skipCurtainOpen();
   }
 
   setSpeed(s: number): void {
@@ -388,7 +394,28 @@ export class BattleView {
     this.onField?.();
   }
 
+  /** Field first, curtain kept off-stage. Cards still deal onto the board. */
+  private skipCurtainOpen(): void {
+    this.curtain = 0;
+    this.introElapsed = CURTAIN_FIELD_AT;
+    this.revealArenaUnderCurtain();
+    this.setCurtainPhase('gone');
+    this.host.querySelector('.battle-intro')?.classList.add('is-gone');
+    this.host.classList.add('is-field-up');
+    this.showField();
+    this.cardsArmed = true;
+    this.dealing = true;
+    this.dealHold = false;
+    this.dealSlot = 0;
+    this.dealClock = 0;
+    this.intro = 1;
+  }
+
   private advanceCurtain(dt: number): void {
+    if (!SCRAP_CURTAIN) {
+      this.advanceDeal(dt);
+      return;
+    }
     this.introElapsed += dt;
     const e = this.introElapsed;
     const closed = this.reduceMotion ? 0.15 : CURTAIN_CLOSED_HOLD;

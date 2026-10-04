@@ -180,7 +180,7 @@ export class AudioEngine {
    * so the fanfare can start the moment the field appears.
    */
   leaveSquare(next: BattleCue): void {
-    // Decode the scrap bed during the curtain, so the fanfare is ready on the board.
+    // Decode the scrap bed during the fade, so the fanfare is ready on the board.
     void this.loadBed(next).catch(() => {});
     const el = this.musicEl;
     if (!el || (this.cue !== 'menu' && this.cue !== 'square')) return;
@@ -234,7 +234,10 @@ export class AudioEngine {
       return;
     }
     if ((cue === 'fight' || cue === 'hunt') && this.bedPhase === 'finale' && this.cue === cue) return;
-    if (this.cue === cue && this.loaded === cue && this.playing && this.bedPhase !== 'finale') return;
+    if (this.cue === cue && this.loaded === cue && this.playing && this.bedPhase !== 'finale') {
+      // leaveSquare fades the waltz in place; restart it when the square is back.
+      if (!this.fadingEl || (cue !== 'square' && cue !== 'menu')) return;
+    }
     this.cue = cue;
     if (this.playing) this.playCue();
   }

@@ -631,13 +631,6 @@ export function barePrintedSummon(defId: string): boolean {
   return defId === 'silk-cocoon' || defId === 'garbage-pile';
 }
 
-/** Pig / ambush flips sit in the library after the maker. Hunt summons stay peek / Next only. */
-export function libraryListsCreatedForm(defId: string): boolean {
-  if (barePrintedSummon(defId)) return false;
-  const def = getUnit(defId);
-  return !def.recruitable && !def.tags.includes('hunt');
-}
-
 const FRAMED_HUNT_CARDS = new Set(['thousand-maws', 'purple-widows', 'sewer-lord', 'mad-woodsman', 'greed-fang']);
 
 export function usesPrintedCardFace(defId: string): boolean {

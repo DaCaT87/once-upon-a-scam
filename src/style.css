@@ -473,8 +473,8 @@ html.needs-landscape .landscape-gate {
 .unit-card.is-peeking {
   z-index: 16;
 }
-.unit-card.is-peeking > :not(.form-peek) {
-  visibility: hidden;
+.unit-card.is-peeking > *:not(.form-peek) {
+  display: none !important;
 }
 .unit-card .form-peek,
 .sticker-card .form-peek {
@@ -490,8 +490,8 @@ html.needs-landscape .landscape-gate {
 .sticker-card.is-peeking {
   z-index: 16;
 }
-.sticker-card.is-peeking > :not(.form-peek) {
-  visibility: hidden;
+.sticker-card.is-peeking > *:not(.form-peek) {
+  display: none !important;
 }
 .unit-card .form-peek .unit-card.tip-preview {
   width: 100%;

@@ -1,5 +1,5 @@
 import { audio, type MusicCue } from '../audio/engine';
-import { barePrintedSummon, firstFreeSlot, getUnit, killsLeftOnCard, libraryListsCreatedForm, nextFormOf, stickerArtFile } from '../core/catalog';
+import { barePrintedSummon, firstFreeSlot, getUnit, killsLeftOnCard, stickerArtFile } from '../core/catalog';
 import { clampPlayerName, PLAYER_NAME_MAX } from '../core/ids';
 import { EVENT_BY_ID, HUNT_MONSTERS, eventHidesRarity, huntStickerFor, lossRewardRarity } from '../data/events';
 import { rarityRank, shopMaxRarity, stickerMaxRarity } from '../data/rarity';
@@ -59,7 +59,7 @@ import { ALLEY_PICK, DATA_VERSION, DRAFT_PICK, MAX_STICKERS, MAX_TEAM, RUN_ROUND
 import { bindTargetingTips, fitCardSlabs, paintPortraits, rarityLabel, renderDossierOverlay, renderOfferCard, renderStickerCard, renderTeamLane, renderUnitCard, t } from './cards';
 import { bindFullscreenControls, enterFullscreen, exitFullscreen, setLandscapeGateLabel, syncFullscreenChrome, toggleFullscreen } from './fullscreen';
 import { applyViewportScale } from './scale';
-import { fadeOutScene, hideVeil, revealScene, syncScene, willChangeScene } from './sceneFade';
+import { fadeOutScene, revealScene, syncScene, willChangeScene } from './sceneFade';
 
 type Screen = 'menu' | 'options' | 'run' | 'battle' | 'codex';
 
@@ -497,6 +497,17 @@ export class GameApp {
     revealScene(this.viewKey());
   }
 
+  /** Fight: cover the square, then open onto the scrap field. */
+  private async fadeSquareToArena(): Promise<void> {
+    const ticket = ++this.fadeTicket;
+    await fadeOutScene(2600);
+    if (ticket !== this.fadeTicket) return;
+    this.dossierDefId = null;
+    this.screen = 'battle';
+    this.paintScreen();
+    revealScene(this.viewKey(), 2600);
+  }
+
   /** Cover the screen that is still up, then paint the next one and uncover it. */
   private async crossfadeRender(): Promise<void> {
     const ticket = ++this.fadeTicket;
@@ -504,19 +515,12 @@ export class GameApp {
     await fadeOutScene();
     if (ticket !== this.fadeTicket) return;
     this.paintScreen();
-    const page = this.viewKey();
-    if (this.screen === 'battle' && !this.battleFieldUp) {
-      syncScene(page);
-      hideVeil();
-      return;
-    }
-    revealScene(page);
+    revealScene(this.viewKey());
   }
 
   private render(): void {
     const page = this.viewKey();
-    const curtain = this.screen === 'battle' && !this.battleFieldUp;
-    if (!curtain && willChangeScene(page)) {
+    if (willChangeScene(page)) {
       void this.crossfadeRender();
       return;
     }
@@ -1582,22 +1586,10 @@ export class GameApp {
       if (rarity !== 0) return rarity;
       return this.L(a.nameKey).localeCompare(this.L(b.nameKey), loc);
     };
-    const baseUnits = [
+    const units = [
       ...UNITS.filter((u) => u.recruitable).slice().sort(byBook),
       ...UNITS.filter((u) => u.tags.includes('hunt')).slice().sort(byBook),
     ];
-    // Pig and ambush flips sit after their maker. Cocoon / Garbage Pile stay peek / Next only.
-    const units: (typeof UNITS)[number][] = [];
-    const seen = new Set<string>();
-    for (const u of baseUnits) {
-      if (seen.has(u.id)) continue;
-      seen.add(u.id);
-      units.push(u);
-      const nextId = nextFormOf(u.id);
-      if (!nextId || seen.has(nextId) || !libraryListsCreatedForm(nextId)) continue;
-      seen.add(nextId);
-      units.push(getUnit(nextId));
-    }
     const orderedStickers = (list: ReturnType<typeof grantableStickers>) =>
       list.slice().sort((a, b) => {
         const rarity = rarityRank(a.rarity) - rarityRank(b.rarity);
@@ -3636,9 +3628,9 @@ export class GameApp {
     if (!this.run) return;
     this.run = resolveHuntFight(this.run);
     await this.persist();
-    this.go('battle');
     audio.leaveSquare('hunt');
     await this.maybeFullscreen();
+    await this.fadeSquareToArena();
   }
 
   private async startNewRun(): Promise<void> {
@@ -3672,8 +3664,8 @@ export class GameApp {
     const snap = playerSnapshot(this.run);
     if (!validateSnapshot(snap).length) await this.services.snapshots.save(snap);
     await this.persist();
-    this.go('battle');
     audio.leaveSquare('fight');
+    await this.fadeSquareToArena();
   }
 
   private esc(text: string): string {
@@ -3837,11 +3829,11 @@ export class GameApp {
     const view = new BattleView(field, this.settings);
     this.battleView = view;
     view.setSpeed(this.settings.battleSpeed);
-    view.load(this.run.lastBattle.events);
     view.onField = () => {
       this.battleFieldUp = true;
       audio.setCue(this.musicCue());
     };
+    view.load(this.run.lastBattle.events);
     view.onDone = () => {
       const winner = this.run?.lastBattle?.winner;
       if (winner) view.beginVictory(winner);

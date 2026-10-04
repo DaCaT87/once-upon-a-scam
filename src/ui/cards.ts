@@ -513,7 +513,7 @@ function portraitHtml(locale: Locale, defId: string, opts?: { clip?: string; loc
   const file = !opts?.figure && clip === 'idle' && hasCardFace(defId) ? 'card' : clip;
   const locked = opts?.locked ? ' data-locked="true"' : '';
   const scenic = isScenicArt(defId) ? ' scenic' : '';
-  const src = `./art/units/${folder}/${file}.png?v=cast213`;
+  const src = `./art/units/${folder}/${file}.png?v=cast219`;
   return `<img class="portrait-art${scenic}" data-unit="${folder}"${locked} src="${src}" alt="${t(locale, getUnit(defId).nameKey)}" draggable="false" />`;
 }
 
@@ -532,7 +532,7 @@ export function renderDossierOverlay(locale: Locale, defId: string): string {
     ? `<button type="button" class="btn ghost" data-act="next-dossier" data-def="${escapeHtml(nextId)}">${escapeHtml(t(locale, 'next'))}</button>`
     : '';
   const art = hasUnitArt(defId)
-    ? `<img class="dossier-portrait" data-unit="${folder}" src="./art/units/${folder}/idle.png?v=cast213" alt="${escapeHtml(name)}" draggable="false" />`
+    ? `<img class="dossier-portrait" data-unit="${folder}" src="./art/units/${folder}/idle.png?v=cast215" alt="${escapeHtml(name)}" draggable="false" />`
     : `<div class="dossier-art-empty" aria-hidden="true"></div>`;
   return `
     <div class="dossier-overlay" role="presentation">
