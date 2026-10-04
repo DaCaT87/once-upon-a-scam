@@ -1905,7 +1905,7 @@ function dealDamage(
   }
   if (blockedBySteadfast(source, target, kind)) return;
   if (kind === 'attack' && !trueDamage && target.passives.evade) {
-    const others = living(state, target.team).filter((a) => a.uid !== target.uid);
+    const others = living(state, target.team).filter((a) => a.uid !== target.uid && !a.passives.evade);
     if (others.length) {
       swapCombatSlots(state, target, state.rng.pick(others));
       emit(state, { type: 'DamageReceived', unitId: target.uid, amount: 0, sourceId: source?.uid ?? null, absorbed: true });

@@ -1,4 +1,5 @@
 import {
+  idlePacifist,
   instanceFromDef,
   makeSnapshot,
   offerStickers,
@@ -22,7 +23,14 @@ export function buildOpponent(round: number, seed: number, quality = 0.65): Team
   const ranked = offers
     .map((id) => ({ id, score: scoreUnit(id, [], vice) + rng.next() * (1.2 - quality) * 8 }))
     .sort((a, b) => b.score - a.score);
-  const picked = ranked.slice(0, unitCount).map((r, i) => instanceFromDef(r.id, i + 1, detId('ai', seed, i)));
+  const pickedIds: string[] = [];
+  for (const r of ranked) {
+    if (pickedIds.length >= unitCount) break;
+    const idle = pickedIds.filter((id) => idlePacifist(id)).length;
+    if (idlePacifist(r.id) && idle >= 1) continue;
+    pickedIds.push(r.id);
+  }
+  const picked = pickedIds.map((id, i) => instanceFromDef(id, i + 1, detId('ai', seed, i)));
 
   const stickerRounds = Math.max(0, round - 1);
   const bag: string[] = [];

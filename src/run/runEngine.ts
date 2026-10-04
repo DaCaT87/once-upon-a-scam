@@ -1101,7 +1101,7 @@ export function beginRecruit(run: RunState): RunState {
   return {
     ...run,
     phase: 'recruit',
-    recruitOffers: offerUnits(run.round, RECRUIT_OFFER, rng, new Set(), run.recruitRarityBump),
+    recruitOffers: offerUnits(run.round, RECRUIT_OFFER, rng, new Set(run.team.map((u) => u.defId)), run.recruitRarityBump),
     recruitPicks: [],
     offerCounter: run.offerCounter + 1,
     recruitRarityBump: false,

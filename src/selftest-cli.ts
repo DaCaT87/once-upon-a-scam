@@ -2,7 +2,7 @@ import { autoPlayRun } from './run/autoPlay';
 import { buildOpponent } from './ai/buildAI';
 import { formLine, ensureFullLine, diamondChance } from './ai/brain';
 import { openCircuit } from './run/circuit';
-import { applySticker, assertAbilityTiming, assertCompactSlots, barePrintedSummon, baseFormOf, computedStats, getSticker, getUnit, hasCardFace, hasPrintedCard, hasStickerArt, hasUnitArt, instanceFromDef, makeSnapshot, nextFormOf, offerStickers, offerUnits, prevFormOf, resolveTargeting, usesPrintedCardFace } from './core/catalog';
+import { applySticker, assertAbilityTiming, assertCompactSlots, barePrintedSummon, baseFormOf, computedStats, getSticker, getUnit, hasCardFace, hasPrintedCard, hasStickerArt, hasUnitArt, idlePacifist, instanceFromDef, makeSnapshot, nextFormOf, offerStickers, offerUnits, prevFormOf, resolveTargeting, usesPrintedCardFace, wakesToFight } from './core/catalog';
 import { assertShopCurve } from './data/rarity';
 import { HUNT_MONSTERS, huntMonstersFor, huntStickerFor } from './data/events';
 import { STICKERS, grantableStickers, libraryHuntStickers, shopStickers } from './data/stickers';
@@ -125,6 +125,21 @@ assertShopCurve();
     if (offerUnits(n, 4, new SeededRng(0x70 + n)).some((id) => getUnit(id).rarity === 'diamond')) {
       throw new Error(`shop unit diamond r${n}`);
     }
+  }
+  {
+    const held = new Set(['farm-boy', 'village-fool', 'puss-in-boots', 'ice-king']);
+    for (let n = 1; n <= 9; n++) {
+      const offer = offerUnits(n, 4, new SeededRng(0x81 + n), held);
+      if (offer.length !== 4 || offer.some((id) => held.has(id))) {
+        throw new Error(`shop should skip figures already in the team r${n} ${offer.join(',')}`);
+      }
+    }
+  }
+  if (!wakesToFight('jack-in-the-box') || !wakesToFight('mimic') || !wakesToFight('cobblers-elves')) {
+    throw new Error('jack, mimic, and cobbler elves should wake into a fighter');
+  }
+  if (!idlePacifist('village-fool') || idlePacifist('jack-in-the-box')) {
+    throw new Error('idle pacifist should skip ambush forms');
   }
 }
 {
@@ -686,6 +701,30 @@ assertShopCurve();
     !pair.events.some((e) => e.type === 'Evaded' && e.unitId === 'player:mm2' && e.reflected)
   ) {
     throw new Error('miss misfortune evade swap failed');
+  }
+  const twoEvade = simulateBattle(
+    makeSnapshot({
+      playerId: 'p',
+      playerName: 'p',
+      runId: 'r',
+      round: 1,
+      team: [instanceFromDef('miss-misfortune', 1, 'mmE'), instanceFromDef('gingerbread-man', 2, 'gbE')],
+    }),
+    makeSnapshot({
+      playerId: 'e',
+      playerName: 'e',
+      runId: 'r',
+      round: 1,
+      team: [instanceFromDef('farm-boy', 1, 'fbEv')],
+    }),
+    6,
+  );
+  if (
+    twoEvade.events.some((e) => e.type === 'SlotsSwapped') ||
+    twoEvade.events.some((e) => e.type === 'Evaded') ||
+    !twoEvade.events.some((e) => e.type === 'DamageDealt' && e.kind === 'attack' && e.targetId === 'player:mmE')
+  ) {
+    throw new Error('evade should not swap onto another evade');
   }
 }
 {
@@ -5506,6 +5545,39 @@ console.log('OK set line');
   if (filled.length !== 4) throw new Error(`rivals should fill to 4, got ${filled.length}`);
   if (diamondChance(5, 'hunt', 6) !== 0 || diamondChance(9, 'hunt', 6) <= 0) {
     throw new Error('diamond seats should wait until mid-run');
+  }
+  {
+    const stuffed = ensureFullLine(
+      [
+        instanceFromDef('village-fool', 1, 'p1'),
+        instanceFromDef('the-egg', 2, 'p2'),
+        instanceFromDef('gingerbread-man', 3, 'p3'),
+      ],
+      { seed: 0x99, round: 10, vice: 'hunt', wins: 6 },
+    );
+    const idle = stuffed.filter((u) => idlePacifist(u.defId)).length;
+    if (stuffed.length !== 4 || idle > 1) {
+      throw new Error(`rival should keep at most one idle pacifist, got ${stuffed.map((u) => u.defId).join(',')}`);
+    }
+    const woken = ensureFullLine(
+      [
+        instanceFromDef('jack-in-the-box', 1, 'j1'),
+        instanceFromDef('mimic', 2, 'm1'),
+        instanceFromDef('cobblers-elves', 3, 'e1'),
+      ],
+      { seed: 0xaa, round: 10, vice: 'brawler', wins: 5 },
+    );
+    const kept = woken.filter((u) => ['jack-in-the-box', 'mimic', 'cobblers-elves'].includes(u.defId)).length;
+    if (woken.length !== 4 || kept !== 3) {
+      throw new Error(`rival should keep ambush/wake pacifists, got ${woken.map((u) => u.defId).join(',')}`);
+    }
+  }
+  for (const seed of [0x51a7e, 0xc0ffee, 0xee11, 0x99aa, 0x1234, 0xbeef, 0x777, 0xabc]) {
+    const line = buildOpponent(10, seed, 0.95).units;
+    const idle = line.filter((u) => idlePacifist(u.defId)).length;
+    if (line.length !== 4 || idle > 1) {
+      throw new Error(`round-10 rival ${seed.toString(16)} idle-pacifists=${idle} ${line.map((u) => u.defId).join(',')}`);
+    }
   }
 }
 console.log('OK rival brain');

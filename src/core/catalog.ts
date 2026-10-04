@@ -685,6 +685,23 @@ export function nextFormOf(defId: string): string | null {
   return CREATED_FORM[defId] ?? null;
 }
 
+/** Pacifists that flip into a fighter (Jack, Mimic, Cobbler Elves → Bear). */
+export function wakesToFight(defId: string): boolean {
+  const def = getUnit(defId);
+  if (!def.ability) return false;
+  for (const e of def.ability.effects) {
+    const into = e.op === 'ambush' && e.into ? e.into : e.op === 'transform' && e.unitId ? e.unitId : undefined;
+    if (!into) continue;
+    const form = getUnit(into);
+    if (form.targeting !== 'pacifist' || form.atk > 0) return true;
+  }
+  return false;
+}
+
+export function idlePacifist(defId: string): boolean {
+  return getUnit(defId).targeting === 'pacifist' && !wakesToFight(defId);
+}
+
 const PREV_FORM = new Map<string, string>();
 for (const id of UNIT_BY_ID.keys()) {
   const next = nextFormOf(id);
@@ -817,24 +834,24 @@ export function offerUnits(
   exclude: Set<string> = new Set(),
   bumpOne = false,
 ): string[] {
+  const free = (u: { id: string; rarity: string }) => u.rarity !== 'diamond' && !exclude.has(u.id);
   const out: string[] = [];
   for (const rarity of slotsFromMix(recruitRarityMix(round), count, rng)) {
-    const pool = unitsByRarity(rarity).filter(
-      (u) => u.rarity !== 'diamond' && (!exclude.has(u.id) || rng.chance(0.35)),
-    );
-    const pickFrom = pool.length ? pool : nearestUnitPool(rarity, true);
+    const pool = unitsByRarity(rarity).filter(free);
+    const pickFrom = pool.length ? pool : nearestUnitPool(rarity, true).filter(free);
     if (!pickFrom.length) continue;
     const fresh = pickFrom.filter((u) => !out.includes(u.id));
     const u = rng.pick(fresh.length ? fresh : pickFrom);
     out.push(u.id);
   }
   while (out.length < count) {
-    const fallback = rng.pick(recruitableUnits().filter((u) => u.rarity !== 'diamond'));
-    out.push(fallback.id);
+    const rest = recruitableUnits().filter((u) => free(u) && !out.includes(u.id));
+    if (!rest.length) break;
+    out.push(rng.pick(rest).id);
   }
   if (bumpOne && out.length) {
-    const up = offerUnitsOfRarity(nextShopRarity(shopMaxRarity(round)), 1, rng);
-    if (up[0]) out[0] = up[0];
+    const up = offerUnitsOfRarity(nextShopRarity(shopMaxRarity(round)), 1, rng).find((id) => !exclude.has(id));
+    if (up) out[0] = up;
   }
   return out.slice(0, count);
 }

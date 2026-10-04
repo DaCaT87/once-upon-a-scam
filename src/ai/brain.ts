@@ -5,11 +5,13 @@ import {
   firstFreeSlot,
   getSticker,
   getUnit,
+  idlePacifist,
   instanceFromDef,
   offerUnits,
   offerUnitsOfRarity,
   shareStickerOnApply,
 } from '../core/catalog';
+import { recruitableUnits } from '../data/units';
 import { detId } from '../core/ids';
 import { mixSeed, SeededRng } from '../core/rng';
 import { MAX_STICKERS, MAX_TEAM, RIVAL_VICES } from '../core/types';
@@ -27,6 +29,13 @@ export function viceAt(index: number): RivalVice {
 }
 
 const RARITY_PTS = { bronze: 0, silver: 8, gold: 18, platinum: 26, diamond: 40 } as const;
+
+/** A rival may run several ambush/wake pacifists, but only one idle body. */
+export const MAX_RIVAL_IDLE_PACIFISTS = 1;
+
+export function idlePacifistCount(team: { defId: string }[]): number {
+  return team.filter((u) => idlePacifist(u.defId)).length;
+}
 
 export function powerOf(defId: string): number {
   const def = getUnit(defId);
@@ -80,6 +89,7 @@ export function recruitScore(defId: string, team: UnitInstance[], vice: RivalVic
   if (def.targeting === 'sneak' && hasTaunt && !hasSneak) n += 8;
   if (def.targeting === 'brawler' && hasTaunt) n += 4;
   if (defs.some((d) => d.passives?.guardian) && def.atk >= 3) n += 8;
+  if (idlePacifist(defId) && idlePacifistCount(team) >= MAX_RIVAL_IDLE_PACIFISTS) n -= 80;
   for (const u of team) n += pairSynergy(defId, u.defId) * 0.4;
   return n;
 }
@@ -253,12 +263,49 @@ export function diamondChance(round: number, vice: RivalVice, wins = 0): number 
   return Math.min(0.4, p);
 }
 
-function pickFillId(team: UnitInstance[], round: number, vice: RivalVice, rng: SeededRng): string {
-  if (!hasDiamond(team) && rng.chance(diamondChance(round, vice))) {
-    const dia = offerUnitsOfRarity('diamond', 1, rng, false)[0];
-    if (dia && getUnit(dia).rarity === 'diamond' && getUnit(dia).recruitable) return dia;
+function pickAttackerId(team: UnitInstance[], round: number, vice: RivalVice, rng: SeededRng): string {
+  const taken = new Set(team.map((u) => u.defId));
+  for (let n = 0; n < 8; n++) {
+    const id = offerUnits(Math.max(2, round), 1, rng.fork(0x21 + n))[0];
+    if (id && !idlePacifist(id) && !taken.has(id)) return id;
   }
-  return offerUnits(Math.max(2, round), 1, rng)[0] ?? 'farm-boy';
+  const attackers = recruitableUnits().filter((u) => u.rarity !== 'diamond' && !idlePacifist(u.id) && !taken.has(u.id));
+  return rng.pick(attackers.length ? attackers : recruitableUnits().filter((u) => !idlePacifist(u.id))).id;
+}
+
+function trimExtraPacifists(
+  team: UnitInstance[],
+  round: number,
+  vice: RivalVice,
+  rng: SeededRng,
+  seed: number,
+): UnitInstance[] {
+  const pac = team.filter((u) => idlePacifist(u.defId));
+  if (pac.length <= MAX_RIVAL_IDLE_PACIFISTS) return team;
+  const keep = pac.slice().sort((a, b) => recruitScore(b.defId, team, vice) - recruitScore(a.defId, team, vice))[0];
+  let next = team.map((u) => ({ ...u }));
+  for (const extra of pac) {
+    if (extra.instanceId === keep?.instanceId) continue;
+    const id = pickAttackerId(next, round, vice, rng);
+    next = next.map((u) =>
+      u.instanceId === extra.instanceId ? instanceFromDef(id, u.slot, detId('atk', mixSeed(seed, u.slot, round), u.slot)) : u,
+    );
+  }
+  return next;
+}
+
+function pickFillId(team: UnitInstance[], round: number, vice: RivalVice, rng: SeededRng): string {
+  const wantAttacker = idlePacifistCount(team) >= MAX_RIVAL_IDLE_PACIFISTS;
+  if (!wantAttacker && !hasDiamond(team) && rng.chance(diamondChance(round, vice))) {
+    const dia = offerUnitsOfRarity('diamond', 1, rng, false)[0];
+    if (dia && getUnit(dia).rarity === 'diamond' && getUnit(dia).recruitable && !idlePacifist(dia)) return dia;
+  }
+  if (wantAttacker) return pickAttackerId(team, round, vice, rng);
+  for (let n = 0; n < 8; n++) {
+    const id = offerUnits(Math.max(2, round), 1, rng.fork(0x11 + n))[0];
+    if (id) return id;
+  }
+  return 'farm-boy';
 }
 
 /** Keep a rival on 4 figures. From round 6 a seat can roll a recruitable diamond. */
@@ -268,7 +315,13 @@ export function ensureFullLine(
 ): UnitInstance[] {
   const vice = opts.vice ?? 'brawler';
   const rng = new SeededRng(mixSeed(opts.seed, opts.round, 0xf11));
-  let next = team.map((u) => ({ ...u }));
+  let next = trimExtraPacifists(
+    team.map((u) => ({ ...u })),
+    opts.round,
+    vice,
+    rng,
+    opts.seed,
+  );
   let n = 0;
   while (next.length < MAX_TEAM && n++ < MAX_TEAM) {
     const id = pickFillId(next, opts.round, vice, rng);
@@ -280,7 +333,13 @@ export function ensureFullLine(
     const weak = next
       .slice()
       .sort((a, b) => recruitScore(a.defId, next, vice) - recruitScore(b.defId, next, vice))[0];
-    if (dia && weak && getUnit(dia).rarity === 'diamond' && getUnit(dia).recruitable && getUnit(weak.defId).rarity !== 'diamond') {
+    const diaOk =
+      dia &&
+      getUnit(dia).rarity === 'diamond' &&
+      getUnit(dia).recruitable &&
+      getUnit(weak.defId).rarity !== 'diamond' &&
+      (!idlePacifist(dia) || idlePacifistCount(next.filter((u) => u.instanceId !== weak.instanceId)) < MAX_RIVAL_IDLE_PACIFISTS);
+    if (diaOk && dia && weak) {
       next = next.map((u) =>
         u.instanceId === weak.instanceId ? instanceFromDef(dia, u.slot, detId('dia', opts.seed, u.slot)) : u,
       );
