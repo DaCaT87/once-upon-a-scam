@@ -4438,8 +4438,15 @@ if (!assertDeterministic(a, b, 12345)) throw new Error('determinism failed');
     throw new Error('garbage pile should use a bare printed cutout face');
   }
   const pileFace = renderUnitCard('en', applySticker(instanceFromDef('garbage-pile', 1, 'pileFace'), 'fur-armor'));
-  if (!pileFace.includes('printed-card') || !pileFace.includes('is-cutout') || pileFace.includes('data-sticker="fur-armor"') || pileFace.includes('rarity-mark')) {
-    throw new Error('garbage pile face should be a cutout with no sticker rail or HTML rarity gem');
+  if (
+    !pileFace.includes('printed-card') ||
+    !pileFace.includes('is-cutout') ||
+    !pileFace.includes('is-bare') ||
+    pileFace.includes('sticker-rail') ||
+    pileFace.includes('data-sticker=') ||
+    pileFace.includes('rarity-mark')
+  ) {
+    throw new Error('garbage pile face should be a bare cutout with no sticker rail or HTML rarity gem');
   }
   const lordCard = renderUnitCard('en', instanceFromDef('sewer-lord', 1, 'pileCard'));
   if (!lordCard.includes('START OF SCRAP') || !lordCard.includes('Spawn') || !lordCard.includes('Garbage Pile') || !lordCard.includes('in the first 3 slots') || !lordCard.includes('These figures are created.')) {
@@ -4714,8 +4721,16 @@ if (shopStickers().some((s) => s.id === 'woodsmans-axe')) throw new Error('axe i
     throw new Error('widow hunt card should still wear her sticker');
   }
   const silkFace = renderUnitCard('en', applySticker(instanceFromDef('silk-cocoon', 1, 'silkFace'), 'cocoon'));
-  if (silkFace.includes('data-sticker="cocoon"')) {
-    throw new Error('silk cocoon face should not wear the widow sticker');
+  if (silkFace.includes('data-sticker="cocoon"') || silkFace.includes('sticker-rail') || !silkFace.includes('is-bare')) {
+    throw new Error('silk cocoon face should be bare with no sticker rail');
+  }
+  const widowLib = renderUnitCard('en', applySticker(instanceFromDef('purple-widows', 1, 'widowLib'), 'cocoon'));
+  const sewerLib = renderUnitCard('en', applySticker(instanceFromDef('sewer-lord', 1, 'sewerLib'), 'filth'));
+  if (!widowLib.includes('data-sticker="cocoon"') || widowLib.includes('is-bare')) {
+    throw new Error('purple widows library face must keep the cocoon sticker');
+  }
+  if (!sewerLib.includes('data-sticker="filth"') || sewerLib.includes('is-bare')) {
+    throw new Error('sewer lord library face must keep the filth sticker');
   }
   const bossCard = renderBattleCard('en', { ...wrapped.unit, provoke: true });
   if (!bossCard.includes('Taunt') || bossCard.includes('Same HP')) {

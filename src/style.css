@@ -480,9 +480,12 @@ html.needs-landscape .landscape-gate {
 .sticker-card .form-peek {
   position: absolute;
   inset: 0;
-  z-index: 50;
+  z-index: 70;
   pointer-events: none;
   border-radius: inherit;
+}
+.unit-card.is-bare > .sticker-rail {
+  display: none !important;
 }
 .sticker-card.is-peeking {
   z-index: 16;

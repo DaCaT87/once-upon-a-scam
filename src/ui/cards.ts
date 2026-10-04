@@ -513,7 +513,7 @@ function portraitHtml(locale: Locale, defId: string, opts?: { clip?: string; loc
   const file = !opts?.figure && clip === 'idle' && hasCardFace(defId) ? 'card' : clip;
   const locked = opts?.locked ? ' data-locked="true"' : '';
   const scenic = isScenicArt(defId) ? ' scenic' : '';
-  const src = `./art/units/${folder}/${file}.png?v=cast211`;
+  const src = `./art/units/${folder}/${file}.png?v=cast212`;
   return `<img class="portrait-art${scenic}" data-unit="${folder}"${locked} src="${src}" alt="${t(locale, getUnit(defId).nameKey)}" draggable="false" />`;
 }
 
@@ -532,7 +532,7 @@ export function renderDossierOverlay(locale: Locale, defId: string): string {
     ? `<button type="button" class="btn ghost" data-act="next-dossier" data-def="${escapeHtml(nextId)}">${escapeHtml(t(locale, 'next'))}</button>`
     : '';
   const art = hasUnitArt(defId)
-    ? `<img class="dossier-portrait" data-unit="${folder}" src="./art/units/${folder}/idle.png?v=cast211" alt="${escapeHtml(name)}" draggable="false" />`
+    ? `<img class="dossier-portrait" data-unit="${folder}" src="./art/units/${folder}/idle.png?v=cast212" alt="${escapeHtml(name)}" draggable="false" />`
     : `<div class="dossier-art-empty" aria-hidden="true"></div>`;
   return `
     <div class="dossier-overlay" role="presentation">
@@ -561,7 +561,7 @@ export function renderUnitCard(
   const stats = computedStats(inst, { stickersGained: opts?.stickersGained, deathsThisRun: opts?.deathsThisRun });
   const silenced = Boolean(opts?.extraClass?.includes('is-silenced'));
   const bare = barePrintedSummon(def.id);
-  const slots = stickerSlots(locale, bare ? [] : inst.stickerIds, { spent: silenced });
+  const slots = bare ? '' : stickerSlots(locale, inst.stickerIds, { spent: silenced });
   const alleyHunt = Boolean(opts?.extraClass?.includes('is-alley-hunt'));
   const huntPlate = alleyHunt || Boolean(opts?.extraClass?.includes('is-hunt-plate'));
   const huntCard = huntPlate || def.tags.includes('hunt');
@@ -576,7 +576,7 @@ export function renderUnitCard(
     .filter((c) => c && !(printed && (c === 'is-hunt-plate' || c === 'is-hunt-card' || c === 'is-alley-hunt')))
     .join(' ');
   return `
-    <article class="unit-card rarity-${def.rarity}${form ? ' is-form' : ''}${printed ? ' printed-card' : ''}${cutout ? ' is-cutout' : ''} ${opts?.selected ? 'selected' : ''} ${extra}${plateClass}${huntClass}"
+    <article class="unit-card rarity-${def.rarity}${form ? ' is-form' : ''}${printed ? ' printed-card' : ''}${cutout ? ' is-cutout' : ''}${bare ? ' is-bare' : ''} ${opts?.selected ? 'selected' : ''} ${extra}${plateClass}${huntClass}"
       role="button" tabindex="0"
       data-instance="${inst.instanceId}" data-def="${inst.defId}" data-slot="${inst.slot}">
       <div class="card-art">${portraitHtml(locale, def.id, opts)}</div>
@@ -590,7 +590,7 @@ export function renderUnitCard(
         </div>
         ${rules}
       </div>
-      <div class="sticker-rail">${slots}</div>
+      ${bare ? '' : `<div class="sticker-rail">${slots}</div>`}
     </article>
   `;
 }
@@ -757,7 +757,7 @@ export function renderBattleCard(locale: Locale, unit: PublicUnitView): string {
   const cutout = printed && (def.tags.includes('hunt') || bare);
   const rarity = def.id === 'pig' ? unit.rarity : def.rarity;
   return `
-    <article class="unit-card battle-card rarity-${rarity}${printed ? ' printed-card' : ''}${cutout ? ' is-cutout' : ''}${huntCard && !printed ? ' is-hunt-card' : ''}${unit.summoned ? ' is-summon' : ''}${silenced ? ' is-silenced' : ''}"
+    <article class="unit-card battle-card rarity-${rarity}${printed ? ' printed-card' : ''}${cutout ? ' is-cutout' : ''}${bare ? ' is-bare' : ''}${huntCard && !printed ? ' is-hunt-card' : ''}${unit.summoned ? ' is-summon' : ''}${silenced ? ' is-silenced' : ''}"
       data-uid="${unit.uid}" data-def="${unit.defId}" data-team="${unit.team}" data-slot="${unit.slot}">
       <div class="card-art">${portraitHtml(locale, def.id)}</div>
       ${bare ? '' : rarityMark(locale, rarity, huntCard && !printed)}
@@ -773,7 +773,7 @@ export function renderBattleCard(locale: Locale, unit: PublicUnitView): string {
           ? renderAbility(locale, def.id, unit.rewindLeft, unit.killTally)
           : ''}
       </div>
-      <div class="sticker-rail">${stickerSlots(locale, bare ? [] : unit.stickers, { spent: silenced })}</div>
+      ${bare ? '' : `<div class="sticker-rail">${stickerSlots(locale, unit.stickers, { spent: silenced })}</div>`}
       ${scrapReadout(locale, unit, def.id)}
     </article>`;
 }
