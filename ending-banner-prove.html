@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Finale · banner risultato</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Berkshire+Swash&display=swap" rel="stylesheet" />
+    <style>
+      * { box-sizing: border-box; }
+      html, body { margin: 0; min-height: 100%; }
+      body {
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        gap: 14px;
+        padding: 28px 16px 40px;
+        background:
+          radial-gradient(ellipse 70% 55% at 50% 40%, rgba(40, 28, 20, 0.16), rgba(12, 8, 6, 0.7)),
+          url("./art/ui/bg-choice-grimm.jpg?v=grimm3") center / cover no-repeat,
+          #1a1210;
+        font-family: Georgia, serif;
+        color: #e8d8b8;
+      }
+      h1 {
+        margin: 0;
+        font-size: 17px;
+        font-weight: 400;
+        letter-spacing: 0.06em;
+        color: #d4b890;
+        text-align: center;
+      }
+      .stage {
+        position: relative;
+        width: min(920px, 94vw);
+        display: grid;
+        gap: 28px;
+        justify-items: center;
+      }
+      .banner {
+        position: relative;
+        width: min(920px, 94vw);
+        aspect-ratio: 960 / 335;
+        filter: drop-shadow(0 14px 22px rgba(0, 0, 0, 0.45));
+      }
+      .banner img {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: fill;
+        pointer-events: none;
+      }
+      .ink {
+        position: absolute;
+        inset: 30% 20% 28%;
+        z-index: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.15em;
+        text-align: center;
+        font-family: "Berkshire Swash", Georgia, serif;
+        color: #1a120c;
+        text-shadow: 0 1px 0 rgba(255, 236, 200, 0.35);
+        pointer-events: none;
+      }
+      .lead {
+        font-size: clamp(22px, 2.6vw, 34px);
+        letter-spacing: 0.02em;
+        line-height: 1.1;
+      }
+      .dots {
+        display: inline;
+        transition: opacity 0.45s ease;
+      }
+      .dots.is-out { opacity: 0; }
+      .result {
+        font-size: clamp(32px, 4vw, 52px);
+        line-height: 1;
+        letter-spacing: 0.02em;
+        transition: opacity 0.45s ease;
+        min-height: 1.1em;
+      }
+      .result:not(.is-in) { opacity: 0; }
+      .cards {
+        display: flex;
+        gap: 14px;
+        justify-content: center;
+        flex-wrap: wrap;
+      }
+      .cards img {
+        width: min(140px, 22vw);
+        height: calc(min(140px, 22vw) * 972 / 642);
+        object-fit: cover;
+        border-radius: 4px;
+        box-shadow: 0 10px 18px rgba(0, 0, 0, 0.4);
+      }
+      .note {
+        margin: 0;
+        font-size: 13px;
+        color: #a89070;
+        text-align: center;
+        max-width: 32rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Finale · banner risultato</h1>
+    <div class="stage">
+      <div class="banner" aria-label="Your Tale ends in 2nd place">
+        <img src="./art/ui/ending-finale-banner.png?v=1" alt="" />
+        <div class="ink">
+          <div class="lead">Your Tale ends in<span class="dots">...</span></div>
+          <div class="result is-in">2nd place</div>
+        </div>
+      </div>
+      <div class="cards" aria-hidden="true">
+        <img src="./art/units/village-fool/card.png?v=1" alt="" />
+        <img src="./art/units/puss-in-boots/idle.png?v=1" alt="" />
+        <img src="./art/units/hunter/card.png?v=1" alt="" />
+        <img src="./art/units/farm-boy/idle.png?v=1" alt="" />
+      </div>
+      <p class="note">Banner finale · inchiostro pennino · «…» poi il posto sotto. Prova, non ancora in game.</p>
+    </div>
+    <script>
+      // Replay the coda once: lead+dots → dots out → result in
+      const dots = document.querySelector('.dots');
+      const result = document.querySelector('.result');
+      result.classList.remove('is-in');
+      setTimeout(() => dots.classList.add('is-out'), 1600);
+      setTimeout(() => result.classList.add('is-in'), 1600);
+    </script>
+  </body>
+</html>

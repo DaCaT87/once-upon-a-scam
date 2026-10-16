@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Round · ink seal</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@900&display=swap" rel="stylesheet" />
+    <style>
+      * { box-sizing: border-box; }
+      html, body { margin: 0; min-height: 100%; }
+      body {
+        display: grid;
+        place-items: center;
+        gap: 16px;
+        min-height: 100vh;
+        padding: 28px 20px 40px;
+        background:
+          radial-gradient(ellipse 70% 55% at 50% 40%, rgba(40, 28, 20, 0.18), rgba(12, 8, 6, 0.72)),
+          url("./art/ui/bg-choice-grimm.jpg?v=grimm3") center / cover no-repeat,
+          #1a1210;
+        font-family: Georgia, serif;
+        color: #e8d8b8;
+      }
+      h1 {
+        margin: 0;
+        font-size: 17px;
+        font-weight: 400;
+        letter-spacing: 0.07em;
+        text-align: center;
+        color: #d4b890;
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 40px;
+        align-items: flex-end;
+        justify-content: center;
+      }
+      .stamp {
+        position: relative;
+        width: min(280px, 72vw);
+        aspect-ratio: 1;
+        filter: drop-shadow(0 16px 20px rgba(0, 0, 0, 0.5));
+      }
+      .stamp.is-sm { width: min(132px, 36vw); }
+      .seal-art {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        pointer-events: none;
+      }
+      /* Match baked ROUND gold on the seal */
+      .num {
+        position: absolute;
+        left: 50%;
+        top: 44%;
+        transform: translate(-50%, -50%);
+        z-index: 2;
+        margin: 0;
+        font-family: "Cinzel", "Times New Roman", serif;
+        font-weight: 900;
+        font-size: 68px;
+        line-height: 1;
+        letter-spacing: 0.02em;
+        background: linear-gradient(180deg, #ffc97a 0%, #dd8c3c 40%, #cf701e 78%, #8a4a12 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+        filter:
+          drop-shadow(0 1px 0 #5a3a12)
+          drop-shadow(0 2px 2px rgba(30, 16, 4, 0.7));
+        pointer-events: none;
+        user-select: none;
+      }
+      .stamp.is-sm .num { font-size: 32px; }
+      .cap {
+        margin: 8px 0 0;
+        text-align: center;
+        font-size: 12px;
+        color: #a89070;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Round · sigillo inchiostro</h1>
+    <div class="row">
+      <div>
+        <div class="stamp" aria-label="Round 3">
+          <img class="seal-art" src="./art/ui/round-ink-seal.png?v=baked1" alt="" />
+          <span class="num">3</span>
+        </div>
+        <p class="cap">HUD grande</p>
+      </div>
+      <div>
+        <div class="stamp is-sm" aria-label="Round 7">
+          <img class="seal-art" src="./art/ui/round-ink-seal.png?v=baked1" alt="" />
+          <span class="num">7</span>
+        </div>
+        <p class="cap">scala HUD</p>
+      </div>
+    </div>
+  </body>
+</html>

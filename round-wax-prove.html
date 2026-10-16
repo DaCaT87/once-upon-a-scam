@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Round · sigillo di cera</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&display=swap" rel="stylesheet" />
+    <style>
+      * { box-sizing: border-box; }
+      html, body { margin: 0; min-height: 100%; }
+      body {
+        display: grid;
+        place-items: center;
+        gap: 16px;
+        min-height: 100vh;
+        padding: 28px 20px 40px;
+        background:
+          radial-gradient(ellipse 70% 55% at 50% 40%, rgba(40, 28, 20, 0.18), rgba(12, 8, 6, 0.72)),
+          url("./art/ui/bg-table-twozone.jpg?v=zone1") center / cover no-repeat,
+          #1a1210;
+        font-family: Georgia, serif;
+        color: #e8d8b8;
+      }
+      h1 {
+        margin: 0;
+        font-size: 17px;
+        font-weight: 400;
+        letter-spacing: 0.07em;
+        text-align: center;
+        color: #d4b890;
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 36px;
+        align-items: flex-end;
+        justify-content: center;
+      }
+      .stamp {
+        position: relative;
+        width: min(260px, 70vw);
+        aspect-ratio: 1160 / 1338;
+        filter: drop-shadow(0 16px 20px rgba(0, 0, 0, 0.48));
+      }
+      .stamp.is-sm { width: min(140px, 38vw); }
+      .seal-art {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        pointer-events: none;
+        filter: saturate(0.94) hue-rotate(-4deg) contrast(1.04);
+      }
+      .ink {
+        position: absolute;
+        inset: 0;
+        z-index: 2;
+        pointer-events: none;
+      }
+      .ink svg {
+        width: 100%;
+        height: 100%;
+        display: block;
+        overflow: visible;
+      }
+      .ink .arc {
+        fill: #f3e0b0;
+        font-family: "Cinzel", Georgia, serif;
+        font-weight: 700;
+        font-size: 14px;
+        letter-spacing: 0.42em;
+      }
+      .ink .num {
+        fill: #f6e6b8;
+        font-family: "Cinzel", Georgia, serif;
+        font-weight: 700;
+        font-size: 58px;
+        text-anchor: middle;
+        dominant-baseline: middle;
+      }
+      .ink .glow {
+        filter: drop-shadow(0 1.5px 0 rgba(40, 10, 6, 0.55));
+      }
+      .cap {
+        margin: 0;
+        text-align: center;
+        font-size: 12px;
+        color: #a89070;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Round · sigillo di cera</h1>
+    <div class="row">
+      <div>
+        <div class="stamp" aria-label="Round 3">
+          <img class="seal-art" src="./art/ui/round-wax-seal.png?v=3" alt="" />
+          <div class="ink">
+            <!-- Seal body center ~ (100, 92) in this viewBox; drips hang below -->
+            <svg viewBox="0 0 200 224" aria-hidden="true">
+              <defs>
+                <path id="round-arc" d="M 48,92 A 52,52 0 0,1 152,92" fill="none" />
+              </defs>
+              <g class="glow">
+                <text class="arc">
+                  <textPath href="#round-arc" startOffset="50%" text-anchor="middle">ROUND</textPath>
+                </text>
+                <text class="num" x="100" y="96">3</text>
+              </g>
+            </svg>
+          </div>
+        </div>
+        <p class="cap">HUD grande</p>
+      </div>
+      <div>
+        <div class="stamp is-sm" aria-label="Round 7">
+          <img class="seal-art" src="./art/ui/round-wax-seal.png?v=3" alt="" />
+          <div class="ink">
+            <svg viewBox="0 0 200 224" aria-hidden="true">
+              <defs>
+                <path id="round-arc-sm" d="M 48,92 A 52,52 0 0,1 152,92" fill="none" />
+              </defs>
+              <g class="glow">
+                <text class="arc">
+                  <textPath href="#round-arc-sm" startOffset="50%" text-anchor="middle">ROUND</textPath>
+                </text>
+                <text class="num" x="100" y="96">7</text>
+              </g>
+            </svg>
+          </div>
+        </div>
+        <p class="cap">scala HUD</p>
+      </div>
+    </div>
+  </body>
+</html>

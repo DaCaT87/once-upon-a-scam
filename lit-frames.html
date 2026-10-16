@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>3 frame + specchio</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      padding: 24px;
+      background: #1a1410;
+      color: #e8d8b0;
+      font: 15px/1.35 Georgia, serif;
+      display: grid;
+      justify-items: center;
+      gap: 16px;
+    }
+    h1 { margin: 0; font-size: 22px; font-weight: 400; }
+    .tag { opacity: 0.6; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; text-align: center; }
+    .hint { opacity: 0.8; font-size: 14px; text-align: center; max-width: 28rem; margin: 0; }
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      justify-content: center;
+      align-items: flex-start;
+    }
+    .card { text-align: center; }
+    .card h2 { margin: 0 0 8px; font-size: 15px; font-weight: 400; opacity: 0.85; }
+    .loop {
+      width: min(260px, 42vw);
+      background: #2f2926;
+      border: 2px solid #3a2a1c;
+      border-radius: 6px;
+      line-height: 0;
+    }
+    .loop img { display: block; width: 100%; height: auto; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(72px, 100px));
+      gap: 8px;
+    }
+    figure {
+      margin: 0;
+      background: #2f2926;
+      border: 1px solid #3a2a1c;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    figure img { display: block; width: 100%; height: auto; }
+    figcaption {
+      padding: 4px 6px;
+      font-size: 11px;
+      opacity: 0.75;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="tag">0 → 1 → 2 → 2′ → 1′ → 0</div>
+  <h1>Specchio di 1 e 2</h1>
+  <p class="hint">A sinistra solo 0-1-2. A destra con 1 e 2 ribaltati, così la fiamma torna dall’altro lato.</p>
+  <div class="row">
+    <div class="card">
+      <h2>Solo 3</h2>
+      <div class="loop"><img src="./art/ui/candle-lit3.gif?v=11" alt="3-frame loop" /></div>
+    </div>
+    <div class="card">
+      <h2>3 + specchio</h2>
+      <div class="loop"><img src="./art/ui/candle-lit3-mirror.gif?v=11" alt="3-frame mirrored loop" /></div>
+    </div>
+  </div>
+  <div class="grid">
+    <figure><img src="./lit-frames/lit000.png" alt="0" /><figcaption>0</figcaption></figure>
+    <figure><img src="./lit-frames/lit001.png" alt="1" /><figcaption>1</figcaption></figure>
+    <figure><img src="./lit-frames/lit002.png" alt="2" /><figcaption>2</figcaption></figure>
+    <figure><img src="./lit-frames/lit002-flip.png" alt="2'" /><figcaption>2′</figcaption></figure>
+    <figure><img src="./lit-frames/lit001-flip.png" alt="1'" /><figcaption>1′</figcaption></figure>
+  </div>
+</body>
+</html>

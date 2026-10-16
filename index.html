@@ -6,46 +6,88 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <script>
       (function () {
-        var w = window.innerWidth;
-        var h = Math.max(1, window.innerHeight - 18);
-        var scale = Math.min(w / 1920, h / 1080);
+        var vv = window.visualViewport;
+        var w = vv ? vv.width : window.innerWidth;
+        var rawH = vv ? vv.height : window.innerHeight;
+        var coarse = window.matchMedia('(pointer: coarse)').matches;
+        var noHover = window.matchMedia('(hover: none)').matches;
+        var shortSide = Math.min(window.screen.width, window.screen.height);
+        var handheld = coarse && noHover && shortSide > 0 && shortSide < 700;
+        var topGap = handheld ? 0 : 18;
+        var h = Math.max(1, rawH - topGap);
+        var tallPhone = h > w && w < 700;
+        var DESIGN_W = 1920;
+        var DESIGN_H = 1080;
+        var designW = tallPhone ? 640 : DESIGN_W;
+        var scale = tallPhone ? w / designW : Math.min(w / DESIGN_W, h / DESIGN_H);
+        // Boot is always the menu. Desktop keeps 16:9; phone fills the screen.
+        var frameMenu = !tallPhone && !handheld;
         var root = document.documentElement;
+        if (handheld) root.classList.add('is-handheld');
         root.style.setProperty('--ui-scale', String(scale));
-        root.style.setProperty('--design-w', '1920');
-        root.style.setProperty('--design-h', '1080');
-        root.style.setProperty('--vv-x', Math.max(0, (w - 1920 * scale) / 2) + 'px');
-        root.style.setProperty('--vv-y', '18px');
+        root.style.setProperty('--design-w', String(frameMenu ? DESIGN_W : w / scale));
+        root.style.setProperty('--design-h', String(frameMenu ? DESIGN_H : h / scale));
+        root.style.setProperty('--vv-x', (frameMenu ? Math.max(0, (w - DESIGN_W * scale) / 2) : 0) + 'px');
+        root.style.setProperty('--vv-y', topGap + 'px');
       })();
     </script>
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="./manifest.webmanifest" />
-    <meta name="description" content="Once Upon a Scrap — a sticker autobattler." />
-    <title>Once Upon a Scrap</title>
+    <meta name="description" content="Patch & Fable — a sticker autobattler." />
+    <title>Patch & Fable</title>
+    <!-- Hide chrome before deferred CSS loads (was flashing hunt brambles / light FOUC). -->
+    <style>
+      html, body { background: #100c0a; margin: 0; }
+      .field-seam, .hunt-brambles { display: none !important; }
+    </style>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Anton&family=Berkshire+Swash&family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,700;1,9..144,500&family=Limelight&family=Rye&family=Special+Elite&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Anton&family=Berkshire+Swash&family=Caveat+Brush&family=Cinzel:wght@700;900&family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,700;1,9..144,500&family=Great+Vibes&family=Limelight&family=Rye&family=Special+Elite&family=Titan+One&display=swap"
       rel="stylesheet"
     />
-    <script type="module" crossorigin src="./assets/index-CGV-R2lh.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-BvHMVH1b.css">
+    <script type="module" crossorigin src="./assets/index-lxMr8jUi.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-DTK-To34.css">
   </head>
   <body>
-    <div id="stage-fill" aria-hidden="true"></div>
+    <div id="stage-fill" aria-hidden="true">
+      <div class="field-seam" hidden aria-hidden="true"></div>
+    </div>
+    <div id="paper-corners" class="paper-corners" hidden aria-hidden="true">
+      <img class="paper-corner is-tl" src="./art/ui/corner-tear.png?v=c1" alt="" draggable="false" />
+      <img class="paper-corner is-tr" src="./art/ui/corner-tear.png?v=c1" alt="" draggable="false" />
+      <img class="paper-corner is-bl" src="./art/ui/corner-tear.png?v=c1" alt="" draggable="false" />
+      <img class="paper-corner is-br" src="./art/ui/corner-tear.png?v=c1" alt="" draggable="false" />
+    </div>
     <div id="scene-fade" aria-hidden="true"></div>
     <div id="vignette" aria-hidden="true"></div>
     <div id="grain" aria-hidden="true"></div>
-    <button id="options-gear" class="gear-stamp" type="button" aria-label="Options">
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path fill="currentColor" fill-rule="evenodd" d="M10.8 2.2h2.4l.35 2.15a7.6 7.6 0 0 1 1.84.76l1.86-1.16 1.7 1.7-1.16 1.86c.32.57.58 1.19.76 1.84l2.15.35v2.4l-2.15.35a7.6 7.6 0 0 1-.76 1.84l1.16 1.86-1.7 1.7-1.86-1.16a7.6 7.6 0 0 1-1.84.76l-.35 2.15h-2.4l-.35-2.15a7.6 7.6 0 0 1-1.84-.76l-1.86 1.16-1.7-1.7 1.16-1.86a7.6 7.6 0 0 1-.76-1.84l-2.15-.35v-2.4l2.15-.35c.18-.65.44-1.27.76-1.84L4.89 5.65l1.7-1.7 1.86 1.16c.57-.32 1.19-.58 1.84-.76L10.8 2.2zM12 9.1a2.9 2.9 0 1 0 0 5.8 2.9 2.9 0 0 0 0-5.8z" />
-      </svg>
-    </button>
-    <div class="corner-stamps">
-      <button id="menu-stamp" class="fs-btn" type="button" hidden>Main Menu</button>
-      <button id="fullscreen-btn" class="fs-btn" type="button" aria-pressed="false" hidden>Full screen</button>
-    </div>
-    <button id="credits-stamp" class="fs-btn credits-stamp" type="button" hidden>Crediti</button>
+    <aside class="home-chrome" id="home-chrome" hidden>
+      <div class="home-chrome-tools">
+        <button id="options-gear" class="gear-stamp" type="button" aria-label="Options" aria-expanded="false" aria-controls="home-chrome-rail">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path fill="currentColor" fill-rule="evenodd" d="M10.8 2.2h2.4l.35 2.15a7.6 7.6 0 0 1 1.84.76l1.86-1.16 1.7 1.7-1.16 1.86c.32.57.58 1.19.76 1.84l2.15.35v2.4l-2.15.35a7.6 7.6 0 0 1-.76 1.84l1.16 1.86-1.7 1.7-1.86-1.16a7.6 7.6 0 0 1-1.84.76l-.35 2.15h-2.4l-.35-2.15a7.6 7.6 0 0 1-1.84-.76l-1.86 1.16-1.7-1.7 1.16-1.86a7.6 7.6 0 0 1-.76-1.84l-2.15-.35v-2.4l2.15-.35c.18-.65.44-1.27.76-1.84L4.89 5.65l1.7-1.7 1.86 1.16c.57-.32 1.19-.58 1.84-.76L10.8 2.2zM12 9.1a2.9 2.9 0 1 0 0 5.8 2.9 2.9 0 0 0 0-5.8z" />
+          </svg>
+        </button>
+        <button id="dev-skip-battle" class="fs-btn battle-skip-stamp" type="button" data-act="skip-battle" hidden>Skip</button>
+      </div>
+      <div class="home-chrome-rail" id="home-chrome-rail" hidden>
+        <button id="fullscreen-btn" class="fs-btn" type="button" aria-pressed="false">Full screen</button>
+        <button id="menu-stamp" class="fs-btn" type="button" data-act="menu" hidden>Main Menu</button>
+        <div class="lang-stamp" role="group" aria-label="Language">
+          <button type="button" class="fs-btn lang-btn" data-act="set-locale" data-locale="en" aria-pressed="false">English</button>
+          <button type="button" class="fs-btn lang-btn" data-act="set-locale" data-locale="it" aria-pressed="false">Italiano</button>
+        </div>
+        <button id="exit-stamp" class="fs-btn" type="button" data-act="exit-game">Exit</button>
+      </div>
+    </aside>
+    <span id="round-hud" class="round-hud is-ink" hidden aria-hidden="true">
+      <img class="round-hud-frame" src="./art/ui/round-ink-seal.png?v=ink5" alt="" draggable="false" />
+      <span class="round-hud-num" id="round-hud-num" aria-hidden="true"></span>
+    </span>
+    <div id="run-candle-hud" class="run-candle-hud" hidden aria-hidden="true"></div>
+    <button id="credits-stamp" class="fs-btn credits-stamp" type="button" hidden>Credits</button>
     <div id="credits-panel" class="credits-panel" hidden>
       <p id="credits-copy"></p>
     </div>
@@ -55,6 +97,6 @@
     <div id="app"></div>
     <div class="landscape-gate" hidden>
       <p>Turn the phone sideways.</p>
-    </div>
+    </div>
   </body>
 </html>

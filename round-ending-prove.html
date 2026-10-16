@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Round B + Finale — prove</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #100c0a;
+        --ink: #f0e2c4;
+        --muted: #a89070;
+        --card: #1a1210;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 28px 24px 72px;
+        font-family: Georgia, "Times New Roman", serif;
+        background: var(--bg);
+        color: var(--ink);
+      }
+      h1 { margin: 0 0 8px; font-size: 28px; font-weight: 400; }
+      .lead { margin: 0 0 28px; color: var(--muted); font-size: 15px; max-width: 52rem; }
+      h2 {
+        margin: 40px 0 14px;
+        font-size: 18px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+        font-weight: 400;
+      }
+      .hero {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 18px;
+        max-width: 520px;
+      }
+      .stage {
+        position: relative;
+        width: min(420px, 100%);
+        aspect-ratio: 2346 / 1438;
+        background: #050304;
+        border: 1px solid #3a2a20;
+        border-radius: 12px;
+        overflow: hidden;
+      }
+      .stage img.frame {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        display: block;
+      }
+      /*
+        Clear field under ROUND+flourish ≈ 57–85% of frame height.
+        Digit must fit inside that box (smaller + lower), not into ROUND.
+      */
+      .stage .digit {
+        position: absolute;
+        left: 50%;
+        top: 71%;
+        transform: translate(-50%, -50%);
+        height: 24%;
+        width: auto;
+        object-fit: contain;
+        pointer-events: none;
+        filter: drop-shadow(0 2px 0 #1a1008);
+      }
+      .note { color: var(--muted); font-size: 14px; margin: 0; max-width: 32rem; }
+
+      .ending {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 16px;
+      }
+      figure {
+        margin: 0;
+        background: var(--card);
+        border: 1px solid #3a2a20;
+        border-radius: 10px;
+        padding: 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      figcaption { font-size: 14px; line-height: 1.35; color: var(--muted); }
+      figcaption b { display: block; margin-bottom: 4px; font-size: 16px; color: #f6e7c8; }
+
+      .panel {
+        position: relative;
+        height: 220px;
+        border-radius: 8px;
+        overflow: hidden;
+        display: grid;
+        place-items: center;
+        padding: 20px;
+        text-align: center;
+      }
+      .panel.is-dark {
+        background:
+          radial-gradient(ellipse at 50% 30%, #3a2418 0%, transparent 55%),
+          linear-gradient(180deg, #1a100c, #0a0706);
+      }
+      .panel.is-parchment {
+        background: #0a0706 url('./art/ui/parchment-standings.png') center / 100% 100% no-repeat;
+      }
+      .panel.is-ribbon {
+        background: linear-gradient(180deg, #1c120e, #0c0806);
+      }
+      .panel.is-seal {
+        background:
+          radial-gradient(circle at 50% 62%, #5a2018 0%, #2a100c 42%, #0a0706 70%);
+      }
+
+      .kicker {
+        display: block;
+        font-size: 11px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        margin-bottom: 10px;
+      }
+      .hero-line {
+        display: block;
+        font-size: clamp(34px, 7vw, 48px);
+        line-height: 1.05;
+        font-family: Georgia, serif;
+      }
+      .sub {
+        display: block;
+        margin-top: 8px;
+        font-size: 14px;
+        letter-spacing: 0.06em;
+        opacity: 0.85;
+      }
+
+      .is-parchment .kicker,
+      .is-parchment .hero-line,
+      .is-parchment .sub { color: #2a1810; }
+
+      .is-dark .kicker { color: #c4a882; }
+      .is-dark .hero-line {
+        color: #e8c76a;
+        -webkit-text-stroke: 0.055em #24180c;
+        paint-order: stroke fill;
+        text-shadow: 0 3px 0 rgba(20, 12, 8, 0.65);
+      }
+      .is-dark .sub { color: #d8c4a0; }
+
+      .is-ribbon .banner {
+        display: inline-block;
+        padding: 14px 28px 16px;
+        background: linear-gradient(180deg, #8c2420, #5a1412);
+        border: 2px solid #e8c76a;
+        box-shadow: 0 8px 0 #2a100c, 0 14px 18px rgba(0,0,0,0.45);
+        color: #f6e7c8;
+        transform: rotate(-2deg);
+      }
+      .is-ribbon .kicker { color: #f0d8a8; margin-bottom: 6px; }
+      .is-ribbon .hero-line { color: #fff6e0; font-size: 40px; }
+
+      .is-seal .kicker { color: #d4b090; margin-bottom: 18px; }
+      .is-seal .wax {
+        width: 108px;
+        height: 108px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        margin: 0 auto;
+        background:
+          radial-gradient(circle at 35% 30%, #c43a30, #7a1810 55%, #3a0c08 100%);
+        box-shadow:
+          inset 0 -8px 12px rgba(0,0,0,0.35),
+          0 8px 0 #1a0806,
+          0 14px 20px rgba(0,0,0,0.45);
+        color: #f6e0b8;
+        font-size: 42px;
+        font-family: Georgia, serif;
+        line-height: 1;
+      }
+      .is-seal .sub { margin-top: 14px; color: #e0c8a0; }
+
+      .is-circus-end {
+        background: #050304;
+      }
+      .is-circus-end .mini {
+        position: relative;
+        width: min(260px, 100%);
+        aspect-ratio: 2346 / 1438;
+      }
+      .is-circus-end .mini .frame,
+      .is-circus-end .mini .digit {
+        position: absolute;
+      }
+      .is-circus-end .mini .frame { inset: 0; width: 100%; height: 100%; object-fit: contain; }
+      .is-circus-end .mini .digit {
+        left: 50%;
+        top: 71%;
+        transform: translate(-50%, -50%);
+        height: 22%;
+        width: auto;
+      }
+      .is-circus-end .under {
+        margin-top: 10px;
+        color: #d8c4a0;
+        font-size: 13px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Round B centrato + nuove finali</h1>
+    <p class="lead">
+      Round B (Circus) con la cifra centrata nel campo sotto “ROUND”.
+      Sotto: quattro direzioni nuove per il finale — dimmi quale apre.
+    </p>
+
+    <h2>Round B · anteprima HUD</h2>
+    <div class="hero">
+      <div class="stage" aria-label="Round circus 3">
+        <img class="frame" src="./art/ui/_round-circus-preview.png?v=12" alt="Circus originale intatto + cifra sotto" style="object-fit:contain" />
+      </div>
+      <p class="note">
+        Approvato: ROUND e bordi intatti, fiorire rimosso, cifra alzata nel campo.
+      </p>
+    </div>
+
+    <h2>Finale · nuove prove</h2>
+    <div class="ending">
+      <figure>
+        <div class="panel is-dark">
+          <div>
+            <span class="kicker">La tua favola finisce</span>
+            <span class="hero-line">2° posto</span>
+            <span class="sub">tra dieci racconti</span>
+          </div>
+        </div>
+        <figcaption><b>F1 · Title card</b> Buio fiaba, posto oro con stroke — niente HUD battle.</figcaption>
+      </figure>
+
+      <figure>
+        <div class="panel is-ribbon">
+          <div class="banner">
+            <span class="kicker">Fine della favola</span>
+            <span class="hero-line">2°</span>
+          </div>
+        </div>
+        <figcaption><b>F2 · Nastro / banner</b> Come un cartello da fiera — dialoga col Circus.</figcaption>
+      </figure>
+
+      <figure>
+        <div class="panel is-seal">
+          <div>
+            <span class="kicker">La tua favola finisce in</span>
+            <div class="wax" aria-hidden="true">2°</div>
+            <span class="sub">posto</span>
+          </div>
+        </div>
+        <figcaption><b>F3 · Sigillo di cera</b> Il posto è il sigillo — rituale, da candela.</figcaption>
+      </figure>
+
+      <figure>
+        <div class="panel is-circus-end">
+          <div>
+            <div class="mini">
+              <img class="frame" src="./art/ui/round-circus.png" alt="" />
+              <img class="digit" src="./art/ui/round-circus-digit-2.png" alt="2" />
+            </div>
+            <div class="under">posto · fine</div>
+          </div>
+        </div>
+        <figcaption><b>F4 · Stesso Circus</b> Coerenza totale col Round; “posto” sotto in piccolo.</figcaption>
+      </figure>
+
+      <figure>
+        <div class="panel is-parchment">
+          <div>
+            <span class="kicker">La tua favola finisce in</span>
+            <span class="hero-line">2° posto</span>
+          </div>
+        </div>
+        <figcaption><b>F5 · Pergamena</b> (la prova di prima — tenuta per confronto)</figcaption>
+      </figure>
+    </div>
+  </body>
+</html>
