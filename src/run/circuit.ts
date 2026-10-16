@@ -3,7 +3,15 @@ import { ovenSweetOffer } from '../data/stickers';
 import { mixSeed, SeededRng } from '../core/rng';
 import { simulateBattle } from '../sim/simulation';
 import type { CircuitRival, RivalVice, RunState, TeamSnapshot } from '../core/types';
-import { MAX_TEAM, RUN_ROUNDS } from '../core/types';
+import { RARITY_ORDER } from '../data/rarity';
+import { MAX_TEAM, RECRUIT_PICK, STARTING_CANDLES } from '../core/types';
+import {
+  candleCost,
+  candlesOf,
+  livingIds,
+  snapshotCandles,
+  withEliminations,
+} from './candles';
 import {
   alleyPickFor,
   bestStickerHost,
@@ -11,7 +19,10 @@ import {
   formLine,
   pickDraft,
   pickStickerOffer,
+  benchValue,
+  bestSquad,
   recruitScore,
+  scoreUnit,
   viceAt,
 } from '../ai/brain';
 import {
@@ -31,7 +42,6 @@ import {
   eventSelectUnit,
   finishRecruit,
   ovenDiscardSticker,
-  passAlley,
   pickEventKind,
   placeEventUnit,
   placeRecruit,
@@ -64,8 +74,12 @@ const NAMES = [
   'Marq Bess',
 ];
 
-function weakest(team: RunState['team']): RunState['team'][number] | undefined {
-  return team.slice().sort((a, b) => recruitScore(a.defId, team) - recruitScore(b.defId, team))[0];
+function weakest(
+  team: RunState['team'],
+  vice: RivalVice = 'brawler',
+  round = 1,
+): RunState['team'][number] | undefined {
+  return team.slice().sort((a, b) => benchValue(a.defId, vice, round) - benchValue(b.defId, vice, round))[0];
 }
 
 function strongest(team: RunState['team'], vice: RivalVice = 'brawler'): RunState['team'][number] | undefined {
@@ -100,18 +114,23 @@ export function rivalSnapshot(rival: CircuitRival, round: number): TeamSnapshot 
   return snap;
 }
 
-function leaderOf(circuit: CircuitRival[]): CircuitRival {
-  return circuit
-    .slice()
-    .sort((a, b) => b.wins - a.wins || b.victoryPoints - a.victoryPoints || a.playerName.localeCompare(b.playerName))[0]!;
+/** Seat order, wrapping. Dead candles are skipped. */
+function nextLivingIndex(circuit: CircuitRival[], round: number): number {
+  if (!circuit.length) return 0;
+  const start = (Math.max(1, round) - 1) % circuit.length;
+  for (let i = 0; i < circuit.length; i++) {
+    const idx = (start + i) % circuit.length;
+    if (candlesOf(circuit[idx]!) > 0) return idx;
+  }
+  return start;
 }
 
-/** Rounds 1–9: each rival once, in the order they were seated. Round 10: rematch vs the win leader. */
+/** Each round faces the next living rival. The night ends when one candle is left, not at a fixed round. */
 export function circuitOpponent(run: RunState): TeamSnapshot | null {
   const circuit = run.circuit;
   if (!circuit?.length) return null;
-  const rival = run.round >= RUN_ROUNDS ? leaderOf(circuit) : circuit[run.round - 1];
-  if (!rival) return null;
+  const rival = circuit[nextLivingIndex(circuit, run.round)];
+  if (!rival || candlesOf(rival) <= 0) return null;
   return rivalSnapshot(rival, run.round);
 }
 
@@ -123,7 +142,7 @@ function takeRival(run: RunState, seed: number, name: string, id: string, vice: 
     wins: 0,
     losses: 0,
     draws: 0,
-    victoryPoints: 0,
+    candles: STARTING_CANDLES,
     team: formLine(run.team),
     offerCounter: run.offerCounter,
     stickersGained: run.stickersGained ?? 0,
@@ -178,27 +197,33 @@ function playGifts(run: RunState, vice: RivalVice): RunState {
 function takeRecruit(run: RunState, vice: RivalVice): RunState {
   if (run.pendingGoldUnitId && run.eventId === 'book-of-lost-tales') {
     const open = run.team.filter((u) => !getUnit(u.defId).passives?.grantGoldUnitOnRecruit);
-    const victim = weakest(open.length ? open : run.team);
+    const victim = weakest(open.length ? open : run.team, vice, run.round);
     if (!victim) return skipRecruit(run);
     return seatGoldUnit(run, victim.slot);
   }
-  const ranked = run.recruitOffers.slice().sort((a, b) => recruitScore(b, run.team, vice) - recruitScore(a, run.team, vice));
-  let guard = 0;
-  while (run.phase === 'recruit' && ranked.length && guard++ < 4) {
-    const id = ranked.shift()!;
-    if (!run.recruitOffers.includes(id)) continue;
+  const squad = bestSquad(
+    run.team.map((u) => u.defId),
+    run.recruitOffers,
+    RECRUIT_PICK,
+  );
+  const have = new Set(run.team.map((u) => u.defId));
+  for (const id of squad) {
+    if (have.has(id) || !run.recruitOffers.includes(id)) continue;
     const free = firstFreeSlot(run.team);
     if (run.team.length < MAX_TEAM && free >= 1 && free <= MAX_TEAM && !run.team.some((u) => u.slot === free)) {
       const next = placeRecruit(run, id, free);
       if (next === run) break;
       run = next;
+      have.add(id);
       continue;
     }
-    const weak = weakest(run.team);
-    if (!weak || recruitScore(id, run.team, vice) <= recruitScore(weak.defId, run.team, vice)) break;
-    const next = replaceRecruit(run, id, weak.slot);
+    const drop = run.team.find((u) => !squad.includes(u.defId));
+    if (!drop) break;
+    const next = replaceRecruit(run, id, drop.slot);
     if (next === run) break;
     run = next;
+    have.delete(drop.defId);
+    have.add(id);
   }
   const done = finishRecruit(run);
   return done.phase === 'recruit' ? skipRecruit(run) : done;
@@ -227,14 +252,14 @@ function stepEvent(run: RunState, vice: RivalVice): RunState {
     if (ready.team.length < MAX_TEAM) return claimBookUnit(ready, firstFreeSlot(ready.team));
     const host = ready.team.find((u) => canAcceptSticker(u)) ?? run.team[0];
     if (host) return claimBookSticker(ready, host.instanceId, host.stickerIds.length >= 3 ? 0 : undefined);
-    const weak = weakest(ready.team);
+    const weak = weakest(ready.team, vice, run.round);
     if (weak) return replaceBookUnit(ready, weak.slot);
     return skipEmptyEvent(ready);
   }
   if (id === 'wishing-well') {
     if (run.eventStep === 'reward-unit') {
       if (run.team.length < MAX_TEAM) return placeEventUnit(run, firstFreeSlot(run.team));
-      const weak = weakest(run.team);
+      const weak = weakest(run.team, vice, run.round);
       return weak ? replaceEventUnit(run, weak.slot) : throwEventReward(run);
     }
     if (run.eventStep === 'well-kind') {
@@ -253,7 +278,7 @@ function stepEvent(run: RunState, vice: RivalVice): RunState {
       if (!unit) return skipEmptyEvent(run);
       return eventSelectSticker(run, unit.instanceId, unit.stickerIds[0]!);
     }
-    const weak = weakest(run.team);
+    const weak = weakest(run.team, vice, run.round);
     if (!weak) return skipEmptyEvent(run);
     return eventSelectUnit(run, weak.instanceId);
   }
@@ -264,15 +289,17 @@ function stepEvent(run: RunState, vice: RivalVice): RunState {
       if (host && run.pendingStickerIds.length) return eventSelectUnit(run, host.instanceId);
       return ovenDiscardSticker(run);
     }
-    const donor =
-      run.team.slice().sort((a, b) => b.stickerIds.length - a.stickerIds.length)[0] ?? run.team[0];
+    const stickered = run.team.filter((u) => u.stickerIds.length);
+    const donor = (stickered.length ? stickered : run.team)
+      .slice()
+      .sort((a, b) => benchValue(a.defId, vice, run.round) - benchValue(b.defId, vice, run.round))[0];
     if (!donor) return skipEmptyEvent(run);
     return eventSelectUnit(run, donor.instanceId);
   }
   if (id === 'cloning-chamber') {
     if (run.eventStep === 'reward-unit') {
       if (run.team.length < MAX_TEAM) return placeEventUnit(run, firstFreeSlot(run.team));
-      const weak = weakest(run.team);
+      const weak = weakest(run.team, vice, run.round);
       return weak ? replaceEventUnit(run, weak.slot) : throwEventReward(run);
     }
     const strong = strongest(run.team, vice);
@@ -282,12 +309,17 @@ function stepEvent(run: RunState, vice: RivalVice): RunState {
   return skipEmptyEvent(run);
 }
 
+/** Stop this rival's alley without growing the whole field again. */
+function endRivalAlley(run: RunState): RunState {
+  return { ...run, phase: 'formation' };
+}
+
 function stepRival(run: RunState, vice: RivalVice): RunState {
   if (run.phase === 'stickerAssign') return glueOne(run, vice);
   if (run.phase === 'postFight') {
     const pick = alleyPickFor(run, vice);
     const next = chooseAlley(run, pick);
-    return next === run ? passAlley(run) : next;
+    return next === run ? endRivalAlley(run) : next;
   }
   if (run.phase === 'recruit') return takeRecruit(run, vice);
   if (run.phase === 'sticker') return takeSticker(run, vice);
@@ -304,9 +336,9 @@ function forceLeave(run: RunState): RunState {
     if (run.eventStep === 'oven-apply') return ovenDiscardSticker(run);
     if (run.eventStep === 'reward-unit') return throwEventReward(run);
     const skipped = skipEmptyEvent(run);
-    return skipped === run ? passAlley(run) : skipped;
+    return skipped === run ? endRivalAlley(run) : skipped;
   }
-  if (run.phase === 'postFight') return passAlley(run);
+  if (run.phase === 'postFight') return endRivalAlley(run);
   return run;
 }
 
@@ -338,7 +370,7 @@ function shellFromRival(rival: CircuitRival, round: number): RunState {
     round,
     wins: rival.wins,
     losses: rival.losses,
-    victoryPoints: rival.victoryPoints,
+    candles: candlesOf(rival),
     phase: 'result',
     team: cloneTeam(rival.team),
     offerCounter: rival.offerCounter,
@@ -346,7 +378,8 @@ function shellFromRival(rival: CircuitRival, round: number): RunState {
     deathsThisRun: rival.deathsThisRun,
     lostTales: copyTales(rival.lostTales),
     lastBattle: null,
-    circuit: undefined,
+    // A lone shell looks like the last candle and skips the alley. One other light keeps the shop open.
+    circuit: [{ ...rival, playerId: `${rival.playerId}#field`, playerName: 'Field', candles: 1, team: [] }],
     history: [
       {
         round,
@@ -400,10 +433,9 @@ function growRival(rival: CircuitRival, round: number): CircuitRival {
   return writeBack(rival, run);
 }
 
-/** After your alley, the other nine take theirs on the round that just ended. */
+/** After your alley, the other fighters take theirs on the round that just ended. */
 export function growCircuit(run: RunState): RunState {
   if (!run.circuit?.length) return run;
-  if (run.round >= RUN_ROUNDS) return run;
   if ((run.circuitGrown ?? 0) >= run.round) return run;
   return {
     ...run,
@@ -412,7 +444,8 @@ export function growCircuit(run: RunState): RunState {
   };
 }
 
-function commit(rival: CircuitRival, out: ReturnType<typeof applyBattleSide>): CircuitRival {
+function commit(rival: CircuitRival, out: ReturnType<typeof applyBattleSide>, round: number): CircuitRival {
+  const winner = out.won ? 'player' : out.draw ? 'draw' : 'enemy';
   return {
     ...rival,
     team: out.team,
@@ -422,7 +455,7 @@ function commit(rival: CircuitRival, out: ReturnType<typeof applyBattleSide>): C
     wins: rival.wins + (out.won ? 1 : 0),
     losses: rival.losses + (out.lost ? 1 : 0),
     draws: rival.draws + (out.draw ? 1 : 0),
-    victoryPoints: rival.victoryPoints + (out.won ? 3 : out.draw ? 1 : 0),
+    candles: Math.max(0, candlesOf(rival) - candleCost(winner, round)),
     lostLastRound: out.lost,
   };
 }
@@ -431,30 +464,27 @@ function playPair(a: CircuitRival, b: CircuitRival, round: number, seed: number)
   const result = simulateBattle(rivalSnapshot(a, round), rivalSnapshot(b, round), seed);
   const left = applyBattleSide(a.team, result, 'player', a);
   const right = applyBattleSide(b.team, result, 'enemy', b);
-  return [commit(a, left), commit(b, right)];
+  return [commit(a, left, round), commit(b, right, round)];
 }
 
 function scheduledIndex(run: RunState): number {
-  const circuit = run.circuit ?? [];
-  if (run.round >= RUN_ROUNDS) {
-    const leader = leaderOf(circuit);
-    const index = circuit.findIndex((r) => r.playerId === leader.playerId);
-    return index >= 0 ? index : 0;
-  }
-  return Math.min(circuit.length - 1, Math.max(0, run.round - 1));
+  return nextLivingIndex(run.circuit ?? [], run.round);
 }
 
 /** The scraps you are not in. Your opponent sits out; the other eight pair off. */
 export function settleCircuit(run: RunState, enemy: TeamSnapshot): RunState {
   if (!run.circuit?.length || !run.lastBattle) return run;
   if ((run.circuitPlayed ?? 0) >= run.round) return run;
+  const before = snapshotCandles(run);
   const circuit = run.circuit.slice();
   const index = scheduledIndex(run);
   const faced = circuit[index];
   if (faced && enemy.playerId === faced.playerId) {
-    circuit[index] = commit(faced, applyBattleSide(faced.team, run.lastBattle, 'enemy', faced));
+    circuit[index] = commit(faced, applyBattleSide(faced.team, run.lastBattle, 'enemy', faced), run.round);
   }
-  const rest = circuit.map((rival, i) => ({ rival, i })).filter((row) => row.i !== index);
+  const rest = circuit
+    .map((rival, i) => ({ rival, i }))
+    .filter((row) => row.i !== index && candlesOf(row.rival) > 0);
   for (let p = 0; p + 1 < rest.length; p += 2) {
     const left = rest[p]!;
     const right = rest[p + 1]!;
@@ -462,7 +492,38 @@ export function settleCircuit(run: RunState, enemy: TeamSnapshot): RunState {
     circuit[left.i] = a;
     circuit[right.i] = b;
   }
-  return { ...run, circuit, circuitPlayed: run.round };
+  return withEliminations({ ...run, circuit, circuitPlayed: run.round }, before);
+}
+
+/**
+ * The night ends when one candle is still lit. If the player is already out
+ * and others remain, the leader keeps the crown and the rest are snuffed.
+ */
+export function closeNight(run: RunState): RunState {
+  let state = withEliminations(run, snapshotCandles(run));
+  if (livingIds(state).length > 1) state = forceSoleSurvivor(state);
+  return { ...withEliminations(state, snapshotCandles(state)), phase: 'final' };
+}
+
+/** Night falls: keep the candles/wins leader, snuff everyone else. */
+function forceSoleSurvivor(run: RunState): RunState {
+  const before = snapshotCandles(run);
+  const living = livingIds(run)
+    .map((id) => {
+      if (id === run.playerId) {
+        return { id, candles: candlesOf(run), wins: run.wins, name: run.playerName };
+      }
+      const rival = (run.circuit ?? []).find((r) => r.playerId === id)!;
+      return { id, candles: candlesOf(rival), wins: rival.wins, name: rival.playerName };
+    })
+    .sort((a, b) => b.candles - a.candles || b.wins - a.wins || a.name.localeCompare(b.name));
+  const keeper = living[0]?.id;
+  if (!keeper) return run;
+  const candles = keeper === run.playerId ? candlesOf(run) : 0;
+  const circuit = (run.circuit ?? []).map((rival) =>
+    rival.playerId === keeper ? rival : { ...rival, candles: 0 },
+  );
+  return withEliminations({ ...run, candles, circuit }, before);
 }
 
 function draftOne(seed: number, name: string, id: string, vice: RivalVice): CircuitRival {
@@ -481,4 +542,60 @@ export function openCircuit(seed: number, playerName: string): CircuitRival[] {
   return names.map((name, i) =>
     draftOne(mixSeed(seed, i + 1, 0xc11), name, `rival_${(seed >>> 0).toString(16)}_${i}`, viceAt(i)),
   );
+}
+
+function rosterStats(circuit: CircuitRival[]): { rarity: number; power: number; bronze: number } {
+  let rarity = 0;
+  let power = 0;
+  let bronze = 0;
+  let n = 0;
+  for (const rival of circuit) {
+    const vice = rival.vice ?? 'brawler';
+    for (const unit of rival.team) {
+      const rank = RARITY_ORDER.indexOf(getUnit(unit.defId).rarity);
+      rarity += rank;
+      power += scoreUnit(unit.defId, unit.stickerIds, vice);
+      if (rank <= 0) bronze += 1;
+      n += 1;
+    }
+  }
+  if (!n) return { rarity: 0, power: 0, bronze: 1 };
+  return { rarity: rarity / n, power: power / n, bronze: bronze / n };
+}
+
+/** Later rounds field richer, stronger benches than the opening scraps. */
+export function assertRivalCurve(): void {
+  for (const seed of [0x51a711, 0xc0ffee, 0x91a7e]) {
+    let state = { circuit: openCircuit(seed, 'Tester'), round: 0, circuitGrown: 0 } as RunState;
+    let earlyCircuit: CircuitRival[] = [];
+    for (let round = 1; round <= 8; round++) {
+      state = growCircuit({ ...state, round, circuitGrown: round - 1 });
+      if (round === 2) earlyCircuit = (state.circuit ?? []).map((rival) => ({ ...rival, team: rival.team.map((u) => ({ ...u, stickerIds: [...u.stickerIds] })) }));
+    }
+    const early = rosterStats(earlyCircuit);
+    const lateCircuit = state.circuit ?? [];
+    const late = rosterStats(lateCircuit);
+    if (!(late.rarity > early.rarity + 0.45)) {
+      throw new Error(`rival-rarity ${seed.toString(16)} early ${early.rarity.toFixed(2)} late ${late.rarity.toFixed(2)}`);
+    }
+    if (!(late.power > early.power)) {
+      throw new Error(`rival-power ${seed.toString(16)} early ${early.power.toFixed(1)} late ${late.power.toFixed(1)}`);
+    }
+    if (late.bronze > 0.5) {
+      throw new Error(`rival-bronze ${seed.toString(16)} ${late.bronze.toFixed(2)}`);
+    }
+    let wins = 0;
+    for (let i = 0; i < lateCircuit.length; i++) {
+      const lateRival = lateCircuit[i]!;
+      const earlyRival = earlyCircuit[i];
+      if (!earlyRival) continue;
+      const lateSnap = rivalSnapshot(lateRival, 1);
+      const earlySnap = rivalSnapshot(earlyRival, 1);
+      const fight = simulateBattle(lateSnap, earlySnap, mixSeed(seed, i, 0xb17));
+      if (fight.winner === 'player') wins += 1;
+    }
+    if (wins < Math.ceil(lateCircuit.length * 0.6)) {
+      throw new Error(`rival-fights ${seed.toString(16)} ${wins}/${lateCircuit.length}`);
+    }
+  }
 }

@@ -6,8 +6,8 @@ export const RARITY_ORDER: Rarity[] = ['bronze', 'silver', 'gold', 'platinum', '
 export const DRAFT_UNIT_MIX: readonly Rarity[] = ['bronze', 'bronze', 'bronze', 'bronze'];
 
 /**
- * Recruit offers after fighting that round (R1…R9). Round 0 is draft.
- * Round 10 has no shop; it reuses R9 if asked.
+ * Recruit offers after fighting that round. Later rounds stay on the richest mix.
+ * Round 0 is draft.
  */
 const RECRUIT_MIX: Record<number, readonly Rarity[]> = {
   1: ['bronze', 'bronze', 'bronze', 'bronze'],
@@ -36,8 +36,11 @@ const STICKER_MIX: Record<number, readonly Rarity[]> = {
   10: ['gold', 'platinum', 'platinum'],
 };
 
+/** Shop ceiling. Rounds past the table stay on this mix. */
+const SHOP_CAP_ROUND = 10;
+
 function clampRound(round: number): number {
-  return Math.max(1, Math.min(10, Math.round(round)));
+  return Math.max(1, Math.min(SHOP_CAP_ROUND, Math.round(round)));
 }
 
 export function recruitRarityMix(round: number): Rarity[] {
@@ -125,7 +128,7 @@ export function assertShopCurve(): void {
   if (shopLevelForRound(1) !== 1) throw new Error('shop-l1');
   if (shopLevelForRound(2) !== 2 || shopLevelForRound(4) !== 2) throw new Error('shop-l2');
   if (shopLevelForRound(5) !== 3 || shopLevelForRound(6) !== 3) throw new Error('shop-l3');
-  if (shopLevelForRound(7) !== 4 || shopLevelForRound(9) !== 4) throw new Error('shop-l4');
+  if (shopLevelForRound(7) !== 4 || shopLevelForRound(9) !== 4 || shopLevelForRound(15) !== 4) throw new Error('shop-l4');
   if (shopMaxRarity(1) !== 'bronze' || shopMaxRarity(2) !== 'silver' || shopMaxRarity(5) !== 'gold' || shopMaxRarity(7) !== 'platinum') {
     throw new Error('shop-max');
   }

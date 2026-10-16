@@ -70,10 +70,6 @@ export class LocalLeaderboardService implements LeaderboardService {
     all.sort((a, b) => compareRuns(a, b) || b.finishedAt - a.finishedAt);
     writeJson(K_BOARD, all.slice(0, 50));
   }
-  async list(): Promise<CompletedRun[]> {
-    const all = readJson<CompletedRun[]>(K_BOARD, []);
-    return all.slice().sort((a, b) => compareRuns(a, b) || a.finishedAt - b.finishedAt);
-  }
 }
 
 export class LocalMatchmakingService implements MatchmakingService {

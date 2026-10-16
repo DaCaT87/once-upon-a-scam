@@ -19,21 +19,21 @@ function selfTest(): void {
     const a = buildOpponent(6, 0x51a7e, 0.7);
     const b = buildOpponent(6, 0xC0FFEE, 0.7);
     const ok = assertDeterministic(a, b, 12345);
-    if (!ok) console.error('[Once Upon a Scam] determinism check failed');
-    else console.info('[Once Upon a Scam] battle simulation is deterministic');
+    if (!ok) console.error('[Patch & Fable] determinism check failed');
+    else console.info('[Patch & Fable] battle simulation is deterministic');
     const run = autoPlayRun(0x51a711);
-    if (run.phase !== 'final' || run.history.length !== 10) {
-      console.error('[Once Upon a Scam] autoplay failed', run.phase, run.history.length, run);
+    if (run.phase !== 'final' || run.history.length < 1 || run.history.length > 10) {
+      console.error('[Patch & Fable] autoplay failed', run.phase, run.history.length, run);
     } else {
-      console.info(`[Once Upon a Scam] autoplay ${run.wins}/10`);
+      console.info(`[Patch & Fable] autoplay ${run.wins}/${run.history.length}`);
     }
   } catch (err) {
-    console.error('[Once Upon a Scam] self-test error', err);
+    console.error('[Patch & Fable] self-test error', err);
   }
 }
 
 bindViewportScale();
-selfTest();
+if (import.meta.env.DEV) selfTest();
 bindLandscapeHold();
 
 const root = document.querySelector<HTMLElement>('#app');
@@ -51,7 +51,6 @@ function paintBoot(done: number, total: number): void {
 void preloadArt(paintBoot).finally(() => {
   void app.start().finally(() => {
     document.documentElement.classList.remove('is-booting');
-    document.getElementById('fullscreen-btn')?.removeAttribute('hidden');
     boot?.remove();
   });
 });

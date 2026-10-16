@@ -1,6 +1,4 @@
 export const LORE_EN: Record<string, string> = {
-  'lore.paper-dove':
-    'Folded from a street poster and sent flying. It makes a bright fuss, and then it is only paper again.',
   'lore.pig':
     'Once it had another name and another face. Circe’s joke leaves it pink, loud, and briefly honest.',
   'lore.frog-prince':
@@ -148,8 +146,6 @@ export const LORE_EN: Record<string, string> = {
 };
 
 export const LORE_IT: Record<string, string> = {
-  'lore.paper-dove':
-    'Piegata da un manifesto di strada e mandata a volare. Fa un chiasso luminoso, poi torna solo carta.',
   'lore.pig':
     'Aveva un altro nome e un altro viso. Lo scherzo di Circe lo lascia rosa, rumoroso e, per un attimo, sincero.',
   'lore.frog-prince':

@@ -26,25 +26,25 @@ import { clampPlayerName, makeId } from '../core/ids';
 import { mixSeed } from '../core/rng';
 import { SeededRng } from '../core/rng';
 import { simulateBattle } from '../sim/simulation';
-import type { AlleyChoice, BattleResult, EventId, LostTale, Rarity, RivalVice, RunMode, RunState, TeamSnapshot, UnitInstance } from '../core/types';
-import { growCircuit, openCircuit, settleCircuit } from './circuit';
+import type { AlleyChoice, BattleResult, EventId, EventStep, LostTale, Rarity, RivalVice, RunMode, RunState, TeamSnapshot, UnitInstance } from '../core/types';
+import { closeNight, growCircuit, openCircuit, settleCircuit } from './circuit';
 import { isRivalVice, viceAt } from '../ai/brain';
-import { ALLEY_PICK, DATA_VERSION, DRAFT_OFFER, DRAFT_PICK, MAX_TEAM, RECRUIT_OFFER, RECRUIT_PICK, STICKER_OFFER, STICKER_PICK } from '../core/types';
+import {
+  ALLEY_PICK,
+  DATA_VERSION,
+  DRAFT_OFFER,
+  DRAFT_PICK,
+  MAX_TEAM,
+  RECRUIT_OFFER,
+  RECRUIT_PICK,
+  STARTING_CANDLES,
+  STICKER_OFFER,
+  STICKER_PICK,
+} from '../core/types';
+import { candleCost, candlesOf, scrapCandles, snapshotCandles, withEliminations, livingIds } from './candles';
 
-export function victoryPointsOf(run: { victoryPoints?: number; wins: number; history?: { winner?: string }[] }): number {
-  if (typeof run.victoryPoints === 'number') return run.victoryPoints;
-  const draws = (run.history ?? []).filter((h) => h.winner === 'draw').length;
-  return run.wins * 3 + draws;
-}
-
-export function pveRating(wins: number): { key: string; positive: boolean } {
-  if (wins <= 3) return { key: 'ratingDefeat', positive: false };
-  if (wins <= 5) return { key: 'ratingSurvivor', positive: false };
-  if (wins === 6) return { key: 'ratingGood', positive: false };
-  if (wins <= 8) return { key: 'ratingVictory', positive: true };
-  if (wins === 9) return { key: 'ratingDominating', positive: true };
-  return { key: 'ratingPerfect', positive: true };
-}
+export { candleCost, candlesOf, scrapCandles, placeOf, livingIds } from './candles';
+export { closeNight } from './circuit';
 
 function remapUnitId(id: string): string {
   if (id === 'broken-marionette') return 'sir-forget-a-lot';
@@ -89,6 +89,7 @@ export function migrateRun(run: RunState): RunState {
       delete copy.stickerBag;
       return {
         ...copy,
+        candles: candlesOf(copy),
         team: copy.team.map((u) => ({
           ...u,
           defId: remapUnitId(u.defId),
@@ -124,6 +125,7 @@ export function migrateRun(run: RunState): RunState {
     eventPicks: Array.isArray(run.eventPicks) ? run.eventPicks : [],
     huntMonsterId: run.huntMonsterId ?? null,
     huntRaritiesSeen: Array.isArray(run.huntRaritiesSeen) ? run.huntRaritiesSeen : [],
+    eventLastRound: eventLastRoundOf(run.eventLastRound),
     pendingGoldUnitId: typeof run.pendingGoldUnitId === 'string' ? run.pendingGoldUnitId : null,
     lastBattle: remapBattle(run.lastBattle),
     lastBonusBattle: remapBattle(run.lastBonusBattle),
@@ -135,7 +137,8 @@ export function migrateRun(run: RunState): RunState {
       run.stickersGained ??
       team.reduce((n, u) => n + u.stickerIds.length, 0) + legacyBag.length,
     deathsThisRun: run.deathsThisRun ?? 0,
-    victoryPoints: victoryPointsOf(run),
+    candles: candlesOf(run),
+    eliminatedIds: Array.isArray(run.eliminatedIds) ? run.eliminatedIds : [],
     lostTales: (Array.isArray(run.lostTales) ? run.lostTales : []).map((tale) => ({
       defId: remapUnitId(tale.defId),
       stickerIds: stickersOf(tale.stickerIds),
@@ -183,6 +186,7 @@ export function bareRun(mode: RunMode, playerId: string, playerName: string, see
     eventPicks: [],
     huntMonsterId: null,
     huntRaritiesSeen: [],
+    eventLastRound: {},
     pendingGoldUnitId: null,
     recruitRarityBump: false,
     alleyPicks: [],
@@ -190,7 +194,8 @@ export function bareRun(mode: RunMode, playerId: string, playerName: string, see
     alleyDone: [],
     stickersGained: 0,
     deathsThisRun: 0,
-    victoryPoints: 0,
+    candles: STARTING_CANDLES,
+    eliminatedIds: [],
     lostTales: [],
   };
 }
@@ -251,42 +256,64 @@ function collectRecruitGoldUnits(run: RunState, defIds: string[]): string[] {
   return granted;
 }
 
-function planRecruitAdds(run: RunState, picks: string[], room: number): string[] {
-  const golds = collectRecruitGoldUnits(run, picks);
-  let goldAt = 0;
-  const out: string[] = [];
-  for (const defId of picks) {
-    if (out.length >= room) break;
-    out.push(defId);
-    if (!grantsGoldOnRecruit(defId)) continue;
-    if (out.length >= room) break;
-    const gold = golds[goldAt];
-    goldAt += 1;
-    if (gold) out.push(gold);
-  }
-  return out;
-}
-
-function grantShopStickerOnRecruit(defId: string): boolean {
-  return Boolean(getUnit(defId).passives?.grantShopStickerOnRecruit);
-}
-
 function collectRecruitStickers(run: RunState, defIds: string[]): string[] {
   const granted: string[] = [];
   let salt = 0;
   for (const defId of defIds) {
     const rarity = getUnit(defId).passives?.grantStickerOnRecruit;
-    if (rarity) {
-      const sid = offerStickersOfRarity(rarity, 1, rngFor(run, 0xb10 + salt))[0];
-      salt += 1;
-      if (sid) granted.push(sid);
-    }
-    if (!grantShopStickerOnRecruit(defId)) continue;
-    const sid = offerStickers(1, rngFor(run, 0xc51d + salt), run.round)[0];
+    if (!rarity) continue;
+    const sid = offerStickersOfRarity(rarity, 1, rngFor(run, 0xb10 + salt))[0];
     salt += 1;
     if (sid) granted.push(sid);
   }
   return granted;
+}
+
+/** Farm Boy / Goose: queue the gift; the shop UI lands it on a figure after a beat. */
+function queueRecruitStickers(run: RunState, defIds: string[]): RunState {
+  const granted = collectRecruitStickers(run, defIds);
+  if (!granted.length) return run;
+  return { ...run, pendingStickerIds: [...run.pendingStickerIds, ...granted] };
+}
+
+export function peekRecruitGiftTarget(
+  run: RunState,
+  salt = 0,
+): { stickerId: string; instanceId: string; replaceIndex?: number } | null {
+  const sid = run.pendingStickerIds[0];
+  if (!sid || !run.team.length) return null;
+  const open = run.team.filter((u) => canAcceptSticker(u));
+  const pool = open.length ? open : run.team;
+  const host = rngFor(run, 0xb80 + salt).pick(pool);
+  if (!host) return null;
+  const replace = canAcceptSticker(host) ? undefined : Math.max(0, host.stickerIds.length - 1);
+  return { stickerId: sid, instanceId: host.instanceId, replaceIndex: replace };
+}
+
+/** One gift, same host pick as the auto-glue. */
+function applyNextRecruitGift(run: RunState, salt = 0): RunState {
+  const target = peekRecruitGiftTarget(run, salt);
+  if (!target) return { ...run, pendingStickerIds: run.pendingStickerIds.slice(1) };
+  return assignPendingSticker(run, target.instanceId, target.replaceIndex, target.stickerId, { settle: false });
+}
+
+/** Flush any queued on-recruit gifts (Fight / AI / book settle). */
+export function gluePendingRecruitGifts(run: RunState): RunState {
+  if (!run.pendingStickerIds.length) return run;
+  if (!run.team.length) return { ...run, pendingStickerIds: [] };
+  let next = run;
+  let salt = 0;
+  const guard = next.pendingStickerIds.length + 2;
+  while (next.pendingStickerIds.length && salt < guard) {
+    next = applyNextRecruitGift(next, salt);
+    salt += 1;
+  }
+  return { ...next, pendingStickerIds: [] };
+}
+
+/** Immediate glue (book / built-from-picks confirm). */
+function glueRecruitStickers(run: RunState, defIds: string[]): RunState {
+  return gluePendingRecruitGifts(queueRecruitStickers(run, defIds));
 }
 
 function applyLossGrowth(team: UnitInstance[], winner: 'player' | 'enemy' | 'draw'): UnitInstance[] {
@@ -446,6 +473,9 @@ function persistBattleTeam(
             const fromId = holder.defId;
             let next = holder;
             if (ev.replacedId) next = stripSticker(next, ev.replacedId);
+            if (!canAcceptSticker(next) && next.stickerIds.length) {
+              next = stripSticker(next, next.stickerIds[next.stickerIds.length - 1]!);
+            }
             if (canAcceptSticker(next)) {
               team = team.map((u) => (u.instanceId === thief ? applySticker(next, ev.stickerId) : u));
               team = shareStickerOnApply(team, thief, ev.stickerId, fromId);
@@ -616,42 +646,32 @@ export function placeDraft(run: RunState, defId: string, slot: number): RunState
   if (run.phase !== 'draft') return run;
   if (!run.draftOffers.includes(defId) || run.draftPicks.includes(defId)) return run;
   if (run.draftPicks.length >= DRAFT_PICK) return run;
-  if (slot < 1 || slot > MAX_TEAM) return run;
+  if (!canSeatEmptySlot(run.team, slot)) return run;
   const team = cloneTeam(run.team);
-  if (team.some((u) => u.slot === slot)) return run;
   team.push(instanceFromDef(defId, slot, makeId('u')));
-  return {
-    ...run,
-    team,
-    draftPicks: [...run.draftPicks, defId],
-    draftOffers: run.draftOffers.filter((id) => id !== defId),
-  };
+  return queueRecruitStickers(
+    {
+      ...run,
+      team,
+      draftPicks: [...run.draftPicks, defId],
+      draftOffers: run.draftOffers.filter((id) => id !== defId),
+    },
+    [defId],
+  );
 }
 
 export function confirmDraft(run: RunState): RunState {
   if (run.phase !== 'draft') return run;
   if (run.draftPicks.length > DRAFT_PICK) return run;
-  const team =
-    run.team.length > 0
-      ? cloneTeam(run.team)
-      : run.draftPicks.map((id, i) => instanceFromDef(id, i + 1, makeId('u')));
+  const builtFromPicks = run.team.length === 0;
+  const team = builtFromPicks
+    ? run.draftPicks.map((id, i) => instanceFromDef(id, i + 1, makeId('u')))
+    : cloneTeam(run.team);
   const bump = run.draftPicks.some(hasRecruitRarityBump);
-  const gifts = collectRecruitStickers(run, run.draftPicks);
-  const next = { ...run, team, draftPicks: run.draftPicks, recruitRarityBump: run.recruitRarityBump || bump };
-  if (!gifts.length) return { ...next, phase: 'formation' };
-  return {
-    ...next,
-    phase: 'stickerAssign',
-    pendingStickerIds: gifts,
-    stickerOffers: [],
-    stickerPickCount: gifts.length,
-    recruitPicks: [],
-    eventId: null,
-  };
-}
-
-export function setFormation(run: RunState, team: UnitInstance[]): RunState {
-  return { ...run, team: compactSlots(team) };
+  let next = { ...run, team, draftPicks: run.draftPicks, recruitRarityBump: run.recruitRarityBump || bump };
+  if (builtFromPicks) next = glueRecruitStickers(next, run.draftPicks);
+  else next = gluePendingRecruitGifts(next);
+  return { ...next, phase: 'formation', pendingStickerIds: [] };
 }
 
 export function swapSlots(run: RunState, slotA: number, slotB: number): RunState {
@@ -676,6 +696,13 @@ export function canMoveUnitSlot(team: { slot: number }[], fromSlot: number, toSl
     if (!occupied.has(slot)) return false;
   }
   return true;
+}
+
+/** Empty seats must pack from the front — only the first free slot may be filled. */
+export function canSeatEmptySlot(team: { slot: number }[], slot: number): boolean {
+  if (slot < 1 || slot > MAX_TEAM) return false;
+  if (team.some((u) => u.slot === slot)) return false;
+  return slot === firstFreeSlot(team);
 }
 
 /** Swap two occupied slots, or move a unit into an empty slot that has no free slot in front. */
@@ -718,15 +745,16 @@ export function resolveFight(run: RunState, enemy: TeamSnapshot): RunState {
   const seed = mixSeed(run.seed, run.round, 0x51a7);
   const result = simulateBattle(player, foe, seed);
   const win = result.winner === 'player';
-  const gained = result.winner === 'player' ? 3 : result.winner === 'draw' ? 1 : 0;
   const wins = run.wins + (win ? 1 : 0);
   const losses = run.losses + (win ? 0 : result.winner === 'draw' ? 0 : 1);
   const draw = result.winner === 'draw';
+  const before = snapshotCandles(run);
+  const candles = Math.max(0, candlesOf(run) - candleCost(result.winner, run.round));
   const next: RunState = {
     ...run,
     wins,
     losses: draw ? run.losses : losses,
-    victoryPoints: victoryPointsOf(run) + gained,
+    candles,
     lastBattle: result,
     phase: 'result',
     history: [
@@ -748,23 +776,28 @@ export function resolveFight(run: RunState, enemy: TeamSnapshot): RunState {
     ],
   };
   const persisted = persistBattleTeam({ ...next, team });
-  const settled: RunState = {
-    ...next,
-    team: applyLossGrowth(persisted.team, result.winner),
-    deathsThisRun: persisted.deathsThisRun,
-    stickersGained: persisted.stickersGained,
-  };
+  const settled: RunState = withEliminations(
+    {
+      ...next,
+      team: applyLossGrowth(persisted.team, result.winner),
+      deathsThisRun: persisted.deathsThisRun,
+      stickersGained: persisted.stickersGained,
+    },
+    before,
+  );
   return settleCircuit(settled, foe);
 }
 
 export function afterResult(run: RunState): RunState {
-  if (run.round >= 10) return { ...run, phase: 'final' };
+  if (candlesOf(run) <= 0 || livingIds(run).length <= 1) return closeNight(run);
+  // Round advances on the screen right after the scrap (market / loot), not at scrap itself.
+  const advanced = { ...run, round: run.round + 1 };
   const gifts = (run.lastBattle?.events ?? []).flatMap((ev) =>
     ev.type === 'EarnedSticker' && ev.unitId.startsWith('player:') ? [ev.stickerId] : [],
   );
   if (gifts.length) {
     return {
-      ...run,
+      ...advanced,
       phase: 'stickerAssign',
       pendingStickerIds: gifts,
       stickerOffers: [],
@@ -773,7 +806,7 @@ export function afterResult(run: RunState): RunState {
       recruitPicks: [],
     };
   }
-  return beginPostFight(run);
+  return beginPostFight(advanced);
 }
 
 function beginPostFight(run: RunState): RunState {
@@ -793,6 +826,7 @@ function beginPostFight(run: RunState): RunState {
     eventPicks: [],
     huntMonsterId: ev === 'monster-hunt' ? rng.pick(huntMonstersFor(run.round)).unitId : null,
     huntRaritiesSeen: noteHuntOffer(run, ev),
+    eventLastRound: noteEventRound(run, ev),
     lastBonusBattle: null,
     alleyPicks: [],
     alleyQueue: [],
@@ -801,12 +835,70 @@ function beginPostFight(run: RunState): RunState {
   };
 }
 
-/** Monster Hunt is offered once per rarity. Later alleys in that band roll the other events. */
+/** Market Square always has a real event plate — never the leftover generic Event card. */
+export function ensureAlleyEvent(run: RunState): RunState {
+  if (run.phase !== 'postFight') return run;
+  if (run.eventId && EVENT_BY_ID.has(run.eventId) && (run.eventId !== 'monster-hunt' || run.huntMonsterId)) return run;
+  const rng = rngFor(run, 0xe7e);
+  const ev = run.eventId && EVENT_BY_ID.has(run.eventId) ? run.eventId : rollAlleyEvent(run, rng);
+  return {
+    ...run,
+    eventId: ev,
+    huntMonsterId:
+      ev === 'monster-hunt'
+        ? run.huntMonsterId && huntMonstersFor(run.round).some((m) => m.unitId === run.huntMonsterId)
+          ? run.huntMonsterId
+          : rng.pick(huntMonstersFor(run.round)).unitId
+        : null,
+    huntRaritiesSeen: noteHuntOffer(run, ev),
+    eventLastRound: noteEventRound(run, ev),
+  };
+}
+
+/** Full weight. An event that just appeared climbs back to this one round at a time. */
+const EVENT_FULL_WEIGHT = 4;
+
+function eventLastRoundOf(raw: unknown): Partial<Record<EventId, number>> {
+  if (!raw || typeof raw !== 'object') return {};
+  const out: Partial<Record<EventId, number>> = {};
+  for (const id of EVENT_BY_ID.keys()) {
+    const n = (raw as Record<string, unknown>)[id];
+    if (typeof n === 'number' && Number.isFinite(n)) out[id] = n;
+  }
+  return out;
+}
+
+function noteEventRound(run: RunState, eventId: EventId): Partial<Record<EventId, number>> {
+  return { ...(run.eventLastRound ?? {}), [eventId]: run.round };
+}
+
+/**
+ * The event that appeared last round is out. Each later round it weighs a
+ * little more, until it stands level with the others.
+ */
+function eventWeight(run: RunState, id: EventId): number {
+  if (id === 'monster-hunt' && (run.huntRaritiesSeen ?? []).includes(huntRarityForRound(run.round))) return 0;
+  const at = run.eventLastRound?.[id];
+  if (at == null) return EVENT_FULL_WEIGHT;
+  const gap = run.round - at;
+  if (gap <= 1) return 0;
+  return Math.min(EVENT_FULL_WEIGHT, gap - 1);
+}
+
+/** Monster Hunt is offered once per rarity. A repeat also rests, then climbs back. */
 function rollAlleyEvent(run: RunState, rng: SeededRng): EventId {
-  const seen = run.huntRaritiesSeen ?? [];
   const keys = Array.from(EVENT_BY_ID.keys());
-  const pool = seen.includes(huntRarityForRound(run.round)) ? keys.filter((id) => id !== 'monster-hunt') : keys;
-  return rng.pick(pool);
+  const weights = {} as Record<EventId, number>;
+  for (const id of keys) {
+    const w = eventWeight(run, id);
+    if (w > 0) weights[id] = w;
+  }
+  const open = Object.keys(weights) as EventId[];
+  if (!open.length) {
+    const fallback = keys.filter((id) => eventWeight({ ...run, eventLastRound: {} }, id) > 0);
+    return rng.pick(fallback.length ? fallback : keys);
+  }
+  return rng.weighted(weights);
 }
 
 function noteHuntOffer(run: RunState, eventId: EventId | null): Rarity[] {
@@ -820,7 +912,7 @@ function isScrapStickerLoot(run: RunState): boolean {
   return run.phase === 'stickerAssign' && !run.stickerOffers.length && !run.recruitPicks.length && !run.eventId;
 }
 
-function isOpeningStickerGift(run: RunState): boolean {
+export function isOpeningStickerGift(run: RunState): boolean {
   return isScrapStickerLoot(run) && run.history.length === 0 && !(run.alleyDone?.length);
 }
 
@@ -859,12 +951,13 @@ function activeAlley(run: RunState): AlleyChoice | null {
 }
 
 function leaveAlley(run: RunState): RunState {
-  const grown = growCircuit(run);
+  // Round already advanced in afterResult; rivals still grow for the scrap that just ended.
+  const scrapRound = Math.max(1, run.round - 1);
+  const grown = growCircuit({ ...run, round: scrapRound });
   return {
-    ...clearAlleyWork(grown),
+    ...clearAlleyWork({ ...grown, round: run.round }),
     team: compactSlots(grown.team),
     phase: 'formation',
-    round: grown.round + 1,
     alleyPicks: [],
     alleyQueue: [],
     alleyDone: [],
@@ -878,7 +971,6 @@ export function finishAlley(run: RunState): RunState {
   const prev = run.alleyDone ?? [];
   const alleyDone = done && !prev.includes(done) ? [...prev, done] : prev;
   const cleared = clearAlleyWork({ ...run, alleyDone, alleyPicks: [], alleyQueue: [] });
-  if (alleyDone.length >= ALLEY_PICK) return leaveAlley(cleared);
   return { ...cleared, phase: 'postFight' };
 }
 
@@ -886,14 +978,6 @@ export function passAlley(run: RunState): RunState {
   if (run.phase === 'postFight') return leaveAlley(run);
   if (!activeAlley(run)) return run;
   return leaveAlley(run);
-}
-
-export function toggleAlleyPick(run: RunState, pick: AlleyChoice): RunState {
-  return chooseAlley(run, pick);
-}
-
-export function confirmAlleyPicks(run: RunState): RunState {
-  return run;
 }
 
 export function chooseAlley(run: RunState, pick: AlleyChoice): RunState {
@@ -923,18 +1007,18 @@ export function beginEvent(run: RunState): RunState {
     eventId === 'monster-hunt'
       ? run.huntMonsterId ?? rng.pick(huntMonstersFor(run.round)).unitId
       : run.huntMonsterId;
-  const eventStep =
+  const eventStep: EventStep =
     eventId === 'wishing-well' ? 'preview'
     : eventId === 'book-of-lost-tales' ? 'book-kind'
     : eventId === 'monster-hunt' ? 'hunt-lineup'
     : 'preview';
-  const opened = {
+  const opened: RunState = {
     ...run,
-    phase: 'event' as const,
+    phase: 'event',
     eventId,
     eventStep,
-    eventOffers: [] as string[],
-    eventPicks: [] as string[],
+    eventOffers: [],
+    eventPicks: [],
     huntMonsterId,
     huntRaritiesSeen: noteHuntOffer(run, eventId),
     offerCounter: run.offerCounter + 1,
@@ -967,25 +1051,6 @@ export function ensureBookOffers(run: RunState): RunState {
   if (unitId) eventOffers.push(`${BOOK_UNIT}${unitId}`);
   if (stickerId) eventOffers.push(`${BOOK_STICKER}${stickerId}`);
   return { ...run, eventOffers };
-}
-
-/** @deprecated Events are rolled once per alley; kept for tests/compat. */
-export function chooseEvent(run: RunState, eventId: EventId): RunState {
-  if (run.phase !== 'event' && run.phase !== 'postFight') return run;
-  if (!EVENT_BY_ID.has(eventId)) return run;
-  return beginEvent({ ...run, eventId, phase: 'event', eventStep: null });
-}
-
-export function toggleStickerPick(run: RunState, id: string): RunState {
-  const has = run.pendingStickerIds.includes(id);
-  if (has) return { ...run, pendingStickerIds: run.pendingStickerIds.filter((x) => x !== id) };
-  if (run.pendingStickerIds.length >= run.stickerPickCount) return run;
-  return { ...run, pendingStickerIds: [...run.pendingStickerIds, id] };
-}
-
-export function confirmStickerPicks(run: RunState): RunState {
-  if (run.pendingStickerIds.length !== run.stickerPickCount) return run;
-  return { ...run, phase: 'stickerAssign' };
 }
 
 export function skipStickers(run: RunState): RunState {
@@ -1110,8 +1175,9 @@ export function beginRecruit(run: RunState): RunState {
 
 function canTakeRecruit(run: RunState, defId: string): boolean {
   if (run.phase !== 'recruit') return false;
-  if (!run.recruitOffers.includes(defId)) return false;
   if (run.recruitPicks.includes(defId)) return false;
+  if (run.pendingGoldUnitId === defId) return true;
+  if (!run.recruitOffers.includes(defId)) return false;
   return run.recruitPicks.length < recruitPickLimit(run.recruitPicks, run.eventId, run.eventStep);
 }
 
@@ -1123,19 +1189,18 @@ function appendGoldRecruit(
   if (!grantsGoldOnRecruit(defId)) return { team, pending: undefined };
   const gold = collectRecruitGoldUnits(run, [defId])[0];
   if (!gold) return { team, pending: null };
-  if (team.length >= MAX_TEAM) return { team, pending: gold };
-  const slot = firstFreeSlot(team);
-  if (slot < 1 || slot > MAX_TEAM || team.some((u) => u.slot === slot)) return { team, pending: gold };
-  return { team: [...team, instanceFromDef(gold, slot, makeId('u'))], pending: null };
+  return { team, pending: gold };
 }
 
 function withGoldRecruit(run: RunState, team: UnitInstance[], defId: string, picks: string[], offers: string[]): RunState {
   const added = appendGoldRecruit(run, team, defId);
+  const gold = added.pending === undefined ? null : added.pending;
+  const nextOffers = gold && !offers.includes(gold) ? [...offers, gold] : offers;
   return {
     ...run,
     team: added.team,
     recruitPicks: picks,
-    recruitOffers: offers,
+    recruitOffers: nextOffers,
     pendingGoldUnitId: added.pending === undefined ? run.pendingGoldUnitId ?? null : added.pending,
   };
 }
@@ -1143,11 +1208,15 @@ function withGoldRecruit(run: RunState, team: UnitInstance[], defId: string, pic
 /** Drag an offer onto an empty team slot. */
 export function placeRecruit(run: RunState, defId: string, slot: number): RunState {
   if (!canTakeRecruit(run, defId)) return run;
-  if (slot < 1 || slot > MAX_TEAM) return run;
+  if (!canSeatEmptySlot(run.team, slot)) return run;
   let team = cloneTeam(run.team);
-  if (team.some((u) => u.slot === slot)) return run;
   team.push(instanceFromDef(defId, slot, makeId('u')));
-  return withGoldRecruit(run, team, defId, [...run.recruitPicks, defId], run.recruitOffers.filter((id) => id !== defId));
+  const next = queueRecruitStickers(
+    withGoldRecruit(run, team, defId, [...run.recruitPicks, defId], run.recruitOffers.filter((id) => id !== defId)),
+    [defId],
+  );
+  if (run.pendingGoldUnitId === defId) return { ...next, pendingGoldUnitId: null };
+  return next;
 }
 
 /** Drag an offer onto an occupied slot — fires the occupant (stickers and all). */
@@ -1160,34 +1229,37 @@ export function replaceRecruit(run: RunState, defId: string, slot: number): RunS
   team = team.filter((u) => u.instanceId !== victim.instanceId);
   team.push(instanceFromDef(defId, slot, makeId('u')));
   return rememberLost(
-    withGoldRecruit(run, team, defId, [...run.recruitPicks, defId], run.recruitOffers.filter((id) => id !== defId)),
+    (() => {
+      const next = queueRecruitStickers(
+        withGoldRecruit(run, team, defId, [...run.recruitPicks, defId], run.recruitOffers.filter((id) => id !== defId)),
+        [defId],
+      );
+      return run.pendingGoldUnitId === defId ? { ...next, pendingGoldUnitId: null } : next;
+    })(),
     [victim],
   );
 }
 
 /** Leave the recruit shop; units are already on the team from place/replace. */
 export function finishRecruit(run: RunState): RunState {
-  if (run.pendingGoldUnitId) return run;
   const taking = run.recruitPicks;
   const bump = taking.some(hasRecruitRarityBump);
-  const granted = collectRecruitStickers(run, taking);
-  const next = {
+  const glued = gluePendingRecruitGifts({
     ...run,
-    pendingStickerIds: granted,
+    pendingGoldUnitId: null,
     recruitRarityBump: run.recruitRarityBump || bump,
-  };
-  if (granted.length) return { ...next, phase: 'stickerAssign' as const };
-  return finishAlley(next);
+  });
+  return finishAlley({ ...glued, pendingStickerIds: [] });
 }
 
-/** Put the owed gold figure into a slot, firing whoever stands there. The herald who created it stays. */
+/** Put the owed gold figure into a slot, firing whoever stands there — including the herald. */
 export function seatGoldUnit(run: RunState, slot: number): RunState {
   const gold = run.pendingGoldUnitId;
   if (!gold || run.phase !== 'recruit') return run;
   if (slot < 1 || slot > MAX_TEAM) return run;
   let team = cloneTeam(run.team);
   const victim = team.find((u) => u.slot === slot);
-  if (victim && grantsGoldOnRecruit(victim.defId)) return run;
+  if (!victim && !canSeatEmptySlot(team, slot)) return run;
   team = team.filter((u) => u.slot !== slot);
   team.push(instanceFromDef(gold, slot, makeId('u')));
   const next = { ...run, team, pendingGoldUnitId: null };
@@ -1198,52 +1270,10 @@ export function seatGoldUnit(run: RunState, slot: number): RunState {
   return seated;
 }
 
-export function toggleRecruit(run: RunState, defId: string): RunState {
-  const has = run.recruitPicks.includes(defId);
-  if (has) return { ...run, recruitPicks: run.recruitPicks.filter((id) => id !== defId) };
-  const nextPicks = [...run.recruitPicks, defId];
-  if (nextPicks.length > recruitPickLimit(nextPicks)) return run;
-  return { ...run, recruitPicks: nextPicks };
-}
-
 /** Picked units that restocked their shop slot stay visible as selected. */
-export function recruitShopDisplay(run: RunState): string[] {
-  const extra = run.recruitPicks.filter((id) => !run.recruitOffers.includes(id));
-  return [...extra, ...run.recruitOffers];
-}
-
-/** @deprecated Prefer placeRecruit / replaceRecruit + finishRecruit. */
-export function confirmRecruit(run: RunState, cuts: string[]): RunState {
-  let team = cloneTeam(run.team);
-  const cutUnits = team.filter((u) => cuts.includes(u.instanceId));
-  for (const cutId of cuts) team = team.filter((u) => u.instanceId !== cutId);
-  const room = MAX_TEAM - team.length;
-  const taking = planRecruitAdds(run, run.recruitPicks, room);
-  for (const defId of taking) {
-    const slot = firstFreeSlot(team);
-    team.push(instanceFromDef(defId, slot, makeId('u')));
-  }
-  const bump = taking.some(hasRecruitRarityBump);
-  const granted = collectRecruitStickers(run, taking);
-  const next = {
-    ...rememberLost(run, cutUnits),
-    team: compactSlots(team),
-    recruitPicks: taking,
-    pendingStickerIds: granted,
-    recruitRarityBump: run.recruitRarityBump || bump,
-  };
-  if (granted.length) return { ...next, phase: 'stickerAssign' as const };
-  return finishAlley(next);
-}
-
 export function skipRecruit(run: RunState): RunState {
-  if (run.pendingGoldUnitId) return run;
-  if (run.recruitPicks.length) return finishRecruit(run);
-  return finishAlley({ ...run, recruitPicks: [] });
-}
-
-export function neededCuts(run: RunState): number {
-  return Math.max(0, run.team.length + run.recruitPicks.length + goldUnitsOnRecruit(run.recruitPicks) - MAX_TEAM);
+  if (run.recruitPicks.length || run.pendingGoldUnitId) return finishRecruit({ ...run, pendingGoldUnitId: null });
+  return finishAlley({ ...run, recruitPicks: [], pendingGoldUnitId: null });
 }
 
 export function teamHasAppliedStickers(run: RunState): boolean {
@@ -1300,10 +1330,6 @@ export function eventIsBlocked(run: RunState): boolean {
   return false;
 }
 
-export function lostTaleOffers(run: RunState): LostTale[] {
-  return (run.lostTales ?? []).slice(-3);
-}
-
 export function resolveHuntFight(run: RunState): RunState {
   if (run.eventId !== 'monster-hunt' || !run.huntMonsterId) return run;
   let inst = instanceFromDef(run.huntMonsterId, 1, makeId('hunt'));
@@ -1321,20 +1347,40 @@ export function resolveHuntFight(run: RunState): RunState {
   const player = playerSnapshot(run);
   const seed = mixSeed(run.seed, run.round, 0xb07);
   const result = simulateBattle(player, enemy, seed);
-  const next = { ...run, lastBonusBattle: result, lastBattle: result, eventStep: 'hunt-result' as const };
-  const persisted = persistBattleTeam(next);
-  const koPenalty = huntKnockedOutIds(next, 'player').length;
-  return {
-    ...next,
-    team: applyLossGrowth(persisted.team, result.winner),
-    deathsThisRun: persisted.deathsThisRun,
-    stickersGained: persisted.stickersGained,
-    victoryPoints: victoryPointsOf(next) - koPenalty,
+  const before = snapshotCandles(run);
+  const huntSnuff = result.winner === 'enemy' || result.winner === 'draw';
+  const candles = Math.max(0, candlesOf(run) - (huntSnuff ? 1 : 0));
+  const next = {
+    ...run,
+    candles,
+    lastBonusBattle: result,
+    lastBattle: result,
+    eventStep: 'hunt-result' as const,
   };
+  const persisted = persistBattleTeam(next);
+  return withEliminations(
+    {
+      ...next,
+      team: applyLossGrowth(persisted.team, result.winner),
+      deathsThisRun: persisted.deathsThisRun,
+      stickersGained: persisted.stickersGained,
+    },
+    before,
+  );
 }
 
 export function claimHunt(run: RunState): RunState {
   if (run.eventId !== 'monster-hunt' || run.eventStep !== 'hunt-result') return run;
+  if (candlesOf(run) <= 0) {
+    return closeNight({
+      ...run,
+      eventId: null,
+      eventStep: null,
+      huntMonsterId: null,
+      eventOffers: [],
+      eventPicks: [],
+    });
+  }
   const won = run.lastBattle?.winner === 'player';
   const sid = won && run.huntMonsterId ? huntStickerFor(run.huntMonsterId) : null;
   if (!sid) return finishAlley(run);
@@ -1391,15 +1437,18 @@ function grantBookReward(run: RunState, kind: 'unit' | 'sticker'): RunState {
 /** The figure just signed from the book. Same on-recruit gifts as the recruit shop. */
 function bookFigureSigned(run: RunState, team: UnitInstance[], defId: string, eventOffers: string[]): RunState {
   const added = appendGoldRecruit(run, team, defId);
-  return {
-    ...run,
-    team: compactSlots(added.team),
-    eventOffers,
-    eventPicks: [],
-    pendingStickerIds: collectRecruitStickers(run, [defId]),
-    pendingGoldUnitId: added.pending === undefined ? (run.pendingGoldUnitId ?? null) : added.pending,
-    recruitRarityBump: run.recruitRarityBump || hasRecruitRarityBump(defId),
-  };
+  return glueRecruitStickers(
+    {
+      ...run,
+      team: compactSlots(added.team),
+      eventOffers,
+      eventPicks: [],
+      pendingStickerIds: [],
+      pendingGoldUnitId: added.pending === undefined ? (run.pendingGoldUnitId ?? null) : added.pending,
+      recruitRarityBump: run.recruitRarityBump || hasRecruitRarityBump(defId),
+    },
+    [defId],
+  );
 }
 
 /** After the book closes: glue the recruit sticker, or seat the herald's gold figure. */
@@ -1452,12 +1501,11 @@ export function replaceBookUnit(run: RunState, slot: number): RunState {
 export function claimBookUnit(run: RunState, slot: number): RunState {
   if (run.phase !== 'event' || run.eventId !== 'book-of-lost-tales' || run.eventStep !== 'book-kind') return run;
   if (run.eventOffers.includes('book-picked')) return run;
-  if (slot < 1 || slot > MAX_TEAM) return run;
   const ready = ensureBookOffers(run);
+  if (!canSeatEmptySlot(ready.team, slot)) return run;
   const defId = bookSpread(ready).unitId;
   if (!defId) return run;
   const team = cloneTeam(ready.team);
-  if (team.some((u) => u.slot === slot)) return run;
   team.push(copyUnit({ defId, stickerIds: [], permanentMods: { atk: 0, hp: 0, speed: 0 } }, slot));
   const eventOffers = ready.eventOffers.filter((o) => !o.startsWith(BOOK_UNIT));
   eventOffers.push('book-picked');
@@ -1669,9 +1717,8 @@ function pendingUnitReward(run: RunState): LostTale | null {
 export function placeEventUnit(run: RunState, slot: number): RunState {
   const source = pendingUnitReward(run);
   if (!source || run.eventStep !== 'reward-unit') return run;
-  if (slot < 1 || slot > MAX_TEAM) return run;
+  if (!canSeatEmptySlot(run.team, slot)) return run;
   let team = cloneTeam(run.team);
-  if (team.some((u) => u.slot === slot)) return run;
   team.push(copyUnit(source, slot));
   return finishAlley({
     ...run,
@@ -1713,11 +1760,6 @@ export function throwEventReward(run: RunState): RunState {
     return finishAlley({ ...run, pendingStickerIds: [] });
   }
   return run;
-}
-
-/** @deprecated Use placeEventUnit / throwEventReward. */
-export function claimEventReward(run: RunState): RunState {
-  return throwEventReward(run);
 }
 
 function placeCopy(

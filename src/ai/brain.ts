@@ -7,6 +7,7 @@ import {
   getUnit,
   idlePacifist,
   instanceFromDef,
+  makeSnapshot,
   offerUnits,
   offerUnitsOfRarity,
   shareStickerOnApply,
@@ -14,7 +15,9 @@ import {
 import { recruitableUnits } from '../data/units';
 import { detId } from '../core/ids';
 import { mixSeed, SeededRng } from '../core/rng';
+import { simulateBattle } from '../sim/simulation';
 import { MAX_STICKERS, MAX_TEAM, RIVAL_VICES } from '../core/types';
+import { RARITY_ORDER, shopMaxRarity } from '../data/rarity';
 import type { AlleyChoice, RivalVice, UnitInstance } from '../core/types';
 
 export type { RivalVice };
@@ -37,10 +40,6 @@ export function idlePacifistCount(team: { defId: string }[]): number {
   return team.filter((u) => idlePacifist(u.defId)).length;
 }
 
-export function powerOf(defId: string): number {
-  const def = getUnit(defId);
-  return def.atk * 3 + def.hp * 2 + def.speed * 2 + RARITY_PTS[def.rarity] + (def.ability ? 5 : 0);
-}
 
 export function scoreUnit(defId: string, stickers: string[] = [], vice: RivalVice = 'brawler'): number {
   const def = getUnit(defId);
@@ -61,6 +60,17 @@ export function scoreUnit(defId: string, stickers: string[] = [], vice: RivalVic
   if (vice === 'guardian' && def.passives?.guardian) n += 14;
   if (vice === 'tempo' && s.speed >= 6) n += 8;
   if (vice === 'sticker' && def.passives?.eatStickers) n += 6;
+  return n;
+}
+
+/** Bench worth this round. A body left behind the shop loses to the current shelf. */
+export function benchValue(defId: string, vice: RivalVice = 'brawler', round = 1): number {
+  const def = getUnit(defId);
+  const rarity = RARITY_ORDER.indexOf(def.rarity);
+  const shop = RARITY_ORDER.indexOf(shopMaxRarity(Math.max(1, round)));
+  const behind = Math.max(0, shop - rarity);
+  let n = scoreUnit(defId, [], vice) - behind * (8 + round * 3);
+  if (idlePacifist(defId)) n -= 40;
   return n;
 }
 
@@ -158,6 +168,117 @@ function permutations<T>(items: T[]): T[][] {
   return out;
 }
 
+function combos<T>(items: T[], k: number): T[][] {
+  if (k === 0) return [[]];
+  if (k < 0 || k > items.length) return [];
+  const out: T[][] = [];
+  const walk = (start: number, acc: T[]) => {
+    if (acc.length === k) {
+      out.push(acc.slice());
+      return;
+    }
+    for (let i = start; i <= items.length - (k - acc.length); i++) {
+      acc.push(items[i]!);
+      walk(i + 1, acc);
+      acc.pop();
+    }
+  };
+  walk(0, []);
+  return out;
+}
+
+/** How hard this exact roster hits, in its best order. Duplicates and extra idle bodies are illegal. */
+export function linePower(defIds: string[]): number {
+  if (!defIds.length) return 0;
+  if (new Set(defIds).size !== defIds.length) return -1e9;
+  if (defIds.filter((id) => idlePacifist(id)).length > MAX_RIVAL_IDLE_PACIFISTS) return -1e9;
+  const lined = formLine(defIds.map((id, i) => instanceFromDef(id, i + 1, `line${i}`)));
+  return lineScore(lined) + lined.reduce((n, unit) => n + scoreUnit(unit.defId), 0);
+}
+
+const GAUNTLET = [
+  ['farm-boy', 'hunter', 'drunken-giant', 'tin-soldier'],
+  ['village-fool', 'puss-in-boots', 'magic-mirror', 'hunter'],
+  ['village-fool', 'farm-boy', 'hunter', 'drunken-giant'],
+];
+
+function rosterSnap(ids: string[], name: string) {
+  return makeSnapshot({
+    playerId: name,
+    playerName: name,
+    runId: name,
+    round: 6,
+    team: formLine(ids.map((id, i) => instanceFromDef(id, i + 1, `${name}-${i}`))),
+  });
+}
+
+/** One seeded scrap. Positive if `ids` wins, negative if it loses. */
+function scrapMargin(ids: string[], foes: string[], seed: number): number {
+  if (!ids.length) return -1;
+  const fight = simulateBattle(rosterSnap(ids, 'line'), rosterSnap(foes, 'foe'), seed);
+  if (fight.winner === 'player') return 1 + fight.hpPct.player;
+  if (fight.winner === 'draw') return fight.hpPct.player - fight.hpPct.enemy;
+  return -1 - fight.hpPct.enemy;
+}
+
+function rankRosters(rosters: string[][]): string[] {
+  const legalAll = rosters.filter((ids) => ids.length > 0 && linePower(ids) > -1e8);
+  const full = legalAll.reduce((n, ids) => Math.max(n, ids.length), 0);
+  const seen = new Set<string>();
+  const legal = legalAll.filter((ids) => {
+    if (ids.length !== full) return false;
+    const key = ids.slice().sort().join('|');
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  if (!legal.length) return [];
+  if (legal.length === 1) return legal[0]!;
+  const score = legal.map(() => 0);
+  if (legal.length <= 18) {
+    for (let i = 0; i < legal.length; i++) {
+      for (let j = i + 1; j < legal.length; j++) {
+        const margin = scrapMargin(legal[i]!, legal[j]!, 11);
+        if (margin > 0.5) score[i] += 1;
+        else if (margin < -0.5) score[j] += 1;
+      }
+    }
+  } else {
+    for (let i = 0; i < legal.length; i++) {
+      for (let g = 0; g < GAUNTLET.length; g++) {
+        score[i] += scrapMargin(legal[i]!, GAUNTLET[g]!, 20 + g);
+      }
+    }
+  }
+  let best = 0;
+  for (let i = 1; i < score.length; i++) if (score[i]! > score[best]!) best = i;
+  return legal[best]!;
+}
+
+/**
+ * Strongest roster you can reach from the bench plus this shop, adding at most `picks` new figures.
+ * Small fields are ranked by fighting each other. Larger shops are ranked against a fixed gauntlet.
+ */
+export function bestSquad(teamIds: string[], offers: string[], picks: number, size = MAX_TEAM): string[] {
+  const base = [...new Set(teamIds)];
+  const shop = [...new Set(offers)].filter((id) => !base.includes(id));
+  const found: string[][] = [];
+  const addCap = Math.max(0, Math.min(picks, shop.length));
+  for (let k = 0; k <= addCap; k++) {
+    for (const add of combos(shop, k)) {
+      const minDrop = Math.max(0, base.length + k - size);
+      const maxDrop = Math.min(base.length, k);
+      for (let d = minDrop; d <= maxDrop; d++) {
+        for (const drop of combos(base, d)) {
+          const gone = new Set(drop);
+          found.push([...base.filter((id) => !gone.has(id)), ...add]);
+        }
+      }
+    }
+  }
+  return rankRosters(found);
+}
+
 export function formLine<T extends UnitInstance>(team: T[]): T[] {
   if (team.length <= 1) return team.map((u, i) => ({ ...u, slot: i + 1 }));
   let best = team;
@@ -173,22 +294,9 @@ export function formLine<T extends UnitInstance>(team: T[]): T[] {
   return best;
 }
 
-export function pickDraft(offers: string[], vice: RivalVice): string[] {
+export function pickDraft(offers: string[], _vice: RivalVice): string[] {
   if (offers.length <= 2) return offers.slice();
-  let best: string[] = offers.slice(0, 2);
-  let bestScore = -Infinity;
-  for (let i = 0; i < offers.length; i++) {
-    for (let j = i + 1; j < offers.length; j++) {
-      const a = offers[i]!;
-      const b = offers[j]!;
-      const n = scoreUnit(a, [], vice) + scoreUnit(b, [], vice) + pairSynergy(a, b);
-      if (n > bestScore) {
-        bestScore = n;
-        best = [a, b];
-      }
-    }
-  }
-  return best;
+  return bestSquad([], offers, 2, 2);
 }
 
 export function pickStickerOffer(team: UnitInstance[], offers: string[], vice: RivalVice): string | undefined {
@@ -203,7 +311,7 @@ export function pickStickerOffer(team: UnitInstance[], offers: string[], vice: R
 }
 
 export function alleyPickFor(
-  run: { alleyDone?: AlleyChoice[]; team: UnitInstance[]; wins: number },
+  run: { alleyDone?: AlleyChoice[]; team: UnitInstance[]; wins: number; round?: number },
   vice: RivalVice,
 ): AlleyChoice {
   const done = run.alleyDone ?? [];
@@ -213,7 +321,14 @@ export function alleyPickFor(
   const holes = run.team.reduce((n, u) => n + Math.max(0, MAX_STICKERS - u.stickerIds.length), 0);
   const score = (choice: AlleyChoice): number => {
     if (choice === 'recruit') {
-      let n = full ? 1 : 18;
+      let n = full ? 2 : 18;
+      if (full && run.team.length) {
+        const weak = run.team.reduce((low, u) =>
+          recruitScore(u.defId, run.team, vice) < recruitScore(low.defId, run.team, vice) ? u : low,
+        );
+        const gap = RARITY_ORDER.indexOf(shopMaxRarity(run.round ?? 1)) - RARITY_ORDER.indexOf(getUnit(weak.defId).rarity);
+        if (gap >= 1) n = 14 + gap * 4;
+      }
       if (vice === 'tank' || vice === 'brawler' || vice === 'sneak' || vice === 'guardian') n += 2;
       return n;
     }
@@ -265,10 +380,18 @@ export function diamondChance(round: number, vice: RivalVice, wins = 0): number 
 
 function pickAttackerId(team: UnitInstance[], round: number, vice: RivalVice, rng: SeededRng): string {
   const taken = new Set(team.map((u) => u.defId));
+  let best = '';
+  let bestN = -Infinity;
   for (let n = 0; n < 8; n++) {
     const id = offerUnits(Math.max(2, round), 1, rng.fork(0x21 + n))[0];
-    if (id && !idlePacifist(id) && !taken.has(id)) return id;
+    if (!id || idlePacifist(id) || taken.has(id)) continue;
+    const score = recruitScore(id, team, vice);
+    if (score > bestN) {
+      bestN = score;
+      best = id;
+    }
   }
+  if (best) return best;
   const attackers = recruitableUnits().filter((u) => u.rarity !== 'diamond' && !idlePacifist(u.id) && !taken.has(u.id));
   return rng.pick(attackers.length ? attackers : recruitableUnits().filter((u) => !idlePacifist(u.id))).id;
 }
@@ -301,11 +424,18 @@ function pickFillId(team: UnitInstance[], round: number, vice: RivalVice, rng: S
     if (dia && getUnit(dia).rarity === 'diamond' && getUnit(dia).recruitable && !idlePacifist(dia)) return dia;
   }
   if (wantAttacker) return pickAttackerId(team, round, vice, rng);
+  let best = '';
+  let bestN = -Infinity;
   for (let n = 0; n < 8; n++) {
     const id = offerUnits(Math.max(2, round), 1, rng.fork(0x11 + n))[0];
-    if (id) return id;
+    if (!id) continue;
+    const score = recruitScore(id, team, vice);
+    if (score > bestN) {
+      bestN = score;
+      best = id;
+    }
   }
-  return 'farm-boy';
+  return best || 'farm-boy';
 }
 
 /** Keep a rival on 4 figures. From round 6 a seat can roll a recruitable diamond. */

@@ -118,6 +118,25 @@ export class AudioEngine {
     // Decode the tick first so Fight never waits on HTMLAudio on Samsung.
     void this.ensureClickBuffer();
     if (!this.playing) this.startMusic();
+    else this.resumeLoopedHtml();
+  }
+
+  /** Phones sometimes pause a looped track at the end and never fire 'ended'. */
+  private resumeLoopedHtml(): void {
+    const el = this.musicEl;
+    if (!el || !el.loop || !el.paused || !this.playing) return;
+    if (Number.isFinite(el.duration) && el.duration > 1 && el.currentTime > el.duration - 0.6) {
+      try { el.currentTime = 0; } catch { /* ignore */ }
+    }
+    void el.play().catch(() => {});
+  }
+
+  /** Field is up: wake WebAudio (phones drop the Fight gesture during the fade) and start the scrap bed. */
+  ensureBattle(cue: BattleCue): void {
+    this.unlock();
+    if (this.cue === cue && this.bedLive && this.bedPhase === 'bed' && this.playing) return;
+    this.cue = cue;
+    if (this.playing) void this.playBed(cue);
   }
 
   private ensureClickBuffer(): Promise<void> {
@@ -179,13 +198,13 @@ export class AudioEngine {
    * Fight was pressed. The square piece fades out now, and the scrap bed is decoded
    * so the fanfare can start the moment the field appears.
    */
-  leaveSquare(next: BattleCue): void {
+  leaveSquare(next: BattleCue, fadeSec = 1.5): void {
     // Decode the scrap bed during the fade, so the fanfare is ready on the board.
     void this.loadBed(next).catch(() => {});
     const el = this.musicEl;
     if (!el || (this.cue !== 'menu' && this.cue !== 'square')) return;
     this.fadingEl = el;
-    this.fadeHtmlVolume(el, 0, 1.5);
+    this.fadeHtmlVolume(el, 0, fadeSec);
   }
 
   /** The square is on screen. Anything left of the scrap stops, and the waltz starts now. */
@@ -222,6 +241,10 @@ export class AudioEngine {
 
   /** Menu, scrap, or monster hunt. The square waltz starts when the square is on screen. */
   setCue(cue: MusicCue): void {
+    if (cue === 'fight' || cue === 'hunt') {
+      this.ensureBattle(cue);
+      return;
+    }
     if (cue !== this.cue && (cue === 'menu' || cue === 'square' || cue === 'final')) {
       this.stopBedSources();
       this.cue = cue;
@@ -233,10 +256,17 @@ export class AudioEngine {
       this.handoffToMenu();
       return;
     }
-    if ((cue === 'fight' || cue === 'hunt') && this.bedPhase === 'finale' && this.cue === cue) return;
     if (this.cue === cue && this.loaded === cue && this.playing && this.bedPhase !== 'finale') {
-      // leaveSquare fades the waltz in place; restart it when the square is back.
-      if (!this.fadingEl || (cue !== 'square' && cue !== 'menu')) return;
+      // leaveSquare / fadeOut can leave the same cue loaded but silent or mid-fade —
+      // restart square/menu instead of early-returning into dead air.
+      const el = this.musicEl;
+      const silent =
+        Boolean(this.fadingEl) ||
+        !el ||
+        el.paused ||
+        el.volume < 0.02;
+      if (!silent) return;
+      if (cue !== 'square' && cue !== 'menu' && cue !== 'final') return;
     }
     this.cue = cue;
     if (this.playing) this.playCue();
@@ -268,14 +298,24 @@ export class AudioEngine {
     let el = this.musicEls.get(cue);
     if (!el) {
       const spec = TRACK[cue];
-      el = new Audio(spec.src);
-      el.preload = 'auto';
-      el.loop = false;
-      el.addEventListener('ended', () => {
-        if (this.cue !== cue || !this.playing || this.musicEl !== el) return;
-        this.playFrom(el, spec.from);
+      const audio = new Audio(spec.src);
+      audio.preload = 'auto';
+      // Square and finale start at 0. Native loop — phones often drop the
+      // 'ended' restart, so the market tune played once and stopped.
+      audio.loop = spec.from === 0;
+      audio.addEventListener('timeupdate', () => {
+        if (!audio.loop || !audio.paused || this.musicEl !== audio || !this.playing) return;
+        if (!Number.isFinite(audio.duration) || audio.duration < 1) return;
+        if (audio.currentTime > 0.3 && audio.currentTime < audio.duration - 0.45) return;
+        try { audio.currentTime = 0; } catch { /* ignore */ }
+        void audio.play().catch(() => {});
       });
-      this.musicEls.set(cue, el);
+      audio.addEventListener('ended', () => {
+        if (this.cue !== cue || !this.playing || this.musicEl !== audio) return;
+        this.playFrom(audio, spec.from);
+      });
+      this.musicEls.set(cue, audio);
+      el = audio;
     }
     return el;
   }
@@ -302,6 +342,17 @@ export class AudioEngine {
       const begin = () => {
         if (this.musicEl !== el || !this.playing) return;
         void el.play().catch(() => {
+          if (this.musicEl !== el || !this.playing) return;
+          // A loop that dies at the end must keep the cue. A first play
+          // blocked before a tap still clears it, so the next tap can start it.
+          if (el.loop && el.currentTime > 0.4) {
+            window.setTimeout(() => {
+              if (this.musicEl !== el || !this.playing) return;
+              try { el.currentTime = 0; } catch { /* ignore */ }
+              void el.play().catch(() => {});
+            }, 80);
+            return;
+          }
           this.playing = false;
         });
       };

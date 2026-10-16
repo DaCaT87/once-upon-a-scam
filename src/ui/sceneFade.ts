@@ -75,6 +75,11 @@ export function syncScene(page?: string): void {
   shown = page ?? sceneKey();
 }
 
+/** Fight / leave-scrap: black cover, then the other screen. */
+export const SCRAP_COVER_MS = 2600;
+/** Open onto the field (or the square). Same length as the cover. */
+export const SCRAP_REVEAL_MS = 2600;
+
 /** Darken the screen that is still visible. Resolves once the veil is opaque. */
 export async function fadeOutScene(ms = 360): Promise<void> {
   const veil = veilEl();
@@ -85,23 +90,13 @@ export async function fadeOutScene(ms = 360): Promise<void> {
   await ramp(from, 1, ms);
 }
 
-/** Uncover the screen that was just painted. */
-export function revealScene(page: string, ms = 500): void {
+/** Uncover the screen that was just painted. Resolves when the veil is gone. */
+export async function revealScene(page: string, ms = 500): Promise<void> {
   shown = page;
   const veil = veilEl();
   if (!veil) return;
-  void ramp(1, 0, ms).then(() => {
-    if (shown !== page) return;
-    const live = veilEl();
-    if (live) live.style.pointerEvents = 'none';
-  });
-}
-
-/** Drop the veil immediately. Used when the scrap curtain is the transition. */
-export function hideVeil(): void {
-  rampGen += 1;
-  const veil = veilEl();
-  if (!veil) return;
-  lockVeil('0');
-  veil.style.pointerEvents = 'none';
+  await ramp(1, 0, ms);
+  if (shown !== page) return;
+  const live = veilEl();
+  if (live) live.style.pointerEvents = 'none';
 }

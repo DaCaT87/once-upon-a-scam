@@ -160,6 +160,8 @@ interface SimState {
   guardianAnswered: Set<string>;
   /** The figure currently being attacked, so Guardian does not reply for itself. */
   guardianProtectUid: string | null;
+  /** Scales of Balance is copying a stat gain onto the other two stats. */
+  balancingScales: boolean;
 }
 
 function viewOf(u: Combatant): PublicUnitView {
@@ -502,6 +504,7 @@ function applyOp(state: SimState, source: Combatant, target: Combatant, op: Effe
           now: target.atk,
           permanent,
         });
+        growBalanceSiblings(state, target, 'atk', amount);
         break;
       }
       const amount = scaleBuff(target, op.amount, permanent);
@@ -519,14 +522,17 @@ function applyOp(state: SimState, source: Combatant, target: Combatant, op: Effe
           permanent,
           ...(hunger ? { hunger: true } : {}),
         });
+        growBalanceSiblings(state, target, 'atk', amount);
       } else if (op.stat === 'speed') {
         target.speed = clampStat('speed', target.speed + amount);
         if (permanent) target.permanentMods.speed += amount;
         emit(state, { type: 'StatChanged', unitId: target.uid, stat: 'speed', amount, now: target.speed, permanent });
+        growBalanceSiblings(state, target, 'speed', amount);
       } else if (op.stat === 'maxHp') {
         target.maxHp = clampStat('maxHp', target.maxHp + amount);
         if (permanent) target.permanentMods.hp += amount;
         emit(state, { type: 'StatChanged', unitId: target.uid, stat: 'maxHp', amount, now: target.maxHp, permanent });
+        growBalanceSiblings(state, target, 'maxHp', amount);
       } else if (op.stat === 'hp') {
         target.hp = Math.min(target.maxHp, clampStat('hp', target.hp + amount));
         if (amount > 0) emit(state, { type: 'Healed', unitId: target.uid, amount });
@@ -542,10 +548,21 @@ function applyOp(state: SimState, source: Combatant, target: Combatant, op: Effe
         const raw = base * op.pct;
         amount = op.roundUp ? Math.ceil(raw) : Math.floor(raw);
       }
-      if (op.trueDamage && amount >= 99) {
-        emit(state, { type: 'Log', message: `death:${target.uid}` });
-      }
       dealDamage(state, source, target, amount, kind === 'attack' ? 'attack' : 'effect', Boolean(op.trueDamage));
+      break;
+    }
+    case 'knockOut': {
+      if (target.dead || target.dying) break;
+      // Cue the KO float; deal remaining HP as true damage so high-HP figures fall too.
+      emit(state, { type: 'Log', message: `death:${target.uid}` });
+      dealDamage(
+        state,
+        source,
+        target,
+        Math.max(1, target.hp),
+        kind === 'attack' ? 'attack' : 'effect',
+        true,
+      );
       break;
     }
     case 'damageFromAtk':
@@ -729,6 +746,8 @@ function applyOp(state: SimState, source: Combatant, target: Combatant, op: Effe
         if (gained > 0) emit(state, { type: 'Healed', unitId: target.uid, amount: gained });
         emit(state, { type: 'StatChanged', unitId: target.uid, stat: 'hp', amount: gained, now: target.hp });
       }
+      growBalanceSiblings(state, target, 'atk', atkGain);
+      growBalanceSiblings(state, target, 'maxHp', hpGain);
       break;
     }
     case 'exhaustSticker':
@@ -792,7 +811,8 @@ function sharesCombatHp(fromId: string, toId: string): boolean {
 
 function rebuildFromDef(c: Combatant): void {
   const def = getUnit(c.defId);
-  const snap = combatSnap(c);
+  // Keep the stickers and permanent mods already on this figure. The new body is not a blank base.
+  const snap = { ...combatSnap(c), permanentMods: { ...c.permanentMods } };
   const stats = computedStats(snap);
   const passives = mergePassives(snap);
   c.nameKey = def.nameKey;
@@ -1208,12 +1228,47 @@ function raiseMatchHighest(state: SimState, target: Combatant): void {
   const speed = top - target.speed;
   const hp = top - target.maxHp;
   target.equalizeGain = { atk, hp, speed };
+  state.balancingScales = true;
   if (atk) applyOp(state, target, target, { op: 'modStat', stat: 'atk', amount: atk, duration: 'combat' }, 'effect');
   if (speed) applyOp(state, target, target, { op: 'modStat', stat: 'speed', amount: speed, duration: 'combat' }, 'effect');
   if (hp) {
     applyOp(state, target, target, { op: 'modStat', stat: 'maxHp', amount: hp, duration: 'combat' }, 'effect');
     applyOp(state, target, target, { op: 'modStat', stat: 'hp', amount: hp, duration: 'combat' }, 'effect');
   }
+  state.balancingScales = false;
+}
+
+function wearsScales(target: Combatant): boolean {
+  return target.stickers.some((id) => getSticker(id).passives?.matchHighest);
+}
+
+/** While Scales of Balance is on, a raised ATK / HP / Speed lifts the other two by the same amount. */
+function growBalanceSiblings(
+  state: SimState,
+  target: Combatant,
+  grown: 'atk' | 'speed' | 'maxHp',
+  amount: number,
+): void {
+  if (state.balancingScales || amount <= 0 || !wearsScales(target)) return;
+  state.balancingScales = true;
+  if (grown !== 'atk') {
+    applyOp(state, target, target, { op: 'modStat', stat: 'atk', amount, duration: 'combat' }, 'effect');
+  }
+  if (grown !== 'speed') {
+    applyOp(state, target, target, { op: 'modStat', stat: 'speed', amount, duration: 'combat' }, 'effect');
+  }
+  if (grown !== 'maxHp') {
+    applyOp(state, target, target, { op: 'modStat', stat: 'maxHp', amount, duration: 'combat' }, 'effect');
+    applyOp(state, target, target, { op: 'modStat', stat: 'hp', amount, duration: 'combat' }, 'effect');
+  }
+  if (target.equalizeGain) {
+    target.equalizeGain = {
+      atk: target.equalizeGain.atk + (grown === 'atk' ? 0 : amount),
+      speed: target.equalizeGain.speed + (grown === 'speed' ? 0 : amount),
+      hp: target.equalizeGain.hp + (grown === 'maxHp' ? 0 : amount),
+    };
+  }
+  state.balancingScales = false;
 }
 
 function undoMatchHighest(state: SimState, target: Combatant): void {
@@ -1853,7 +1908,14 @@ function fireAbilities(
       } finally {
         state.hungerGrant = prevHunger;
       }
-      if (onceSticker) spendSticker(state, owner, onceSticker.id, onceSticker.slot);
+      // Exhausted once-stickers leave the rail; don't StickerSpent or the new gift in that slot gets the red X.
+      if (onceSticker) {
+        const still =
+          onceSticker.slot != null
+            ? owner.stickers[onceSticker.slot] === onceSticker.id
+            : owner.stickers.includes(onceSticker.id);
+        if (still) spendSticker(state, owner, onceSticker.id, onceSticker.slot);
+      }
     }
   }
   state.depth -= 1;
@@ -2127,6 +2189,7 @@ function flushDeaths(state: SimState): void {
       u.atk = clampStat('atk', u.atk + amt);
       u.coreAtk = clampStat('atk', u.coreAtk + amt);
       emit(state, { type: 'StatChanged', unitId: u.uid, stat: 'atk', amount: amt, now: u.atk });
+      growBalanceSiblings(state, u, 'atk', amt);
     }
     refreshChampionAtk(state);
     const allies = state.units.filter((u) => u.team === victim.team && u.uid !== victim.uid && !u.dead);
@@ -2233,7 +2296,8 @@ function resolveAttack(state: SimState, u: Combatant, target: Combatant): void {
     state.guardianProtectUid = prevProtect;
     if (state.attackCancelled) {
       state.attackCancelled = false;
-      const pend = state.pendingAmbush;
+      // CFA keeps pendingAmbush narrowed to null after the pre-clear; ambush is set in fireAbilities.
+      const pend = state.pendingAmbush as NonNullable<SimState['pendingAmbush']> | null;
       state.pendingAmbush = null;
       emit(state, { type: 'AttackStarted', unitId: u.uid, targetId: target.uid, cancelled: true });
       if (pend) {
@@ -2380,7 +2444,9 @@ function formBecomesAttacker(defId: string, seen: Set<string>): boolean {
   if (def.targeting !== 'pacifist' && def.atk > 0) return true;
   const ab = def.ability;
   if (!ab || (ab.trigger !== 'turnStarted' && ab.trigger !== 'turnEnded')) return false;
-  return ab.effects.some((e) => e.op === 'transform' && Boolean(e.unitId) && formBecomesAttacker(e.unitId, seen));
+  return ab.effects.some(
+    (e) => e.op === 'transform' && Boolean(e.unitId) && formBecomesAttacker(e.unitId!, seen),
+  );
 }
 
 function atkGrantRecipients(state: SimState, u: Combatant, sel: EffectTarget): Combatant[] {
@@ -2489,6 +2555,7 @@ export function simulateBattle(a: TeamSnapshot, b: TeamSnapshot, seed: number): 
     attackSerial: 0,
     guardianAnswered: new Set(),
     guardianProtectUid: null,
+    balancingScales: false,
   };
 
   refreshChampionAtk(state);

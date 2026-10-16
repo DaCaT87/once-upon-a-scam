@@ -11,19 +11,6 @@ const anim = {
 
 export const UNITS: UnitDef[] = [
   {
-    id: 'paper-dove',
-    nameKey: 'unit.paperDove',
-    rarity: 'bronze',
-    hp: 2,
-    atk: 1,
-    speed: 6,
-    targeting: 'sneak',
-    art: { archetype: 'dove', primary: '#f4eee4', secondary: '#c0b0a0', tertiary: '#8a7060', glove: '#f3efe4', size: 0.7, death: 'puff' },
-    tags: ['summon'],
-    recruitable: false,
-    anim,
-  },
-  {
     id: 'pig',
     nameKey: 'unit.pig',
     rarity: 'bronze',
@@ -861,7 +848,7 @@ export const UNITS: UnitDef[] = [
       id: 'miss-d.execute',
       trigger: 'damageDealt',
       target: 'attackTarget',
-      effects: [{ op: 'damage', amount: 99, trueDamage: true }],
+      effects: [{ op: 'knockOut' }],
     },
     targeting: 'hitman',
     art: { archetype: 'ghost', primary: '#1a1418', secondary: '#c5d4d0', tertiary: '#8a2030', glove: '#f3efe4', size: 1.06, death: 'spirit' },
@@ -1252,8 +1239,6 @@ export const STARTING_BRONZE_IDS = [
   'happy-rat',
   'vampire-bat',
 ] as const;
-
-export const SLICE_UNIT_IDS = STARTING_BRONZE_IDS.slice(0, 5);
 
 export const UNIT_BY_ID = new Map(UNITS.map((u) => [u.id, u]));
 

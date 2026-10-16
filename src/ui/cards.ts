@@ -1,7 +1,7 @@
 import { barePrintedSummon, computedStats, getSticker, getUnit, hasCardFace, hasStickerArt, hasUnitArt, isScenicArt, killsLeftOnCard, nextFormOf, prevFormOf, resolveAbilityTiming, resolveTargeting, stickerArtFile, teamLaneOrder, unitArtFolder, usesPrintedCardFace, type StatContext } from '../core/catalog';
 import { translate } from '../data/i18n';
 import { isOvenSweet, ovenSweetOffer } from '../data/stickers';
-import type { AbilityTiming, Locale, PublicUnitView, StickerDef, TargetingType, TeamId, UnitInstance } from '../core/types';
+import type { AbilityTiming, Locale, PublicUnitView, StickerDef, TargetingType, UnitInstance } from '../core/types';
 
 export function t(locale: Locale, key: string): string {
   return translate(locale, key);
@@ -38,14 +38,6 @@ function statIcon(locale: Locale, kind: 'atk' | 'hp' | 'spd'): string {
   </span>`;
 }
 
-export function abilityText(locale: Locale, defId: string): string {
-  const def = getUnit(defId);
-  const timing = resolveAbilityTiming(def);
-  const rule = abilityRule(locale, defId);
-  if (!timing) return rule;
-  return `${t(locale, `timing.${timing}`)}: ${rule}`;
-}
-
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch] ?? ch);
 }
@@ -61,15 +53,6 @@ export function abilityRule(locale: Locale, defId: string): string {
   const split = raw.indexOf(': ');
   if (split > 0 && split < 28) return raw.slice(split + 2);
   return raw;
-}
-
-export function parseAbility(locale: Locale, defId: string): { name: string | null; rule: string } {
-  const def = getUnit(defId);
-  const timing = resolveAbilityTiming(def);
-  return {
-    name: timing ? t(locale, `timing.${timing}`) : null,
-    rule: abilityRule(locale, defId),
-  };
 }
 
 function renderTerm(
@@ -110,6 +93,7 @@ function linkKeywords(locale: Locale, text: string): string {
     ['keywordBecome', 'keywordBecomeD'],
     ['keywordTransform', 'keywordTransformD'],
     ['keywordExhaust', 'keywordExhaustD'],
+    ['keywordSpent', 'keywordSpentD'],
     ['keywordSteal', 'keywordStealD'],
     ['keywordAdjacent', 'keywordAdjacentD'],
     ['keywordGold', 'keywordGoldD'],
@@ -513,7 +497,7 @@ function portraitHtml(locale: Locale, defId: string, opts?: { clip?: string; loc
   const file = !opts?.figure && clip === 'idle' && hasCardFace(defId) ? 'card' : clip;
   const locked = opts?.locked ? ' data-locked="true"' : '';
   const scenic = isScenicArt(defId) ? ' scenic' : '';
-  const src = `./art/units/${folder}/${file}.png?v=cast219`;
+  const src = `./art/units/${folder}/${file}.png?v=cast220`;
   return `<img class="portrait-art${scenic}" data-unit="${folder}"${locked} src="${src}" alt="${t(locale, getUnit(defId).nameKey)}" draggable="false" />`;
 }
 
@@ -769,21 +753,10 @@ export function renderBattleCard(locale: Locale, unit: PublicUnitView): string {
           <div class="stat">${statIcon(locale, 'spd')}<b data-stat="spd">${unit.speed}</b></div>
         </div>
         <div class="rule-row">${renderTargetingLabel(locale, unit.targeting)}</div>
-        ${(def.id === 'time-master' || def.id === 'headless-horseman') && !silenced
-          ? renderAbility(locale, def.id, unit.rewindLeft, unit.killTally)
-          : ''}
       </div>
       ${bare ? '' : `<div class="sticker-rail">${stickerSlots(locale, unit.stickers, { spent: silenced })}</div>`}
       ${scrapReadout(locale, unit, def.id)}
     </article>`;
-}
-
-export function renderEmptySlot(locale: Locale, team: TeamId, slot: number): string {
-  return `<div class="battle-slot" data-battle-slot="${team}-${slot}">
-    <article class="unit-card battle-card is-empty" data-team="${team}" data-slot="${slot}">
-      <div class="empty-back"><span>${slot}</span><em>${t(locale, 'vacant')}</em></div>
-    </article>
-  </div>`;
 }
 
 export function renderStickerCard(locale: Locale, id: string, picked: boolean, extraClass = ''): string {
@@ -889,7 +862,7 @@ export function bindScrapReadouts(root: HTMLElement): void {
   };
 
   root.addEventListener('pointerover', (e) => {
-    if (phoneFace(root) || document.documentElement.classList.contains('is-battle')) return;
+    if (phonePlay() || document.documentElement.classList.contains('is-battle')) return;
     const slot = (e.target as HTMLElement | null)?.closest<HTMLElement>('.battle-slot');
     if (!slot || !root.contains(slot)) return;
     const from = e.relatedTarget;
@@ -922,6 +895,33 @@ export function fitCardSlabs(root: ParentNode): void {
   root.querySelectorAll<HTMLElement>('.unit-card:not(.is-empty) .card-slab').forEach(fitOneSlab);
 }
 
+/** Keep every card title on one line by shrinking the type to the parchment width. */
+function fitCardName(name: HTMLElement): void {
+  name.style.fontSize = '';
+  name.style.letterSpacing = '';
+  const start = parseFloat(getComputedStyle(name).fontSize);
+  if (!Number.isFinite(start) || start <= 0) return;
+  const floor = Math.max(7.5, start * 0.62);
+  let guard = 28;
+  while (name.scrollWidth > name.clientWidth + 1 && guard > 0) {
+    guard -= 1;
+    const cur = parseFloat(getComputedStyle(name).fontSize);
+    if (!Number.isFinite(cur) || cur <= floor) break;
+    name.style.fontSize = `${Math.max(floor, cur * 0.94)}px`;
+  }
+  // Long Italian titles: a hair of tracking after the size fit.
+  if (name.scrollWidth > name.clientWidth + 1) {
+    name.style.letterSpacing = '-0.04em';
+    guard = 12;
+    while (name.scrollWidth > name.clientWidth + 1 && guard > 0) {
+      guard -= 1;
+      const cur = parseFloat(getComputedStyle(name).fontSize);
+      if (!Number.isFinite(cur) || cur <= floor) break;
+      name.style.fontSize = `${Math.max(floor, cur * 0.96)}px`;
+    }
+  }
+}
+
 function fitOneSlab(slab: HTMLElement): void {
   const rule = slab.querySelector<HTMLElement>('.ability-rule');
   const row = slab.querySelector<HTMLElement>('.rule-row');
@@ -931,7 +931,7 @@ function fitOneSlab(slab: HTMLElement): void {
     rule.style.lineHeight = '';
   }
   if (row) row.style.fontSize = '';
-  if (name) name.style.fontSize = '';
+  if (name) fitCardName(name);
 
   const overflows = () => slab.scrollHeight > slab.clientHeight + 1 || slab.scrollWidth > slab.clientWidth + 1;
   if (!overflows()) return;
@@ -939,7 +939,7 @@ function fitOneSlab(slab: HTMLElement): void {
   // Zoom uses the same face as the table, then CSS scale — fit here so nothing clips.
   const ruleFloor = 5.5;
   const rowFloor = 5.5;
-  const nameFloor = 9;
+  const nameFloor = 7.5;
 
   const shrink = (el: HTMLElement | null, factor: number, floor: number): number => {
     if (!el) return floor;

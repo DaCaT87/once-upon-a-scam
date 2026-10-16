@@ -18,7 +18,6 @@ export interface RunService {
 
 export interface LeaderboardService {
   submit(run: CompletedRun): Promise<void>;
-  list(): Promise<CompletedRun[]>;
 }
 
 export interface GameServices {

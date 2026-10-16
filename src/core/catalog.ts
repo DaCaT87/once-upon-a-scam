@@ -31,18 +31,14 @@ export function getSticker(id: string) {
   return s;
 }
 
-/** ATK, Speed, and current HP cannot go below 0. Max HP stays at least 1. */
+/** ATK, Speed, HP, and Max HP stay in range. Floor 0 (Max HP 1). Cap 999. */
 export function clampStat(stat: 'atk' | 'speed' | 'hp' | 'maxHp', value: number): number {
-  if (stat === 'maxHp') return Math.max(1, value);
-  return Math.max(0, value);
+  const floor = stat === 'maxHp' ? 1 : 0;
+  return Math.min(999, Math.max(floor, value));
 }
 
 export function mirrorStacks(inst: UnitInstance | SnapshotUnit): number {
   return inst.stickerIds.filter((id) => getSticker(id).passives?.doubleStats).length;
-}
-
-export function hasDoubleStats(inst: UnitInstance | SnapshotUnit): boolean {
-  return mirrorStacks(inst) > 0;
 }
 
 export function stickerEffectScale(_inst: UnitInstance | SnapshotUnit, _stickerId: string): number {
@@ -62,10 +58,6 @@ function scaleStickerOp(op: AbilityDef['effects'][number], n: number): AbilityDe
     case 'stealStat':
     case 'modRandomStat':
       return { ...op, amount: op.amount * n };
-    case 'poison':
-      return { ...op, stacks: op.stacks * n };
-    case 'shield':
-      return { ...op, charges: op.charges * n };
     default:
       return op;
   }
@@ -167,25 +159,24 @@ export function mergePassives(inst: UnitInstance | SnapshotUnit): Passives {
 
 function timingFromAbility(ability: AbilityDef): AbilityTiming | null {
   if (ability.id === 'purple-widows.cocoon') return 'onHit';
-  if (ability.trigger === 'afterAttack' && (ability.once || ability.condition?.kind === 'firstAttack')) {
-    return 'firstAttack';
-  }
   switch (ability.trigger) {
     case 'onDeath':
       return 'onDeath';
     case 'battleStart':
       return 'battleStart';
     case 'afterAttack':
-      return 'afterAttack';
+      // No player-facing AFTER ATTACK label; widows already forced to ON HIT above.
+      return 'onHit';
     case 'allyDied':
-      return 'allyDied';
+      // Keep the sim trigger for later; no player-facing ALLY KO label yet.
+      return null;
     case 'anyDied':
       return 'anyDied';
     case 'unitKilled':
       if (ability.effects.some((e) => e.op === 'transform' && e.afterKills)) return null;
       return 'onKill';
     case 'damageReceived':
-      return ability.condition?.kind === 'survivedAttack' ? 'whenHit' : 'whenDamaged';
+      return 'whenHit';
     case 'onRecruit':
       return 'onRecruit';
     case 'onApply':
@@ -199,7 +190,6 @@ function timingFromAbility(ability: AbilityDef): AbilityTiming | null {
     case 'turnStarted':
       return 'turnStart';
     case 'whenTargeted':
-      if (ability.effects.length === 1 && ability.effects[0]?.op === 'ambush') return null;
       return 'whenAttacked';
     case 'beforeAttack':
     case 'attackStarted':
@@ -213,8 +203,8 @@ function timingFromAbility(ability: AbilityDef): AbilityTiming | null {
 
 function timingFromPassives(passives?: Passives): AbilityTiming | null {
   if (!passives) return null;
-  if (passives.lifesteal || passives.bonusIfTargetHigherAtk || passives.atkPerTargetSticker || passives.curseAtk) return 'onAttack';
-  if (passives.doubleVsStickers) return 'onHit';
+  if (passives.bonusIfTargetHigherAtk || passives.atkPerTargetSticker || passives.curseAtk) return 'onAttack';
+  if (passives.lifesteal || passives.doubleVsStickers) return 'onHit';
   if (passives.thorns || passives.firstHitReduce || passives.reflectDamageTaken) return 'whenHit';
   if (passives.silence || passives.teamActsFirst) return 'battleStart';
   if (passives.championAtk) return 'onAttack';
@@ -249,7 +239,7 @@ export function assertAbilityTiming(): void {
     ['black-duck', null],
     ['pied-piper', 'onHit'],
     ['little-fairy', 'turnStart'],
-    ['cobblers-elves', 'whenDamaged'],
+    ['cobblers-elves', 'whenHit'],
     ['magic-mirror', null],
     ['village-fool', null],
     ['puss-in-boots', 'onAttack'],
@@ -257,7 +247,7 @@ export function assertAbilityTiming(): void {
     ['tin-soldier', 'onDeath'],
     ['wax-knight', 'turnEnd'],
     ['farm-boy', 'onRecruit'],
-    ['jack-in-the-box', null],
+    ['jack-in-the-box', 'whenAttacked'],
     ['sprung-jack', null],
     ['happy-rat', 'onSticker'],
     ['hunter', 'onKill'],
@@ -279,7 +269,7 @@ export function assertAbilityTiming(): void {
     ['giving-tree', 'turnStart'],
     ['ice-king', 'battleStart'],
     ['sandman', 'turnStart'],
-    ['mimic', null],
+    ['mimic', 'whenAttacked'],
     ['sprung-mimic', null],
     ['the-collector', null],
     ['phoenix', 'onDeath'],
@@ -296,7 +286,6 @@ export function assertAbilityTiming(): void {
     ['prince-charming', null],
     ['big-bad-wolf', 'onKill'],
     ['woken-bear', null],
-    ['paper-dove', null],
     ['pig', null],
     ['gingerbread-servant', null],
     ['thousand-maws', 'onKill'],
@@ -319,12 +308,12 @@ export function assertAbilityTiming(): void {
     ['spiked-shield', 'whenHit'],
     ['life-potion', null],
     ['revenge-bomb', 'onDeath'],
-    ['bat-fang', 'onAttack'],
+    ['bat-fang', 'onHit'],
     ['painted-target', null],
     ['silver-plated', 'onSticker'],
     ['steel-sword', null],
     ['butchers-cleave', null],
-    ['water-spirit', 'onAttack'],
+    ['water-spirit', 'onHit'],
     ['blood-leech', 'onAttack'],
     ['thiefs-hood', null],
     ['knights-crest', null],
@@ -391,20 +380,6 @@ export function instanceFromDef(defId: string, slot: number, instanceId: string)
   };
 }
 
-export function toSnapshotUnit(inst: UnitInstance): SnapshotUnit {
-  const def = getUnit(inst.defId);
-  const stats = computedStats(inst);
-  return {
-    instanceId: inst.instanceId,
-    defId: inst.defId,
-    slot: inst.slot,
-    stickerIds: [...inst.stickerIds],
-    permanentMods: { ...inst.permanentMods },
-    baseStats: { atk: def.atk, hp: def.hp, speed: def.speed },
-    currentStats: stats,
-  } as SnapshotUnit & { currentStats: { atk: number; hp: number; speed: number } };
-}
-
 export function makeSnapshot(args: {
   playerId: string;
   playerName: string;
@@ -446,18 +421,6 @@ export function makeSnapshot(args: {
     stickersGained: args.stickersGained ?? 0,
     deathsThisRun: args.deathsThisRun ?? 0,
   };
-}
-
-export function snapshotToTeam(snap: TeamSnapshot): UnitInstance[] {
-  return snap.units.map((u) => ({
-    instanceId: u.instanceId,
-    defId: u.defId,
-    slot: u.slot,
-    stickerIds: [...u.stickerIds],
-    permanentMods: { ...u.permanentMods },
-    ...(u.killTally ? { killTally: u.killTally } : {}),
-    ...(u.fearTally ? { fearTally: u.fearTally } : {}),
-  }));
 }
 
 const UNIT_ART_FOLDERS = new Set([
@@ -796,14 +759,6 @@ export function hasStickerArt(id: string): boolean {
   return STICKER_ART_FILES.has(stickerArtFile(id));
 }
 
-export function rollRarity(round: number, rng: SeededRng): Rarity {
-  const weights = rarityForRound(round);
-  const live = Object.fromEntries(
-    (Object.entries(weights) as Array<[Rarity, number]>).filter(([, w]) => w > 0),
-  ) as Record<Rarity, number>;
-  return rng.weighted(live);
-}
-
 function slotsFromMix(mix: Rarity[], count: number, rng: SeededRng): Rarity[] {
   if (count === mix.length) return rng.shuffle([...mix]);
   const out: Rarity[] = [];
@@ -983,10 +938,6 @@ export function shareStickerOnApply(
   return team.map((u) => (u.instanceId === ally.instanceId ? applySticker(u, stickerId) : u));
 }
 
-export function abilityKey(defId: string): string {
-  return `ab.${defId}`;
-}
-
 export function cloneTeam(team: UnitInstance[]): UnitInstance[] {
   return team.map((u) => ({
     ...u,
@@ -1035,8 +986,4 @@ export function assertCompactSlots(): void {
   if (capTeam([{ slot: 1 }, { slot: 2 }, { slot: 3 }, { slot: 4 }, { slot: 5 }]).length !== 4) {
     throw new Error('cap-team');
   }
-}
-
-export function makeAiInstance(defId: string, slot: number, seed: number, i: number): UnitInstance {
-  return instanceFromDef(defId, slot, detId('aiu', seed, i));
 }

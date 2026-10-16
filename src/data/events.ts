@@ -5,62 +5,17 @@ export interface EventDef {
   category: EventCategory;
   nameKey: string;
   descKey: string;
-  /** Tall card art shown on the event pick table. Hunt uses the monster unit card instead. */
-  art?: string;
 }
 
 export const EVENTS: EventDef[] = [
   { id: 'monster-hunt', category: 'challenge', nameKey: 'evt.monsterHunt', descKey: 'evt.monsterHunt.d' },
-  {
-    id: 'wishing-well',
-    category: 'safe',
-    nameKey: 'evt.wishingWell',
-    descKey: 'evt.wishingWell.d',
-    art: './art/ui/event-wishing-well.jpg?v=well16',
-  },
-  {
-    id: 'witch-oven',
-    category: 'risky',
-    nameKey: 'evt.witchOven',
-    descKey: 'evt.witchOven.d',
-    art: './art/ui/event-witch-oven.jpg?v=oven14',
-  },
-  {
-    id: 'cloning-chamber',
-    category: 'special',
-    nameKey: 'evt.cloningChamber',
-    descKey: 'evt.cloningChamber.d',
-    art: './art/ui/plate-cloning-chamber.png?v=alley30',
-  },
-  {
-    id: 'book-of-lost-tales',
-    category: 'special',
-    nameKey: 'evt.bookOfLostTales',
-    descKey: 'evt.bookOfLostTales.d',
-    art: './art/ui/event-book-of-lost-tales.jpg?v=book9',
-  },
+  { id: 'wishing-well', category: 'safe', nameKey: 'evt.wishingWell', descKey: 'evt.wishingWell.d' },
+  { id: 'witch-oven', category: 'risky', nameKey: 'evt.witchOven', descKey: 'evt.witchOven.d' },
+  { id: 'cloning-chamber', category: 'special', nameKey: 'evt.cloningChamber', descKey: 'evt.cloningChamber.d' },
+  { id: 'book-of-lost-tales', category: 'special', nameKey: 'evt.bookOfLostTales', descKey: 'evt.bookOfLostTales.d' },
 ];
 
 export const EVENT_BY_ID = new Map(EVENTS.map((e) => [e.id, e]));
-
-const NO_RARITY_EVENTS: readonly EventId[] = [
-  'wishing-well',
-  'witch-oven',
-  'cloning-chamber',
-  'book-of-lost-tales',
-];
-
-/** These events always do the same thing; do not show a rarity gem on the event card. */
-export function eventHidesRarity(id: EventId | null | undefined): boolean {
-  return id != null && (NO_RARITY_EVENTS as readonly string[]).includes(id);
-}
-
-export type EventPlate = 'challenge' | 'bargain' | 'gift';
-
-/** Alley fork plate while Event is still unopened. */
-export function eventPlate(_id: EventId | null | undefined): EventPlate {
-  return 'gift';
-}
 
 export interface HuntMonster {
   unitId: string;

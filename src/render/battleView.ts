@@ -27,10 +27,10 @@ const CURTAIN_ARENA_AT = CURTAIN_BLACK + CURTAIN_CLOSED_HOLD;
 const CURTAIN_FIELD_AT = CURTAIN_ARENA_AT + CURTAIN_OPEN_DUR;
 const CURTAIN_CARDS = 0.55;
 const CURTAIN_MAX = CURTAIN_FIELD_AT + CURTAIN_CARDS;
-/** Dealer: one slot on both sides, then the next. Fight waits a second after the last card lands. */
-const DEAL_FLIGHT = 0.36;
-const DEAL_GAP = 0.08;
-const DEAL_HOLD = 1;
+/** Dealer: one slot on both sides, then the next. Short settle, then the scrap starts. */
+const DEAL_FLIGHT = 0.2;
+const DEAL_GAP = 0.03;
+const DEAL_HOLD = 0.16;
 /** Banf smoke: dense cover first, then open; phase-2 card is already under before clear. */
 const SMOKE_HOLD_MS = [340, 170, 150, 160] as const;
 const SMOKE_FADE_MS = 280;
@@ -119,6 +119,7 @@ export class BattleView {
   private dealHold = false;
   private dealSlot = 0;
   private dealClock = 0;
+  private dealStartTimer = 0;
   private reduceMotion = false;
   private ended = false;
   private paused = false;
@@ -157,6 +158,8 @@ export class BattleView {
     this.dealHold = false;
     this.dealSlot = 0;
     this.dealClock = 0;
+    window.clearTimeout(this.dealStartTimer);
+    this.dealStartTimer = 0;
     this.reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.host.classList.add('is-intro', 'is-preamble');
     this.host.classList.remove('is-field-up');
@@ -216,6 +219,7 @@ export class BattleView {
     while (this.i < this.events.length) this.apply(this.events[this.i++]!, true);
     this.cardsArmed = true;
     this.dealing = false;
+    window.clearTimeout(this.dealStartTimer);
     this.endIntro();
     if (this.ended) return;
     this.ended = true;
@@ -394,7 +398,7 @@ export class BattleView {
     this.onField?.();
   }
 
-  /** Field first, curtain kept off-stage. Cards still deal onto the board. */
+  /** Field first, curtain kept off-stage. Deal waits until the field is fully visible. */
   private skipCurtainOpen(): void {
     this.curtain = 0;
     this.introElapsed = CURTAIN_FIELD_AT;
@@ -402,6 +406,30 @@ export class BattleView {
     this.setCurtainPhase('gone');
     this.host.querySelector('.battle-intro')?.classList.add('is-gone');
     this.host.classList.add('is-field-up');
+    this.cardsArmed = false;
+    this.dealing = false;
+    this.dealHold = false;
+    this.dealSlot = 0;
+    this.dealClock = 0;
+    this.intro = 1;
+    const veil = document.getElementById('scene-fade');
+    const covering = veil != null && Number(getComputedStyle(veil).opacity) > 0.5;
+    window.clearTimeout(this.dealStartTimer);
+    if (!covering) this.beginScrap();
+  }
+
+  /** Music and the deal start as the field is uncovered. */
+  beginScrap(): void {
+    window.clearTimeout(this.dealStartTimer);
+    this.dealStartTimer = 0;
+    if (this.cardsArmed) return;
+    if (this.reduceMotion) {
+      this.showField();
+      this.cardsArmed = true;
+      this.dealing = false;
+      this.endIntro();
+      return;
+    }
     this.showField();
     this.cardsArmed = true;
     this.dealing = true;
@@ -413,7 +441,7 @@ export class BattleView {
 
   private advanceCurtain(dt: number): void {
     if (!SCRAP_CURTAIN) {
-      this.advanceDeal(dt);
+      if (this.dealing) this.advanceDeal(dt);
       return;
     }
     this.introElapsed += dt;
@@ -485,6 +513,8 @@ export class BattleView {
 
   tick(dt: number): void {
     if (this.paused) return;
+    // Itch GIF capture sets this so screenshots do not burn game-time (else loops look ~2×).
+    if (this.host.dataset.ouaCap === 'pause') return;
     if (this.intro > 0) {
       this.advanceCurtain(dt);
       for (const a of this.actors.values()) this.advanceActor(a, dt);
@@ -798,6 +828,8 @@ export class BattleView {
               this.float(tgt, translate(loc, 'fx.reflect'), 'is-reflect');
               this.holdFx(0.16 + 0.9);
               window.setTimeout(() => this.float(tgt, `−${ev.amount}`, 'is-hurt'), this.wallMs(160));
+            } else if (this.sawLog(`death:${ev.targetId}`)) {
+              // knockOut already floated KO from the death: log — no −HP number.
             } else {
               this.float(tgt, `−${ev.amount}`, 'is-hurt');
             }
@@ -862,7 +894,10 @@ export class BattleView {
       case 'Transformed': {
         const prev = this.actors.get(ev.unit.uid);
         const slot = prev?.slot ?? ev.unit.slot;
-        const unit = { ...ev.unit, slot };
+        const incoming = (ev.unit.stickers ?? []).filter((id) => !id.endsWith('-plated'));
+        const carried = (prev?.stickers ?? []).filter((id) => !id.endsWith('-plated') && !incoming.includes(id));
+        const stickers = [...incoming, ...carried].slice(0, 3);
+        const unit = { ...ev.unit, slot, stickers: stickers.length ? stickers : ev.unit.stickers };
         if (silent) {
           this.spawn(unit, true);
           const a = this.actors.get(unit.uid);
@@ -996,6 +1031,10 @@ export class BattleView {
         if (victim) {
           this.paintStickerRail(victim);
           this.refreshTargeting(ev.victimId);
+        }
+        if (ev.applied && thief && ev.replacedId) {
+          const dropAt = thief.stickers.indexOf(ev.replacedId);
+          if (dropAt >= 0) this.dropStickerAt(thief, dropAt);
         }
         if (ev.applied && !ateAlready) this.applyStickerToCard(ev.thiefId, ev.stickerId, silent);
         this.pulse(ev.thiefId);
@@ -1575,10 +1614,13 @@ export class BattleView {
     leadMs = 0,
   ): number {
     if (!card) return 0;
-    const bySlot =
+    const bySlotRaw =
       stickerSlot != null
         ? card.querySelector<HTMLElement>(`[data-sticker-slot="${stickerSlot}"]`)
         : null;
+    // Slot index can shift after Exhaust; only trust it if that cell is still this sticker.
+    const bySlot =
+      bySlotRaw && bySlotRaw.dataset.sticker === stickerId ? bySlotRaw : null;
     const matches = [...card.querySelectorAll<HTMLElement>(`[data-sticker="${cssEscape(stickerId)}"]`)];
     const slot = bySlot ?? matches.find((s) => !s.classList.contains('is-spent')) ?? matches[0];
     if (!slot || slot.classList.contains('is-spent') || slot.classList.contains('is-graying')) return 0;

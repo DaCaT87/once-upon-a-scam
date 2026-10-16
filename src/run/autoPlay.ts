@@ -11,19 +11,20 @@ import {
   seatGoldUnit,
   skipStickers,
   toggleDraftPick,
+  passAlley,
 } from './runEngine';
 import { circuitOpponent } from './circuit';
 import { DRAFT_PICK, MAX_TEAM } from '../core/types';
 import type { RunState } from '../core/types';
 
-/** Headless 10-round playthrough for the same rules the UI uses. */
+/** Headless playthrough until one candle remains. Same rules the UI uses. */
 export function autoPlayRun(seed = 0x51a711): RunState {
   let run = createRun('ai', 'tester', 'Auto Mae', seed);
   for (const id of run.draftOffers.slice(0, DRAFT_PICK)) run = toggleDraftPick(run, id);
   run = confirmDraft(run);
   if (run.phase === 'stickerAssign') run = skipStickers(run);
   if (run.team.length !== teamSizeForRound(1)) throw new Error('autoplay-draft-size');
-  for (let r = 1; r <= 10; r++) {
+  for (let guard = 0; run.phase !== 'final' && guard < 40; guard++) {
     const enemy = circuitOpponent(run);
     if (!enemy) throw new Error(`autoplay-missing-rival-${run.round}`);
     if (run.team.length < DRAFT_PICK || run.team.length > MAX_TEAM) {
@@ -33,11 +34,8 @@ export function autoPlayRun(seed = 0x51a711): RunState {
       throw new Error(`autoplay-enemy-size-${run.round}-${enemy.units.length}`);
     }
     run = resolveFight(run, enemy);
-    if (run.round >= 10) {
-      run = afterResult(run);
-      break;
-    }
     run = afterResult(run);
+    if (run.phase === 'final') break;
     if (run.phase === 'stickerAssign') run = skipStickers(run);
     if (run.phase !== 'postFight') throw new Error(`autoplay-alley-${run.round}`);
     run = chooseAlley(run, 'recruit');
@@ -66,6 +64,7 @@ export function autoPlayRun(seed = 0x51a711): RunState {
     if (run.phase !== 'postFight') throw new Error(`autoplay-alley-back-${run.round}`);
     run = chooseAlley(run, 'sticker');
     if (run.phase === 'sticker') run = skipStickers(run);
+    if (run.phase === 'postFight') run = passAlley(run);
   }
   return run;
 }

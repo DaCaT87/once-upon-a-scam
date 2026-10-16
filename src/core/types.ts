@@ -1,8 +1,10 @@
-export const DATA_VERSION = '1.6.95';
+export const DATA_VERSION = '1.7.2';
 export const SIMULATOR_VERSION = '1.0.7';
 export const MAX_TEAM = 4;
-export const MAX_STICKERS = 3;
-export const RUN_ROUNDS = 10;
+export const MAX_STICKERS = 3;/** Lit candles at the start of a run. Zero ends the night early. */
+export const STARTING_CANDLES = 3;
+/** From the first scrap, a loss or a draw snuffs one candle. A win snuffs none. */
+export const DRAW_EXTINGUISH_FROM_ROUND = 1;
 export const DRAFT_OFFER = 4;
 export const DRAFT_PICK = 2;
 export const RECRUIT_OFFER = 4;
@@ -81,18 +83,13 @@ export type TriggerKind =
 export type AbilityTiming =
   | 'onAttack'
   | 'onHit'
-  | 'afterAttack'
-  | 'firstAttack'
   | 'onDeath'
   | 'battleStart'
   | 'battleEnd'
   | 'scrapEnd'
   | 'whenHit'
-  | 'whenDamaged'
   | 'onKill'
-  | 'allyDied'
   | 'anyDied'
-  | 'ambush'
   | 'onRecruit'
   | 'whenAttacked'
   | 'onSticker'
@@ -134,6 +131,8 @@ export type AbilityCondition =
 export type EffectOp =
   | { op: 'modStat'; stat: 'atk' | 'maxHp' | 'hp' | 'speed'; amount: number; duration: 'combat' | 'permanent'; double?: boolean }
   | { op: 'damage'; amount: number; trueDamage?: boolean; pctOf?: 'hp' | 'maxHp'; pct?: number; roundUp?: boolean }
+  /** Instant KO (true damage for remaining HP). Float shows KO, not a number. */
+  | { op: 'knockOut' }
   | { op: 'heal'; amount: number }
   | { op: 'healToFull' }
   | { op: 'summon'; unitId: string }
@@ -215,7 +214,6 @@ export interface Passives {
   /** HP, ATK, and Speed all match whichever of the three is highest. */
   matchHighest?: boolean;
   grantGoldUnitOnRecruit?: boolean;
-  grantShopStickerOnRecruit?: boolean;
   grantStickerOnRecruit?: Rarity;
   reflectDamageTaken?: boolean;
   doubleStats?: boolean;
@@ -535,6 +533,8 @@ export interface RunState {
   huntMonsterId: string | null;
   /** Hunt rarities already offered this run. Each rarity appears once. */
   huntRaritiesSeen?: Rarity[];
+  /** Round each alley event was last offered. The next round it cannot return. */
+  eventLastRound?: Partial<Record<EventId, number>>;
   /** Gold figure owed by Royal Herald when the line had no free slot. */
   pendingGoldUnitId?: string | null;
   recruitRarityBump: boolean;
@@ -543,7 +543,11 @@ export interface RunState {
   alleyDone: AlleyChoice[];
   stickersGained: number;
   deathsThisRun: number;
-  /** Crown total. A win adds 3, a draw adds 1, a loss adds 0. */
+  /** Lit candles left (0–3). A loss snuffs one; from DRAW_EXTINGUISH_FROM_ROUND a draw does too. */
+  candles?: number;
+  /** Player ids in the order they hit zero candles. First out = 10th place. */
+  eliminatedIds?: string[];
+  /** @deprecated Prefer candles. Kept so old saves still load. */
   victoryPoints?: number;
   lostTales: LostTale[];
   /** The other nine players. Chosen once; their teams last the whole run. */
@@ -568,7 +572,10 @@ export interface CircuitRival {
   wins: number;
   losses: number;
   draws: number;
-  victoryPoints: number;
+  /** Lit candles left (0–3). */
+  candles: number;
+  /** @deprecated Prefer candles. */
+  victoryPoints?: number;
   team: UnitInstance[];
   offerCounter: number;
   stickersGained: number;

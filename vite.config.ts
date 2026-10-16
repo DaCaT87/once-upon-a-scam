@@ -5,11 +5,10 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
-    watch: { ignored: ['**/assets/backup-recruit/**', '**/assets/backup-*/**', '**/tools/bin/**'] },
   },
   preview: { port: 4173, host: true },
   build: {
     target: 'es2022',
-    sourcemap: true,
+    sourcemap: false,
   },
 });

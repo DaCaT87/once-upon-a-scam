@@ -82,7 +82,7 @@ export const STICKERS: StickerDef[] = [
     family: 'trigger',
     rarity: 'bronze',
     icon: 'cup',
-    ability: { id: 'water-spirit.d', trigger: 'attackStarted', target: 'attackTarget', effects: [{ op: 'moveBack' }] },
+    ability: { id: 'water-spirit.d', trigger: 'damageDealt', target: 'attackTarget', effects: [{ op: 'moveBack' }] },
     archetypes: ['speed'],
   },
   { id: 'knights-crest', nameKey: 'stk.knightsCrest', descKey: 'stk.knightsCrest.d', family: 'keyword', rarity: 'silver', icon: 'badge', passives: { guardian: true }, ability: { id: 'knights-crest.d', trigger: 'whenTargeted', target: 'attacker', effects: [{ op: 'counterAttack' }] }, archetypes: ['tank'] },
@@ -231,7 +231,7 @@ export const STICKERS: StickerDef[] = [
       id: 'fire-spirit.d',
       trigger: 'turnStarted',
       target: 'self',
-      effects: [{ op: 'modStat', stat: 'atk', amount: 2, duration: 'combat' }],
+      effects: [{ op: 'modStat', stat: 'atk', amount: 3, duration: 'combat' }],
     },
     archetypes: ['attack'],
   },
@@ -294,7 +294,7 @@ export const STICKERS: StickerDef[] = [
       id: 'reapers-scythe.d',
       trigger: 'damageDealt',
       target: 'attackTarget',
-      effects: [{ op: 'damage', amount: 99, trueDamage: true }],
+      effects: [{ op: 'knockOut' }],
     },
     archetypes: ['attack'],
   },
@@ -309,7 +309,7 @@ export const STICKERS: StickerDef[] = [
       id: 'void-heart.d',
       trigger: 'onDeath',
       target: 'attacker',
-      effects: [{ op: 'damage', amount: 99, trueDamage: true }],
+      effects: [{ op: 'knockOut' }],
     },
     archetypes: ['tank'],
   },
@@ -539,9 +539,6 @@ export function shopStickers(): StickerDef[] {
   return grantableStickers().filter((s) => s.rarity !== 'diamond');
 }
 
-export function huntStickers(): StickerDef[] {
-  return STICKERS.filter((s) => s.frame === 'monster');
-}
 
 /** Boss stickers shown in the library. The other hunt prizes stay out of the book. */
 const LIBRARY_HUNT_IDS = new Set(['endless-hunger', 'mythic-treasure', 'woodsmans-axe', 'filth', 'cocoon']);

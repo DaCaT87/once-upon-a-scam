@@ -15,17 +15,7 @@ export function living(units: Targetable[]): Targetable[] {
   return units.filter((u) => !u.dead && u.hp > 0);
 }
 
-export function nearestBySlot(candidates: Targetable[], slot: number): Targetable | null {
-  if (!candidates.length) return null;
-  const sorted = candidates.slice().sort((a, b) => {
-    const da = Math.abs(a.slot - slot);
-    const db = Math.abs(b.slot - slot);
-    if (da !== db) return da - db;
-    if (a.slot !== b.slot) return a.slot - b.slot;
-    return a.uid.localeCompare(b.uid);
-  });
-  return sorted[0] ?? null;
-}
+
 
 function byUid(a: Targetable, b: Targetable): number {
   return a.uid.localeCompare(b.uid);
